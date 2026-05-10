@@ -1,4 +1,4 @@
-# Security Policy (UNDER SONSTRUCTION)
+# Security Policy (UNDER CONSTRUCTION)
 
 ## Supported Versions
 
