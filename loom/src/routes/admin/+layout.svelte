@@ -32,7 +32,10 @@
     },
     {
       title: 'Wizard',
-      items: [{ href: '/admin/profile', label: 'Profile' }],
+      items: [
+        { href: '/admin/journal', label: "Wizard's Journal" },
+        { href: '/admin/profile', label: 'Profile' },
+      ],
     },
   ];
 

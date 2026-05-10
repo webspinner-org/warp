@@ -26,6 +26,17 @@ import { quietLoomChat, resolveKeplerModel, KeplerCallError } from './kepler.js'
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
 import { readSpool, knownSpools } from './spools.js';
 import {
+  ensureJournalCollection,
+  createEntry,
+  recallEntries,
+  listRecent,
+  countEntries,
+  type EntryKind,
+  type JournalEntry,
+} from './journal.js';
+import { readFile } from 'node:fs/promises';
+import { join, resolve as resolvePath } from 'node:path';
+import {
   ensureAuditCollection,
   writeAuditEvent,
   type AuditWriteRequest,
@@ -70,11 +81,13 @@ export type InvokeResult = InvokeSuccess | InvokeFailure;
 const DISPATCH = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
+  ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
 ]);
 
 const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
+  ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -213,6 +226,18 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
         vault,
         missionLock,
         spoolReads,
+      });
+      output = handled.output;
+      modelTokens = handled.modelTokens;
+    } else if (manifest.name === ('@webspinner-foundation/wizards-journal' as SpinnerName)) {
+      const handled = await dispatchJournal(req.capability, req.input, {
+        manifest,
+        vault,
+        missionLock,
+        spoolReads,
+        pbToken,
+        actorEmail: req.actorEmail,
+        actorId: req.actorId,
       });
       output = handled.output;
       modelTokens = handled.modelTokens;
@@ -632,4 +657,279 @@ function parsePabloJson(raw: string): PabloReviewOutput {
     in_pablo_voice: typeof o['in_pablo_voice'] === 'string' ? (o['in_pablo_voice'] as string) : '',
     findings,
   };
+}
+
+// ── Wizard's Journal dispatch ──────────────────────────────────────────────
+
+interface JournalDispatchContext extends BootstrapDispatchContext {
+  readonly pbToken: string;
+  readonly actorEmail: string;
+  readonly actorId: string;
+}
+
+const ENTRY_KINDS: ReadonlySet<EntryKind> = new Set([
+  'action',
+  'decision',
+  'problem',
+  'learning',
+  'note',
+]);
+
+const WARP_REPO_DIR = resolvePath(process.env['WARP_REPO_DIR'] ?? join(process.cwd(), '..'));
+
+async function dispatchJournal(
+  capability: string,
+  input: unknown,
+  ctx: JournalDispatchContext,
+): Promise<DispatchOutput> {
+  // Ensure the collection exists before any read/write.
+  const ensured = await ensureJournalCollection(fetch, ctx.pbToken);
+  if (!ensured.ok) {
+    throw new Error(
+      `Failed to ensure wp_journal_entries collection: ${JSON.stringify(ensured.error)}`,
+    );
+  }
+
+  switch (capability) {
+    case 'record':
+      return journalRecord(input, ctx);
+    case 'recall':
+      return journalRecall(input, ctx);
+    case 'bootstrap':
+      return journalBootstrap(input, ctx);
+    default:
+      throw new Error(`wizards-journal dispatch: unhandled capability "${capability}"`);
+  }
+}
+
+async function journalRecord(
+  rawInput: unknown,
+  ctx: JournalDispatchContext,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as {
+    kind?: unknown;
+    title?: unknown;
+    body?: unknown;
+    tags?: unknown;
+    relatedSpinners?: unknown;
+    public?: unknown;
+  };
+  if (typeof input.kind !== 'string' || !ENTRY_KINDS.has(input.kind as EntryKind)) {
+    throw new Error(
+      `record requires kind ∈ {action, decision, problem, learning, note}; got ${JSON.stringify(input.kind)}.`,
+    );
+  }
+  if (typeof input.title !== 'string' || input.title.trim().length === 0) {
+    throw new Error('record requires a non-empty title.');
+  }
+  if (typeof input.body !== 'string' || input.body.trim().length === 0) {
+    throw new Error('record requires a non-empty body.');
+  }
+
+  const tags = Array.isArray(input.tags)
+    ? input.tags.filter((t): t is string => typeof t === 'string')
+    : [];
+  const relatedSpinners = Array.isArray(input.relatedSpinners)
+    ? input.relatedSpinners.filter((s): s is string => typeof s === 'string')
+    : [];
+  const publicFlag = typeof input.public === 'boolean' ? input.public : false;
+
+  const result = await createEntry(fetch, ctx.pbToken, {
+    actorEmail: ctx.actorEmail,
+    actorId: ctx.actorId,
+    kind: input.kind as EntryKind,
+    title: input.title.trim(),
+    body: input.body.trim(),
+    tags,
+    relatedSpinners,
+    publicFlag,
+  });
+
+  if (!result.ok) {
+    if (result.error.kind === 'embed-failed') {
+      throw new KeplerCallError(
+        'embeddings',
+        `Embedding sidecar failed during record: ${result.error.message}`,
+      );
+    }
+    throw new Error(
+      `Failed to write journal entry: ${result.error.status} — ${result.error.body}`,
+    );
+  }
+
+  const row = result.value;
+  return {
+    output: {
+      id: row.id,
+      timestamp: row.timestamp,
+      kind: row.kind,
+      title: row.title,
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+async function journalRecall(
+  rawInput: unknown,
+  ctx: JournalDispatchContext,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as {
+    query?: unknown;
+    since?: unknown;
+    limit?: unknown;
+    kind?: unknown;
+    tag?: unknown;
+  };
+  if (typeof input.query !== 'string' || input.query.trim().length === 0) {
+    throw new Error('recall requires a non-empty query string.');
+  }
+  const since = typeof input.since === 'string' ? input.since : undefined;
+  const limit = typeof input.limit === 'number' ? input.limit : undefined;
+  const kind =
+    typeof input.kind === 'string' && ENTRY_KINDS.has(input.kind as EntryKind)
+      ? (input.kind as EntryKind)
+      : undefined;
+  const tag = typeof input.tag === 'string' && input.tag.length > 0 ? input.tag : undefined;
+
+  const result = await recallEntries(fetch, ctx.pbToken, {
+    query: input.query,
+    since,
+    limit,
+    kind,
+    tag,
+  });
+  if (!result.ok) {
+    if (result.error.kind === 'embed-failed') {
+      throw new KeplerCallError(
+        'embeddings',
+        `Embedding sidecar failed during recall: ${result.error.message}`,
+      );
+    }
+    throw new Error(`Failed to recall journal entries: ${result.error.status} — ${result.error.body}`);
+  }
+  return {
+    output: result.value,
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+async function journalBootstrap(
+  rawInput: unknown,
+  ctx: JournalDispatchContext,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as { scope?: unknown; horizonDays?: unknown };
+  const horizonDays =
+    typeof input.horizonDays === 'number' && input.horizonDays > 0 ? Math.min(365, input.horizonDays) : 14;
+  const scope = typeof input.scope === 'string' && input.scope.trim().length > 0 ? input.scope : undefined;
+
+  // Recent entries within horizon.
+  const recentResult = await listRecent(fetch, ctx.pbToken, { horizonDays });
+  if (!recentResult.ok) {
+    const detail =
+      recentResult.error.kind === 'backend'
+        ? `${recentResult.error.status} — ${recentResult.error.body}`
+        : recentResult.error.message;
+    throw new Error(`Failed to list recent journal entries: ${detail}`);
+  }
+  const recent = recentResult.value;
+  const recentByKind = (k: EntryKind) => recent.filter((e) => e.kind === k);
+
+  const totalResult = await countEntries(fetch, ctx.pbToken);
+  const total = totalResult.ok ? totalResult.value : recent.length;
+
+  // Tail of DECISIONS.md (last three dated entries by `## YYYY-MM-DD`).
+  const decisionsTail = await tailDatedSections('DECISIONS.md', 3).catch(() => '');
+
+  // Top of OPEN_QUESTIONS.md (first three sections after the header).
+  const openTop = await topSections('OPEN_QUESTIONS.md', 3).catch(() => '');
+
+  // Compose markdown.
+  let context = `# Resume context — generated ${new Date().toISOString()}\n\n`;
+  context += `Horizon: last ${horizonDays} day${horizonDays === 1 ? '' : 's'}. `;
+  context += `${recent.length} of ${total} journal entries match.${scope ? ` Scope filter: \`${scope}\`.` : ''}\n\n`;
+
+  // Current focus: most recent entry tagged "focus", or fall back to the latest entry.
+  const focus = recent.find((e) => Array.isArray(e.tags) && e.tags.includes('focus')) ?? recent[0];
+  if (focus) {
+    context += `## Current focus\n\n**${focus.title}** — _${focus.kind}, ${focus.timestamp.slice(0, 10)}_\n\n${truncateBody(focus.body, 600)}\n\n`;
+  } else {
+    context += `## Current focus\n\n_Journal is empty within the horizon. Start writing._\n\n`;
+  }
+
+  // Recent actions.
+  const actions = recentByKind('action').slice(0, 5);
+  if (actions.length > 0) {
+    context += `## Recent actions\n\n`;
+    for (const a of actions) {
+      context += `- _${a.timestamp.slice(0, 10)}_ — **${a.title}**\n`;
+    }
+    context += `\n`;
+  }
+
+  // Recent decisions (from journal + DECISIONS.md tail).
+  const journalDecisions = recentByKind('decision').slice(0, 3);
+  if (journalDecisions.length > 0 || decisionsTail.length > 0) {
+    context += `## Last decisions\n\n`;
+    for (const d of journalDecisions) {
+      context += `- _${d.timestamp.slice(0, 10)}_ — **${d.title}** _(journal)_\n`;
+    }
+    if (decisionsTail.length > 0) {
+      context += `\n_From \`DECISIONS.md\` tail:_\n\n${decisionsTail}\n`;
+    }
+  }
+
+  // Open questions teaser.
+  if (openTop.length > 0) {
+    context += `## Open questions (top of \`OPEN_QUESTIONS.md\`)\n\n${openTop}\n`;
+  }
+
+  // Recent learnings / problems if any.
+  const learnings = recentByKind('learning').slice(0, 3);
+  const problems = recentByKind('problem').slice(0, 3);
+  if (learnings.length > 0) {
+    context += `## Recent learnings\n\n`;
+    for (const l of learnings) context += `- _${l.timestamp.slice(0, 10)}_ — **${l.title}**: ${truncateBody(l.body, 240)}\n`;
+    context += `\n`;
+  }
+  if (problems.length > 0) {
+    context += `## Open problems\n\n`;
+    for (const p of problems) context += `- _${p.timestamp.slice(0, 10)}_ — **${p.title}**: ${truncateBody(p.body, 240)}\n`;
+    context += `\n`;
+  }
+
+  context += `\n_End of resume context — Wizard's Journal v0.1._`;
+
+  return {
+    output: {
+      context,
+      stats: {
+        totalEntries: total,
+        recentEntries: recent.length,
+        horizonDays,
+      },
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+function truncateBody(body: string, max: number): string {
+  const trimmed = body.trim().replace(/\s+/g, ' ');
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max - 1) + '…';
+}
+
+/** Read `DECISIONS.md`-style markdown and return the last N `## YYYY-...` sections. */
+async function tailDatedSections(filename: string, n: number): Promise<string> {
+  const text = await readFile(join(WARP_REPO_DIR, filename), 'utf8').catch(() => '');
+  if (!text) return '';
+  const sections = text.split(/\n(?=## )/g).filter((s) => /^## \d{4}-/.test(s));
+  return sections.slice(-n).join('\n\n');
+}
+
+/** Read a markdown file and return the first N `## ` sections (skipping front matter). */
+async function topSections(filename: string, n: number): Promise<string> {
+  const text = await readFile(join(WARP_REPO_DIR, filename), 'utf8').catch(() => '');
+  if (!text) return '';
+  const sections = text.split(/\n(?=## )/g).filter((s) => /^## /.test(s));
+  return sections.slice(0, n).join('\n\n');
 }

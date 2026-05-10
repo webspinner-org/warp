@@ -1,0 +1,175 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/wizards-journal",
+  "displayName": "Wizard's Journal",
+  "version": "0.1.0",
+  "description": "The Wizard's operational log — actions, decisions, problems, learnings — kept as the substrate for next-session Claude bootstrap, and (eventually) the substrate for public Foundation documentation. Semantic recall across the whole journal via the Cell's embedding sidecar.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/wizards-journal",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "model": "kepler/qwen-2.5-14b-instruct",
+  "vault": [],
+  "spools": [],
+  "env": [],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "record",
+      "displayName": "Record",
+      "description": "Append a journal entry — an action taken, a decision made, a problem encountered, a learning. The entry is embedded for later semantic recall and surfaced in the next-session bootstrap context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["action", "decision", "problem", "learning", "note"],
+            "description": "What kind of entry this is. Decisions also belong in DECISIONS.md; the journal entry is the lived experience alongside the canonical record."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Short title — one line, present-tense."
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "The entry itself. What happened, why, what next."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 40 },
+            "description": "Free-form tags for filtering and recall."
+          },
+          "relatedSpinners": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Spinner names this entry references (e.g. @webspinner-foundation/pablo)."
+          },
+          "public": {
+            "type": "boolean",
+            "default": false,
+            "description": "Marks the entry as suitable for public docs export. Default: private."
+          }
+        },
+        "required": ["kind", "title", "body"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string" },
+          "kind": { "type": "string" },
+          "title": { "type": "string" }
+        },
+        "required": ["id", "timestamp"]
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "recall",
+      "displayName": "Recall",
+      "description": "Semantic search across the journal. Returns the most relevant entries with similarity scores. Filterable by kind, tags, and recency.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What you are looking for, in plain words."
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO timestamp; only entries newer than this. Optional."
+          },
+          "limit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["action", "decision", "problem", "learning", "note"]
+          },
+          "tag": {
+            "type": "string",
+            "description": "Restrict to entries carrying this tag."
+          }
+        },
+        "required": ["query"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "timestamp": { "type": "string" },
+                "kind": { "type": "string" },
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "score": { "type": "number" }
+              }
+            }
+          },
+          "totalScanned": { "type": "number" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "bootstrap",
+      "displayName": "Bootstrap Context",
+      "description": "Produce the contextual prompt a new Claude (or Wizard) session needs to pick up where the last one left off — recent actions, the last few decisions, open questions, current focus. Markdown.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "Optional topic filter; restricts the bootstrap to entries matching this. Plain words."
+          },
+          "horizonDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 365,
+            "default": 14,
+            "description": "How far back to look for 'recent' material."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "Markdown — what the next session needs to know."
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "totalEntries": { "type": "number" },
+              "recentEntries": { "type": "number" },
+              "horizonDays": { "type": "number" }
+            }
+          }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/wizards-journal"
+  }
+}

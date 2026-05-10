@@ -1,0 +1,12 @@
+{
+  "name": "@webspinner-foundation/wizards-journal",
+  "version": "0.1.0",
+  "description": "Wizard's Journal Spinner — the Cell's operational diary.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@webspinner-foundation/sdk": "workspace:*"
+  }
+}
