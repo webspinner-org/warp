@@ -109,6 +109,14 @@ export interface SpinnerManifest {
   readonly env: readonly EnvVarSpec[];
   readonly dependsOn: readonly SpinnerDependency[];
   readonly capabilities: readonly SpinnerCapability[];
+  /**
+   * Shell commands this Spinner may invoke through the Weaver's gated
+   * `context.shell({command, args, cwd?, env?})` helper. Each entry is a
+   * top-level binary name (e.g. "brew", "node", "pnpm"). The Weaver
+   * refuses any command not in this list. Empty / omitted = no shell
+   * access (the default). Per OPEN_QUESTIONS — *Cell provisioning*.
+   */
+  readonly shellAllowlist?: readonly string[];
   /** Documentation surfaced in the Loom — required. */
   readonly documentation: SpinnerDocumentation;
   /**

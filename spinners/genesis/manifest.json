@@ -72,6 +72,21 @@
       "emitsAudit": ["wp.spinner.invoke"]
     }
   ],
+  "shellAllowlist": [
+    "uname",
+    "sw_vers",
+    "brew",
+    "node",
+    "pnpm",
+    "npm",
+    "tailscale",
+    "which",
+    "command",
+    "git",
+    "launchctl",
+    "ls",
+    "stat"
+  ],
   "documentation": {
     "howItWorks": "./how-it-works.md",
     "readme": "./README.md"

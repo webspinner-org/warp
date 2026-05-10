@@ -34,8 +34,10 @@ import {
   type EntryKind,
   type JournalEntry,
 } from './journal.js';
+import { createShellRunner, ShellPermissionError, type ShellRunResult } from './shell.js';
 import { readFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
+import { platform as osPlatform } from 'node:os';
 import {
   ensureAuditCollection,
   writeAuditEvent,
@@ -82,12 +84,14 @@ const DISPATCH = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
   ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
+  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'generateBootstrapState', 'deployGrimoire', 'seedVault', 'deployLoom', 'verifyCell'])],
 ]);
 
 const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
   ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
+  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -238,6 +242,15 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
         pbToken,
         actorEmail: req.actorEmail,
         actorId: req.actorId,
+      });
+      output = handled.output;
+      modelTokens = handled.modelTokens;
+    } else if (manifest.name === ('@webspinner-foundation/genesis' as SpinnerName)) {
+      const handled = await dispatchGenesis(req.capability, req.input, {
+        manifest,
+        vault,
+        missionLock,
+        spoolReads,
       });
       output = handled.output;
       modelTokens = handled.modelTokens;
@@ -932,4 +945,152 @@ async function topSections(filename: string, n: number): Promise<string> {
   if (!text) return '';
   const sections = text.split(/\n(?=## )/g).filter((s) => /^## /.test(s));
   return sections.slice(0, n).join('\n\n');
+}
+
+// ── Genesis dispatch ───────────────────────────────────────────────────────
+//
+// Genesis is the re-runnable Cell-provisioning Spinner. v0.1 ships a
+// single capability: `provisionToolchain` reports on the host's
+// toolchain (Homebrew / Node / pnpm / Tailscale / git). It does NOT
+// install anything yet — that's v0.2 once the audit + idempotency
+// patterns are settled.
+//
+// Shell access is gated through the Spinner's manifest `shellAllowlist`.
+// Any command outside the allowlist throws ShellPermissionError.
+
+interface ToolReport {
+  readonly present: boolean;
+  readonly version?: string;
+  readonly path?: string;
+  readonly note?: string;
+}
+
+interface ProvisionReport {
+  readonly host: {
+    readonly platform: string;
+    readonly uname?: string;
+    readonly macosVersion?: string;
+  };
+  readonly tools: {
+    readonly brew: ToolReport;
+    readonly node: ToolReport;
+    readonly pnpm: ToolReport;
+    readonly tailscale: ToolReport;
+    readonly git: ToolReport;
+  };
+  readonly missing: readonly string[];
+  readonly ready: boolean;
+  readonly note: string;
+}
+
+async function dispatchGenesis(
+  capability: string,
+  input: unknown,
+  ctx: BootstrapDispatchContext,
+): Promise<DispatchOutput> {
+  void input;
+  const shell = createShellRunner(ctx.manifest.shellAllowlist ?? []);
+  if (shell.allowlist.length === 0) {
+    throw new Error(
+      'Genesis Spinner has no shellAllowlist declared in manifest.json. Genesis cannot probe a host without shell access.',
+    );
+  }
+  switch (capability) {
+    case 'provisionToolchain':
+      return genesisProvisionToolchain(shell);
+    default:
+      throw new Error(`genesis dispatch: unhandled capability "${capability}"`);
+  }
+}
+
+async function genesisProvisionToolchain(
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DispatchOutput> {
+  // Helper: try a `--version` probe; fall back to which-locate.
+  async function probe(
+    command: string,
+    versionArgs: readonly string[] = ['--version'],
+  ): Promise<ToolReport> {
+    try {
+      const res = await shell.run({ command, args: versionArgs, timeoutMs: 8_000 });
+      if (res.exitCode === 0) {
+        // First line of stdout (or stderr if stdout empty) is usually the version.
+        const head = (res.stdout || res.stderr).split('\n')[0]?.trim() ?? '';
+        const pathRes = await whichOf(shell, command).catch(() => undefined);
+        return { present: true, version: head, path: pathRes };
+      }
+      // Non-zero exit: check whether the binary exists at all.
+      const pathRes = await whichOf(shell, command).catch(() => undefined);
+      if (pathRes) {
+        return { present: true, path: pathRes, note: `exit ${res.exitCode}` };
+      }
+      return { present: false, note: `${command} not found (exit ${res.exitCode})` };
+    } catch (e) {
+      if (e instanceof ShellPermissionError) {
+        return { present: false, note: e.message };
+      }
+      return { present: false, note: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  const platform = osPlatform();
+  const host: ProvisionReport['host'] = { platform };
+
+  try {
+    const uname = await shell.run({ command: 'uname', args: ['-a'], timeoutMs: 3_000 });
+    if (uname.exitCode === 0) {
+      (host as { uname?: string }).uname = uname.stdout.trim();
+    }
+  } catch {
+    // tolerate
+  }
+  if (platform === 'darwin') {
+    try {
+      const sw = await shell.run({ command: 'sw_vers', args: [], timeoutMs: 3_000 });
+      if (sw.exitCode === 0) {
+        (host as { macosVersion?: string }).macosVersion = sw.stdout.trim().replace(/\s+/g, ' ');
+      }
+    } catch {
+      // tolerate
+    }
+  }
+
+  const tools = {
+    brew: await probe('brew'),
+    node: await probe('node'),
+    pnpm: await probe('pnpm'),
+    tailscale: await probe('tailscale', ['version']),
+    git: await probe('git'),
+  };
+
+  const missing = (Object.entries(tools) as [string, ToolReport][])
+    .filter(([, r]) => !r.present)
+    .map(([k]) => k);
+
+  const ready = missing.length === 0;
+  const note = ready
+    ? 'Toolchain is ready. Genesis can proceed to deployGrimoire / deployLoom.'
+    : `Missing: ${missing.join(', ')}. Install before proceeding. v0.1 of Genesis only probes; install is a future capability.`;
+
+  const report: ProvisionReport = { host, tools, missing, ready, note };
+
+  return {
+    output: report as unknown as Record<string, unknown>,
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+async function whichOf(
+  shell: ReturnType<typeof createShellRunner>,
+  command: string,
+): Promise<string | undefined> {
+  try {
+    const r = await shell.run({ command: 'which', args: [command], timeoutMs: 3_000 });
+    if (r.exitCode === 0) {
+      return r.stdout.trim().split('\n')[0];
+    }
+  } catch {
+    // tolerate
+  }
+  return undefined;
 }
