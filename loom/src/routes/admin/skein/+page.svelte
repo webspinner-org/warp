@@ -6,28 +6,30 @@
 </p>
 <p class="placeholder">
   The Foundation recognition process — what signatures the Skein accepts, who reviews, how
-  recognition is revoked — is open work
-  (<code>OPEN_QUESTIONS.md</code> — <em>Spinner signing — keys, custody, rotation, recognition
-    revocation</em>).
-  Until then, the only Spinners visible are the ones already inside this Cell's
-  <code>~/warp/spinners/</code> directory; see the Installed view.
+  recognition is revoked — is open work (<code>OPEN_QUESTIONS.md</code> — <em>Spinner signing —
+  keys, custody, rotation, recognition revocation</em>). Until then, the only Spinners visible are
+  the ones already inside this Cell's <code>~/warp/spinners/</code> directory; see the Installed
+  view.
 </p>
 
 <style>
   h1 {
-    margin: 0 0 0.25rem;
-    font-size: 1.5rem;
+    margin: 0 0 0.4rem;
+    font-size: 1.6rem;
     font-weight: 600;
     color: var(--gold);
     letter-spacing: 0.02em;
+    font-family: var(--font-prose);
   }
 
   .placeholder {
-    color: var(--text-mute);
-    max-width: 64ch;
-    line-height: 1.6;
-    font-size: 0.9rem;
-    margin: 0.6rem 0;
+    color: var(--text-secondary);
+    max-width: 60ch;
+    line-height: 1.65;
+    font-size: 0.95rem;
+    margin: 0.85rem 0;
+    font-family: var(--font-prose);
+    font-style: italic;
   }
 
   code {
@@ -36,6 +38,8 @@
     border-radius: 3px;
     padding: 1px 5px;
     font-size: 0.85em;
-    color: #ddd;
+    color: var(--text-secondary);
+    font-style: normal;
+    font-family: var(--font-mono);
   }
 </style>
