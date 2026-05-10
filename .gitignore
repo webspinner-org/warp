@@ -1,0 +1,109 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# uv / virtualenv
+.venv/
+venv/
+env/
+ENV/
+.uv/
+
+# Environment and secrets — NEVER commit
+.env
+.env.*
+*.pem
+*.key
+secrets/
+secrets.*
+*.secret
+*.tfvars
+credentials.json
+
+# Model weights (large; download per WEAVER-SETUP.md, do not commit)
+models/
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.ckpt
+
+# Vector and database state
+qdrant_storage/
+postgres_data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Audit logs (operational state, not source)
+audit/
+*.log
+logs/
+
+# Local provisioning artifacts
+provisioning/local/
+*.local.yaml
+*.local.yml
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Direnv
+.envrc
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# MCP / Claude Code session artifacts
+.claude/
+*.session.json
+
+# Backups
+*.bak
+*.backup
+backups/
