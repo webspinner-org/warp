@@ -2,16 +2,14 @@ import { error } from '@sveltejs/kit';
 import { loadSpinner, loadSpinnerDoc } from '$lib/server/spinners.js';
 import { renderMarkdown } from '$lib/server/markdown.js';
 import { loomPbToken } from '$lib/server/pocketbase.js';
-import { getSession } from '$lib/server/session.js';
 import { readSilkPattern, ensureSilkPatternCollection } from '$lib/server/silk-pattern.js';
 import { spoolDisplayName } from '$lib/server/spools.js';
 import type { PageServerLoad } from './$types.js';
 
-export const load: PageServerLoad = async ({ params, cookies, fetch, parent }) => {
-  const session = getSession(cookies);
-  if (!session) throw error(401, 'Not authenticated.');
-
-  // Inherit the user record from the admin layout.
+export const load: PageServerLoad = async ({ params, fetch, parent }) => {
+  // Auth gating is the admin layout's job (it also honours the dev SSR
+  // bypass header). `parent()` propagates any redirect/error from the
+  // layout, so a separate session check here would only mask the bypass.
   const layoutData = await parent();
 
   const result = await loadSpinner(params.name);

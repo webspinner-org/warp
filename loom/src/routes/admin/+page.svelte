@@ -51,36 +51,41 @@
 
 <style>
   h1 {
-    margin: 0 0 0.25rem;
-    font-size: 1.5rem;
+    margin: 0 0 0.4rem;
+    font-size: 1.6rem;
     font-weight: 600;
     color: var(--gold);
     letter-spacing: 0.02em;
+    font-family: var(--font-prose);
   }
 
   .lede {
-    margin: 0 0 2rem;
-    color: var(--text-mute);
-    font-size: 0.9rem;
+    margin: 0 0 2.25rem;
+    color: var(--text-dim);
+    font-size: 1rem;
+    line-height: 1.55;
+    max-width: 60ch;
+    font-family: var(--font-prose);
+    font-style: italic;
   }
 
   .cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
     max-width: 64rem;
   }
 
   article {
     background: #111;
     border: 1px solid #1f1f1f;
-    border-radius: 6px;
-    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    padding: 1.4rem 1.65rem;
   }
 
   article h2 {
-    margin: 0 0 0.75rem;
-    font-size: 0.78rem;
+    margin: 0 0 1rem;
+    font-size: 0.74rem;
     text-transform: uppercase;
     letter-spacing: 0.14em;
     color: var(--cyan);
@@ -90,25 +95,35 @@
   dl {
     margin: 0;
     display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 0.4rem 0.8rem;
-    font-size: 0.85rem;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.85rem 1.25rem;
+    font-size: 0.92rem;
+    line-height: 1.5;
   }
 
   dt {
-    color: var(--text-mute);
+    color: var(--gold-dim);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    padding-top: 0.18rem;
+    font-family: var(--font-data);
   }
 
   dd {
     margin: 0;
-    color: #ddd;
+    color: var(--text-secondary);
+    font-family: var(--font-data);
   }
 
   .note {
-    margin: 2rem 0 0;
-    color: var(--text-mute);
-    font-size: 0.85rem;
+    margin: 2.5rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
     max-width: 60ch;
-    line-height: 1.6;
+    line-height: 1.65;
+    font-family: var(--font-prose);
+    font-style: italic;
   }
 </style>
