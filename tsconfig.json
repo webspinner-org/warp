@@ -1,0 +1,12 @@
+// Solution file for `tsc -b`. Each workspace package added here is built
+// in dependency order via project references. tsconfig.base.json holds
+// the shared compilerOptions; this file is purely a build coordinator.
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "files": [],
+  "references": [
+    { "path": "./sdk" },
+    { "path": "./spinners/bootstrap" },
+    { "path": "./spinners/genesis" }
+  ]
+}

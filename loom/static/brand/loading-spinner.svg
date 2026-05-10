@@ -1,0 +1,45 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="Loading"
+>
+  <defs>
+    <linearGradient id="loadingThread" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#c9a96a" />
+      <stop offset="100%" stop-color="#5fcfe0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer ring — the spool. -->
+  <circle
+    cx="32"
+    cy="32"
+    r="22"
+    fill="none"
+    stroke="#1f1f1f"
+    stroke-width="3"
+  />
+
+  <!-- The thread, drawn as an arc that rotates. ~270 degrees of arc. -->
+  <g style="transform-origin: 32px 32px;">
+    <path
+      d="M 32 10 A 22 22 0 1 1 10 32"
+      fill="none"
+      stroke="url(#loadingThread)"
+      stroke-width="3"
+      stroke-linecap="round"
+    />
+    <animateTransform
+      attributeName="transform"
+      type="rotate"
+      from="0 32 32"
+      to="360 32 32"
+      dur="1.2s"
+      repeatCount="indefinite"
+    />
+  </g>
+
+  <!-- Center dot — the axle. -->
+  <circle cx="32" cy="32" r="2" fill="#c9a96a" opacity="0.7" />
+</svg>

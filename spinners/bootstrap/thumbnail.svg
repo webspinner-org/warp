@@ -1,0 +1,55 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 256"
+  role="img"
+  aria-label="Bootstrap Spinner"
+>
+  <defs>
+    <radialGradient id="bootBg" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#1a1306" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#0a0a0a" stop-opacity="1" />
+    </radialGradient>
+    <linearGradient id="bootGold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#e6c98a" />
+      <stop offset="100%" stop-color="#8a7341" />
+    </linearGradient>
+    <radialGradient id="bootCenter" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff5d6" />
+      <stop offset="60%" stop-color="#e6c98a" />
+      <stop offset="100%" stop-color="#c9a96a" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background — warm-tinted black -->
+  <rect width="256" height="256" fill="url(#bootBg)" />
+
+  <!-- Concentric thread layers — a spool being wound. Each ring is a "pass" of thread. -->
+  <g fill="none" stroke-linecap="round">
+    <!-- Outermost active ring, brightest, slightly cyan -->
+    <circle cx="128" cy="128" r="96" stroke="#5fcfe0" stroke-width="1.5" opacity="0.6" />
+    <!-- Gold layers, decreasing opacity inward -->
+    <circle cx="128" cy="128" r="84" stroke="url(#bootGold)" stroke-width="1.2" opacity="0.85" />
+    <circle cx="128" cy="128" r="74" stroke="url(#bootGold)" stroke-width="1.1" opacity="0.75" />
+    <circle cx="128" cy="128" r="65" stroke="url(#bootGold)" stroke-width="1" opacity="0.65" />
+    <circle cx="128" cy="128" r="57" stroke="url(#bootGold)" stroke-width="1" opacity="0.55" />
+    <circle cx="128" cy="128" r="50" stroke="url(#bootGold)" stroke-width="1" opacity="0.45" />
+    <circle cx="128" cy="128" r="44" stroke="url(#bootGold)" stroke-width="1" opacity="0.4" />
+    <circle cx="128" cy="128" r="39" stroke="url(#bootGold)" stroke-width="1" opacity="0.35" />
+    <circle cx="128" cy="128" r="35" stroke="url(#bootGold)" stroke-width="1" opacity="0.3" />
+  </g>
+
+  <!-- Center spool axle — a small bright disc -->
+  <circle cx="128" cy="128" r="14" fill="url(#bootCenter)" />
+  <circle cx="128" cy="128" r="14" fill="none" stroke="#c9a96a" stroke-width="0.8" opacity="0.6" />
+
+  <!-- Single thread strand emerging — connects center to the active ring -->
+  <path
+    d="M 128 128 Q 156 110, 188 92 Q 210 80, 224 80"
+    fill="none"
+    stroke="#5fcfe0"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    opacity="0.85"
+  />
+  <circle cx="224" cy="80" r="2" fill="#5fcfe0" />
+</svg>

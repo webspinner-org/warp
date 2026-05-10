@@ -1,0 +1,39 @@
+{
+  "name": "warp",
+  "version": "0.0.0",
+  "description": "The reference implementation for the Warp architecture. Stewarded by the Webspinner Foundation.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/webspinner-org/warp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webspinner-org/warp.git"
+  },
+  "packageManager": "pnpm@11.0.8",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r --if-present test",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.3.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-svelte": "3.17.1",
+    "globals": "17.6.0",
+    "lefthook": "2.1.6",
+    "prettier": "3.8.3",
+    "prettier-plugin-svelte": "3.5.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.59.2"
+  }
+}

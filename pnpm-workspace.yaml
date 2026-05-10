@@ -1,0 +1,12 @@
+packages:
+  - 'sdk'
+  - 'loom'
+  - 'spinners/*'
+
+# Approved install-scripts. pnpm 11's supply-chain hardening blocks dep
+# install scripts by default; entries here explicitly opt a package back in.
+# Audit each entry — do not approve transitively-pulled deps without review.
+allowBuilds:
+  esbuild: true # Vite's bundler core (evanw); native binary install
+  lefthook: true # Git hooks runner (evilmartians); native binary install
+  sharp: true # libvips image processing (lovell/Sharp); native bindings

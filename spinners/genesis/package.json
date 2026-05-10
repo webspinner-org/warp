@@ -1,0 +1,34 @@
+{
+  "name": "@webspinner-foundation/spinner-genesis",
+  "version": "0.0.1",
+  "description": "Genesis Spinner — provisions a Webspinner Cell from a fresh host. Open work.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./manifest.json": "./manifest.json",
+    "./how-it-works.md": "./how-it-works.md",
+    "./README.md": "./README.md"
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest.json",
+    "how-it-works.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@webspinner-foundation/sdk": "workspace:*"
+  }
+}

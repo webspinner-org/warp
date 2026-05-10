@@ -1,0 +1,44 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 240 64"
+  role="img"
+  aria-label="WARP"
+>
+  <defs>
+    <linearGradient id="wordmarkGold" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#e6c98a" />
+      <stop offset="100%" stop-color="#c9a96a" />
+    </linearGradient>
+    <linearGradient id="wordmarkThread" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#5fcfe0" stop-opacity="0" />
+      <stop offset="20%" stop-color="#5fcfe0" stop-opacity="0.85" />
+      <stop offset="80%" stop-color="#5fcfe0" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#5fcfe0" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- WARP — bold sans-serif, wide tracking. Inherits the system display stack. -->
+  <text
+    x="120"
+    y="36"
+    font-family='"SF Pro Display", -apple-system, "Helvetica Neue", system-ui, sans-serif'
+    font-size="30"
+    font-weight="700"
+    letter-spacing="0.22em"
+    text-anchor="middle"
+    fill="url(#wordmarkGold)"
+  >WARP</text>
+
+  <!-- The thread — a sine that "warps" beneath the wordmark. Cyan for the warp/weft accent. -->
+  <path
+    d="M 24 52 C 60 44, 88 60, 120 52 S 180 44, 216 52"
+    fill="none"
+    stroke="url(#wordmarkThread)"
+    stroke-width="1.4"
+    stroke-linecap="round"
+  />
+
+  <!-- Tiny endpoint dots — a thread has ends. -->
+  <circle cx="24" cy="52" r="1.4" fill="#5fcfe0" opacity="0.8" />
+  <circle cx="216" cy="52" r="1.4" fill="#5fcfe0" opacity="0.8" />
+</svg>

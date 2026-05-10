@@ -323,4 +323,134 @@ For depth beyond this canon, open the named chapter.
 
 ---
 
+## 17. Operating Principles
+
+Operating-level principles that complement the Pledge (§11) and the Covenant (§12). The Pledge binds the Foundation. The Covenant binds Cell operators in the federation. These principles bind the day-to-day operation of the Webspinner Foundation Cell and of any Cell whose operator adopts them. They were promoted to the canon by direct operator instruction (`DECISIONS.md` 2026-05-10 — *Operating Principles promoted to canon*).
+
+1. **Admin-First.** Every state-changing platform-engineering action — DNS change, secret rotation, deploy, scale, monitor, audit — must be performable through the Admin Utility (the Loom). Once the Loom-side capability for an operation exists, performing that operation by any other means is a violation. The bootstrap exception applies until the Loom can govern itself.
+
+   *Why:* every operations mistake at human scale is operations that happened in a shell with no audit trail. Provenance, rollback, and access control require a single chokepoint. The Loom is that chokepoint, and it is the Cell's attack-surface boundary by §3 — concentrating operations there concentrates auditability where the architecture already concentrates control.
+
+2. **No Secrets via Claude Code.** The Wizard never pastes credentials into a Claude Code session. Secrets live in the vault, entered through the Loom under E2E encryption, retrieved by services at runtime via authenticated calls to the Weaver. Claude Code may *read* secrets when granted vault access for a task. Claude Code never *writes* them.
+
+   *Why:* secrets that pass through a Claude Code session are recorded in the conversation's API logs, may be carried into compressed-context summaries, and may surface in transcript exports. The vault is the only place a credential lives where its lifecycle, scope, and rotation are first-class. When this rule is broken in either direction, flag the breach, complete the task, and rotate the affected secret immediately afterward.
+
+3. **Production-Candidate Quality Only.** No throwaway scripts. No half-baked work. Every line of code earns its place as a Warp component, a Spinner definition, or operational hygiene. *Webspinner builds Webspinner.*
+
+   *Why:* prior practice in adjacent repositories accumulated technical debt at the same rate it shipped value, because Claude Code was used as a one-off action engine rather than as an architecture-extending tool. The discipline is structural: every artifact is something the canon would defend.
+
+4. **Observable, Resilient Spinner State.** Every Spinner invocation reports state the Loom can read. Long-running work reports progress; the Loom *polls* (pulls) — never receives push-only updates. State is persisted in the Grimoire, indexed for fast queries, and survives Spinner death. A Spinner that crashes mid-invocation leaves recoverable state behind, and the Loom shows the partial work plus a clear indication that the Spinner died. The Webspinner is never left wondering what is going on.
+
+   *Why:* push-only progress is fragile — a dead Spinner cannot push, and the Loom is left silent. Polling is robust: the Loom asks "what is the state of invocation N?" against the Grimoire on every UI tick, and the Grimoire's answer is authoritative. The Wizard's directive (`DECISIONS.md` 2026-05-10 — *Observable, resilient Spinner state*) is operative: state management is well-constructed, persisted, and fast.
+
+5. **Wow as Baseline.** Every UX surface the Webspinner sees — the Loom, transactional emails, public marketing, registry listings — is animated, illustrated, beautifully typeset, polished. Wow is not a feature on the roadmap; it is the floor. Lazy interfaces and technical debt are not tolerated. The Webspinner should be impressed and awed at the power Warp enables, not asked to forgive its rough edges.
+
+   *Why:* the Webspinner is not a CLI user. The vernacular is the Wizard's, not the technologist's. A Webspinner who is awed by the Loom learns the architecture by using it; one who is asked to forgive a clunky surface learns to mistrust it. The discipline is structural — there is no "we will make it pretty later" — because *later* is where technical debt and broken promises live.
+
+---
+
+## 18. Mission Lock for Claude Code Sessions
+
+The contract under which Claude Code operates in `~/warp/` and any Webspinner repository that adopts the canon. The full text lives in `~/warp/MISSION-LOCK.md` and is loaded automatically alongside `CLAUDE.md` on every session.
+
+The Mission Lock binds Claude Code to:
+
+1. The Pledge (§11), the Covenant (§12), and the Operating Principles (§17) as operative law for the session.
+2. The strict vocabulary (§2) and the voice discipline (§14) for every artifact produced.
+3. The agent-factory role: Claude Code writes agent definitions; agents run from the Warp UX and do the work. Direct implementation by Claude Code is a bootstrap exception that shrinks every session.
+4. The refused-work categories (§13).
+5. End-of-turn self-check before each response.
+
+Today the mechanism is text-as-context (Mission Lock loaded via `CLAUDE.md` auto-load; enforcement is moral and contextual). The settled future state (`DECISIONS.md` 2026-05-10 — *Mission-locked Weaver system prompt* and *The Weaver as Claude Code's exteriorized working memory*) is that the Weaver mediates every outbound Claude Code LLM call through LiteLLM, injecting this Mission Lock as the system prompt and routing by sensitivity, with full audit-log capture in the Grimoire. Mission-lock-as-text becomes mission-lock-as-mediated-policy.
+
+The migration path is open work — see `OPEN_QUESTIONS.md` *Mission Lock enforcement mechanism — text vs. mediated*.
+
+---
+
+## 19. Spinners, Spinner Weaving, Spools, Silk Patterns, Skein, and Warp Threads
+
+The runnable computational units of Warp are **Spinners**. The act of authoring them is **Spinner Weaving**. The data sources Spinners draw from are **Spools**. A Spinner's persistent memory is its **Silk Pattern**. The discoverable catalogue of Spinners is the **Skein**. Compositions of Spinner capabilities into workflows are **Warp Threads**. These terms are operative; do not call them "agents," "workflows," "registries," "data sources," or other generic substitutes. The vocabulary is the architecture — substitute terms drag in connotations the canon does not carry. (`DECISIONS.md` 2026-05-10 — *Spinners replace agents in canonical vocabulary*; *Skein, Spools, Silk Patterns named in canon*.)
+
+### 19.1 What a Spinner is
+
+A Spinner is a sealed, signed, integrity-stamped unit of work registered with a Cell's Weaver. It declares:
+
+- a stable name (`@<scope>/<kebab-case>`) and a human-readable display name;
+- the **capabilities** it provides — typed input/output schemas, audit emissions;
+- the **vault references** it needs at runtime — by `vault://` URI, never embedded;
+- the **environment** it expects;
+- the **other Spinners** it depends on;
+- its **documentation** — including a required *How It Works* document the Loom renders for the Webspinner;
+- whether it is **threadable** — composable into a Warp Thread;
+- the **CloudEvents source** under which it emits audit.
+
+The schema is `SpinnerManifest` in `@webspinner-foundation/sdk/manifest.ts`.
+
+A Spinner is invoked **only** through the Weaver. Any other invocation path is unauthorized; the Weaver's audit chain captures the breach. This is structural, not a policy: the Spinner's entrypoint is loaded by the Weaver and exposed only via the Weaver's capability surface, not on a network or as a script.
+
+### 19.2 Integrity and stamping
+
+Every Spinner has a content-addressable **digest** of its canonical bundle (manifest + documentation + entrypoint module bytes), computed in the form `<algorithm>:<hex>` (`sha256` today; algorithmically-agile for the post-quantum migration). The digest is the operative integrity primitive.
+
+Spinners are **signed** by their publishers. Foundation-published Spinners carry signatures from the Foundation's release key. Cell-published Spinners carry signatures from the publishing Cell's identity key. Signatures are over the digest with `ed25519` (today). The full scheme — key custody, rotation policy, recognition revocation — is open work (`OPEN_QUESTIONS.md` — *Spinner integrity and signing scheme*).
+
+On every load — install, invocation, and registration into a Warp Thread — the Weaver re-computes the digest from the bytes on disk and re-verifies signatures. Failure modes are explicit (`SpinnerIntegrityStatus` in the SDK):
+
+- `digest-mismatch` — bundle has been tampered with. Load is **gated** — the Webspinner sees a warning before anything runs. Audit emits `wp.spinner.integrity.fail` with `action: 'gated'`.
+- `signature-invalid`, `unknown-signer` — gated, same audit.
+- `unsigned` — surfaced as a warning, not a gate. The Wizard's policy decides whether to invoke.
+- `pending-install` — observed digest only; no install record yet to compare against.
+
+The discipline is borrowed from container-image practice: digests are content addresses, signatures are publisher attestations, the runtime re-verifies on every load.
+
+### 19.3 Spools — what Spinners read from
+
+A **Spool** is a registered data source a Spinner draws from at invocation time. The canon is a Spool. The manuscript is a Spool. The audit log is a Spool. A Cell's own document collection is a Spool. The vault is *not* a Spool — secrets are referenced by `vault://` URI under a different lifecycle and a different threat model.
+
+A Spool's source is opaque to the Spinner: the Weaver gives a Spinner `context.read(spoolName, query)` and returns passages. The Spinner does not know whether the Spool is a flat file, a vector index, a federated peer's retrieval capability, or a live API. This is canon §4 (WRAG) applied uniformly — *we do not ask the model to know the source. We ask the model to reason about what the Spool returned.*
+
+Spools are sensitivity-classified per §7. The Weaver enforces routing: a Spool classified Privileged never feeds a BYOK call routed off-Cell. A Spinner whose declared Spools include a Privileged Spool cannot itself be invoked via a model the Cell has not authorized for Privileged-class content.
+
+A Spinner declares its Spool references in the manifest (`SpinnerManifest.spools` in the SDK). The Weaver enforces the reference: a Spinner cannot read from a Spool it has not declared, even if the Spool is registered with the Cell.
+
+### 19.4 Silk Pattern — Spinner memory
+
+A Spinner's **Silk Pattern** is its persistent memory: the history of invocations plus aggregate metrics, surfaced in the Loom as a placard on the Spinner's detail page. Every invocation appends one entry. The placard shows the most recent entries, the metrics window (default 30 days: total invocations, successes, errors, denials, average duration, last-invoked timestamp), and the per-entry summary of what was invoked, what came back, and how long it took.
+
+The Silk Pattern is a denormalised view sized for the Webspinner's eye, distinct from the Grimoire's full audit chain. Both exist; the audit chain is the source of truth, the Silk Pattern is the Loom-rendered surface. A Spinner with no Silk Pattern visible in the Loom is not production-candidate.
+
+### 19.5 Skein — the catalogue of Spinners
+
+The **Skein** is the discoverable catalogue of Spinners — Foundation-published and Cell-published — that a Cell can install. Items in the Skein show their digest, signatures, and source provenance *before* any install. The Foundation recognition process governs what signatures the Skein accepts; recognition revocation governs how a previously-trusted publisher exits.
+
+The Skein is reachable from the Loom at `/admin/skein`. The currently-installed subset is at `/admin/spinners`. A Spinner's detail page renders the same shape whether it is loaded from the Skein (preview, before install) or from the installed set (live, after install).
+
+### 19.6 Spinner Weaving — composition modularity
+
+Webspinner is modular by design. A Spinner does one thing well; complex behaviour is composed.
+
+Composition lives in **Warp Threads**: typed sequences of Spinner capability invocations with declared inputs, declared outputs, and bindings between them. The schema is `WarpThreadManifest` in the SDK. A Warp Thread is itself an artifact: named, displayName-bearing, documented, integrity-stamped — the same shape as a Spinner.
+
+Bindings between thread steps reference earlier outputs by step id and a dot-path. Thread inputs and outputs are themselves typed (JSON Schema). A Spinner whose `threadable` field is `false` cannot appear as a step.
+
+A capability from day one. The thread runtime — step ordering, partial-failure semantics, retry policy, audit-event correlation — is open work (`OPEN_QUESTIONS.md` — *Warp Thread runtime*).
+
+### 19.7 The UX is the architecture
+
+The Webspinner UX is everything. As Spinners do work, the SI explains itself transparently in the Loom. Every Spinner ships a *How It Works* document; the Loom renders it. Every capability has a `displayName` and a plain-language description. Every invocation is narrated, audited, and reviewable.
+
+A Spinner that does not document itself is not production-candidate. A capability without a `displayName` is not registerable. A workflow whose steps cannot be explained in the Loom is not a Warp Thread.
+
+This is operative — not a polish concern. Per Operating Principle §17 — *Production-Candidate Quality Only* — a Spinner whose documentation is missing or whose capability descriptions are placeholder text fails the bar.
+
+### 19.8 Refused behaviours for Spinners
+
+Spinners inherit the refused-use categories of §13. In addition:
+
+- A Spinner must not run outside the Weaver. The reference implementations refuse to expose entrypoints through any other path. A Spinner that does is a structural violation, regardless of its declared capabilities.
+- A Spinner must not silently use the Webspinner's data for purposes the manifest does not declare and the Webspinner has not authorized.
+- A Spinner must not embed credentials in its bundle. Secrets are vault-referenced. Embedding violates Operating Principle §17.2 and is detectable by the canonical-bundle scanner (open work).
+
+---
+
 *This canon is a working document. When the manuscript or the architecture changes, this file changes with them. When in doubt, the chapter wins.*

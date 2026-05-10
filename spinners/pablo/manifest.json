@@ -1,0 +1,78 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/pablo",
+  "displayName": "Pablo",
+  "version": "0.1.0",
+  "description": "The Foundation's design-quality reviewer. Walks Loom-rendered surfaces against the cited library — WCAG, web.dev, NN/g, Stephen Few, brand consistency — and returns severity-tagged findings. Theatrical in voice; exact in citations.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/pablo",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "model": "kepler/qwen-2.5-14b-instruct",
+  "vault": [],
+  "spools": [],
+  "env": [],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "review",
+      "displayName": "Review",
+      "description": "Walk a rendered HTML surface against the cited library and return severity-tagged findings. Every finding lands on a rule or is marked pablos-eye.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "html": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Rendered HTML to walk. Truncated server-side at ~12K characters."
+          },
+          "label": {
+            "type": "string",
+            "description": "What this surface is for, in patron-facing words."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Optional context — the Wizard's intent or the patron task."
+          }
+        },
+        "required": ["html"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "verdict": { "type": "string", "enum": ["passes", "concerns", "fails"] },
+          "verdict_text": { "type": "string" },
+          "in_pablo_voice": { "type": "string" },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+                "category": {
+                  "type": "string",
+                  "enum": ["contrast", "typography", "composition", "brand", "interaction", "accessibility", "other"]
+                },
+                "finding": { "type": "string" },
+                "evidence": { "type": "string" },
+                "fix": { "type": "string" },
+                "source": { "type": "string" }
+              },
+              "required": ["severity", "category", "finding", "fix", "source"]
+            }
+          }
+        },
+        "required": ["verdict", "verdict_text", "in_pablo_voice", "findings"]
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/pablo"
+  }
+}

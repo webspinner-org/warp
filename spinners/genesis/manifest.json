@@ -1,0 +1,84 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/genesis",
+  "displayName": "Genesis Spinner",
+  "version": "0.0.1",
+  "description": "Provisions a Webspinner Cell — toolchain, Grimoire, Loom, vault — from a fresh macOS or Linux host. The work Claude Code did once at the founding, encoded as a re-runnable Spinner so every future Cell follows the same recipe.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/genesis",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "vault": [],
+  "spools": [],
+  "env": [
+    {
+      "name": "WARP_TARGET_HOST",
+      "required": false,
+      "description": "Hostname or LAN IP of the target Cell. Defaults to localhost when running locally on the target."
+    },
+    {
+      "name": "WARP_TARGET_USER",
+      "required": false,
+      "description": "Unix user on the target. Defaults to the invoking user."
+    }
+  ],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "provisionToolchain",
+      "displayName": "Provision Toolchain",
+      "description": "Ensure Homebrew (macOS) or apt (Linux) is present, then install Node, pnpm, PocketBase, Tailscale.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "syncRepo",
+      "displayName": "Sync Repo",
+      "description": "Place the Warp repo on the target. Source: a path, a git remote, or a signed bundle.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "buildWorkspace",
+      "displayName": "Build Workspace",
+      "description": "Run pnpm install and pnpm -r build on the target.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "generateBootstrapState",
+      "displayName": "Generate Bootstrap State",
+      "description": "Generate the vault master key, PocketBase superuser email and password, and any other one-shot secrets. Mode-600 files under ~/.warp/bootstrap/.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "deployGrimoire",
+      "displayName": "Deploy Grimoire",
+      "description": "Stand up PocketBase as a launchd LaunchAgent (macOS) or systemd user unit (Linux). Bind to 127.0.0.1:8090. Initialise superuser. Create the canonical collections (vault_secrets, wp_audit, wp_silk_pattern).",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "seedVault",
+      "displayName": "Seed Vault",
+      "description": "Encrypt the operator's BYOK keys with the vault master key and POST them to the vault_secrets collection. Source for keys: the operator's keychain (macOS Keychain / GNOME Keyring / etc.). The Wizard never pastes into a Claude Code session.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "deployLoom",
+      "displayName": "Deploy Loom",
+      "description": "Stand up the Loom (SvelteKit Node bundle) as a launchd LaunchAgent. Bind to LAN by default; restrict to Tailscale interface when Tailscale is configured.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "verifyCell",
+      "displayName": "Verify Cell",
+      "description": "Confirm Loom answers on its bound port; confirm Grimoire is reachable; confirm vault has at least the BYOK key; emit a `wp.cell.provisioned` audit event.",
+      "emitsAudit": ["wp.spinner.invoke"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/genesis"
+  }
+}

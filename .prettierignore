@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+.svelte-kit/
+.wrangler/
+coverage/
+pnpm-lock.yaml
+LICENSE
+.node-version
+
+# Existing markdown is authored in the wizard's voice — Prettier's
+# continuation-line / wrap rules don't match. New code/config goes through
+# Prettier; reformatting existing docs is a separate, deliberate decision.
+docs/
+README.md
+CLAUDE.md

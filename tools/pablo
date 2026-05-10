@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+#
+# tools/pablo — fetch an admin route, send it to Pablo for critique.
+#
+# Usage:
+#   tools/pablo <route>
+#   tools/pablo /admin/spinners
+#   tools/pablo /admin/spinners/pablo "Spinner detail" "validate Pablo's own page"
+#
+# Requires (on Kepler):
+#   - ~/.warp/bootstrap/dev-bypass-token (set by the Loom plist install)
+#   - Quiet Loom listening at 127.0.0.1:11445 (mlx-server)
+#   - The Pablo Spinner registered at ~/warp/spinners/pablo/
+#
+# Behaviour: GETs <route> with X-Warp-Dev-Token (the Loom bypasses the
+# user session for that request only), POSTs the HTML to Quiet Loom
+# with Pablo's Mission Lock as system prompt, prints the parsed
+# findings (or the raw JSON if parsing fails).
+
+set -euo pipefail
+
+ROUTE="${1:?usage: tools/pablo <route> [label] [topic]}"
+LABEL="${2:-${ROUTE}}"
+TOPIC="${3:-Walk this surface and tell me what is wrong.}"
+
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+PABLO_DIR="${WARP_PABLO_DIR:-/Users/johndavidmarx/warp/spinners/pablo}"
+TOKEN_FILE="${WARP_DEV_BYPASS_TOKEN_FILE:-/Users/johndavidmarx/.warp/bootstrap/dev-bypass-token}"
+MLX="${WARP_QUIET_LOOM_URL:-http://127.0.0.1:11445}"
+MODEL="${WARP_PABLO_MODEL:-mlx-community/Qwen2.5-14B-Instruct-4bit}"
+
+if [ ! -r "$TOKEN_FILE" ]; then
+  echo "error: dev-bypass token not readable at $TOKEN_FILE" >&2
+  exit 2
+fi
+TOKEN="$(cat "$TOKEN_FILE")"
+
+if [ ! -r "$PABLO_DIR/mission-lock.md" ]; then
+  echo "error: Pablo mission-lock not readable at $PABLO_DIR/mission-lock.md" >&2
+  exit 2
+fi
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+echo "→ GET $LOOM_BASE$ROUTE (with dev bypass)"
+HTTP_STATUS=$(curl -sS -o "$TMP/page.html" -w "%{http_code}" \
+  -H "X-Warp-Dev-Token: $TOKEN" \
+  "$LOOM_BASE$ROUTE")
+
+if [ "$HTTP_STATUS" != "200" ]; then
+  echo "error: route returned HTTP $HTTP_STATUS" >&2
+  head -20 "$TMP/page.html" >&2 || true
+  exit 3
+fi
+
+HTML_SIZE=$(wc -c < "$TMP/page.html" | tr -d ' ')
+echo "  ← ${HTML_SIZE} bytes"
+
+# Trim HTML to ~12K, head + body slice (mirrors weaver.ts trimHtmlForReview)
+python3 - "$TMP/page.html" "$TMP/page-trimmed.html" <<'PY'
+import sys, pathlib
+src, dst = sys.argv[1], sys.argv[2]
+html = pathlib.Path(src).read_text(encoding="utf-8", errors="replace")
+limit = 12000
+if len(html) <= limit:
+    pathlib.Path(dst).write_text(html, encoding="utf-8")
+else:
+    head_end_idx = html.find("</head>")
+    head_end = head_end_idx + 7 if head_end_idx >= 0 else 4000
+    head = html[:max(head_end, 4000)]
+    body = html[head_end:head_end + 8000] if head_end > 0 else html[4000:12000]
+    pathlib.Path(dst).write_text(
+        head + "\n<!-- ... (body truncated for review) ... -->\n" + body,
+        encoding="utf-8",
+    )
+PY
+
+echo "→ POST to Quiet Loom ($MODEL) with Pablo Mission Lock"
+
+python3 - "$PABLO_DIR/mission-lock.md" "$TMP/page-trimmed.html" "$LABEL" "$TOPIC" "$MLX" "$MODEL" <<'PY'
+import json, sys, time, urllib.request
+
+ml_path, html_path, label, topic, mlx, model = sys.argv[1:7]
+mission_lock = open(ml_path).read()
+html = open(html_path).read()
+
+user = (
+    f"Surface label: {label!r}\n"
+    f"Wizard intent: {topic!r}\n\n"
+    f"Rendered HTML to walk (truncated if long):\n"
+    f"```html\n{html}\n```\n\n"
+    f'Review now. Return the JSON only, opening with "{{".'
+)
+payload = {
+    "model": model,
+    "messages": [
+        {"role": "system", "content": mission_lock},
+        {"role": "user", "content": user},
+    ],
+    "max_tokens": 2400,
+    "temperature": 0.25,
+}
+req = urllib.request.Request(
+    f"{mlx}/v1/chat/completions",
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+)
+t0 = time.monotonic()
+try:
+    with urllib.request.urlopen(req, timeout=300) as r:
+        body = json.loads(r.read())
+except Exception as e:
+    print(f"  ✗ Quiet Loom error after {time.monotonic()-t0:.1f}s: {e}", file=sys.stderr)
+    sys.exit(4)
+
+elapsed = time.monotonic() - t0
+text = body["choices"][0]["message"]["content"].strip()
+
+# Strip code fences if present
+if text.startswith("```"):
+    import re
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+
+# Extract JSON
+import re
+m = re.search(r"\{[\s\S]*\}", text)
+parsed = None
+if m:
+    try:
+        parsed = json.loads(m.group(0))
+    except json.JSONDecodeError as e:
+        print(f"  ! Pablo returned malformed JSON: {e}", file=sys.stderr)
+
+print(f"  ← Pablo finished in {elapsed:.1f}s")
+print()
+
+if parsed is None:
+    print(text)
+    sys.exit(0)
+
+# Pretty-print
+SEV_LABEL = {"high": "[HIGH]", "medium": "[MED ]", "low": "[LOW ]"}
+print(f"Verdict: {parsed.get('verdict', '?').upper()} — {parsed.get('verdict_text', '')}")
+voice = parsed.get('in_pablo_voice', '')
+if voice:
+    print(f"\nPablo: {voice}\n")
+findings = parsed.get("findings") or []
+if not findings:
+    print("  (no findings)")
+else:
+    print(f"Findings ({len(findings)}):\n")
+    for i, f in enumerate(findings, 1):
+        sev = SEV_LABEL.get(f.get("severity", ""), "[?   ]")
+        cat = f.get("category", "?")
+        print(f"  {sev} #{i}  ({cat})  source: {f.get('source', '?')}")
+        print(f"         {f.get('finding', '')}")
+        ev = f.get("evidence", "")
+        if ev:
+            ev_clip = ev if len(ev) <= 160 else ev[:160] + "…"
+            print(f"         evidence: {ev_clip}")
+        print(f"         fix:      {f.get('fix', '')}")
+        print()
+PY

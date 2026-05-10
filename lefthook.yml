@@ -1,0 +1,14 @@
+# Lefthook configuration — git hooks for Warp.
+# Docs: https://lefthook.dev/configuration/
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: prettier
+      glob: '*.{js,ts,svelte,mjs,cjs,json,yaml,yml,md,css,html}'
+      run: pnpm exec prettier --write {staged_files}
+      stage_fixed: true
+
+    - name: eslint
+      glob: '*.{js,ts,svelte,mjs,cjs}'
+      run: pnpm exec eslint --no-warn-ignored {staged_files}

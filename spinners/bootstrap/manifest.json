@@ -1,0 +1,145 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/bootstrap",
+  "displayName": "Bootstrap Spinner",
+  "version": "0.1.0",
+  "description": "The first Spinner of the Webspinner Foundation Cell. Advances the Warp architecture grounded in the canon and the AI Enclosure manuscript.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/bootstrap",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "model": "kepler/qwen-2.5-14b-instruct",
+  "vault": [],
+  "spools": [
+    {
+      "name": "canon",
+      "spool": "@webspinner-foundation/warp-canon",
+      "required": true
+    },
+    {
+      "name": "decisions",
+      "spool": "@webspinner-foundation/warp-decisions",
+      "required": false
+    },
+    {
+      "name": "open-questions",
+      "spool": "@webspinner-foundation/warp-open-questions",
+      "required": false
+    },
+    {
+      "name": "manuscript",
+      "spool": "@webspinner-foundation/ai-enclosure",
+      "required": false
+    }
+  ],
+  "env": [],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "consult",
+      "displayName": "Consult",
+      "description": "Answer a question about Warp using the canon and the manuscript as ground. Returns a grounded answer with section citations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string", "minLength": 1 }
+        },
+        "required": ["question"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "answer": { "type": "string" },
+          "citations": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["answer", "citations"]
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "audit",
+      "displayName": "Audit",
+      "description": "Surface drift between a piece of work and the Warp canon — vocabulary, missing citations, scope creep. Returns a structured drift report.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subject": { "type": "string", "description": "File path (relative to ~/warp/) or inline text." },
+          "kind": { "type": "string", "enum": ["file", "text"] }
+        },
+        "required": ["subject", "kind"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "drift": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+                "rule": { "type": "string" },
+                "evidence": { "type": "string" },
+                "suggestion": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "record",
+      "displayName": "Record Decision",
+      "description": "Draft a DECISIONS.md entry from an architectural or process decision described in conversation. Returns the canonical entry text — append, do not rewrite.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "body": { "type": "string", "minLength": 1 },
+          "supersedes": { "type": "string" }
+        },
+        "required": ["title", "body"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "entry": { "type": "string" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    },
+    {
+      "name": "surface",
+      "displayName": "Surface Threads",
+      "description": "Surface unfinished threads and recently-changed work in the Cell that has not been resolved or shipped. Designed to counter ADD drift.",
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "enum": ["uncommitted", "open-question", "spec-pending", "todo"] },
+                "subject": { "type": "string" },
+                "ageDays": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/bootstrap"
+  }
+}

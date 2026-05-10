@@ -1,0 +1,36 @@
+{
+  "name": "@webspinner-foundation/spinner-bootstrap",
+  "version": "0.1.0",
+  "description": "Bootstrap Spinner — the first Spinner of the Webspinner Foundation Cell.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./manifest.json": "./manifest.json",
+    "./mission-lock.md": "./mission-lock.md",
+    "./how-it-works.md": "./how-it-works.md",
+    "./README.md": "./README.md"
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest.json",
+    "mission-lock.md",
+    "how-it-works.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@webspinner-foundation/sdk": "workspace:*"
+  }
+}

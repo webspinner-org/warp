@@ -1,0 +1,32 @@
+{
+  "name": "@webspinner-foundation/loom",
+  "version": "0.0.0",
+  "description": "The Loom — front-end role for the Webspinner Foundation Cell. SvelteKit served from Kepler over LAN + Tailscale.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node build/index.js",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:e2e": "WARP_PB_EMAIL=$(<~/.warp/bootstrap/pb-email) WARP_PB_PASSWORD=$(<~/.warp/bootstrap/pb-password) playwright test",
+    "prepare": "svelte-kit sync"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
+    "@webspinner-foundation/sdk": "workspace:*",
+    "marked": "^18.0.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.59.1",
+    "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/kit": "2.59.1",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@types/node": "24.12.3",
+    "svelte": "5.55.5",
+    "svelte-check": "4.4.8",
+    "vite": "8.0.11"
+  }
+}

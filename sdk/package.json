@@ -1,0 +1,31 @@
+{
+  "name": "@webspinner-foundation/sdk",
+  "version": "0.0.0",
+  "description": "Foundational types for Warp: VaultURI, AuditEvent, SpinnerManifest, WarpThreadManifest, integrity primitives. Every Spinner imports from here.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webspinner-org/warp.git",
+    "directory": "sdk"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

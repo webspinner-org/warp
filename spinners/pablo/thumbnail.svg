@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Pablo — Webspinner Foundation design reviewer">
+  <defs>
+    <radialGradient id="bg" cx="62%" cy="38%" r="78%">
+      <stop offset="0%" stop-color="#1a1410"/>
+      <stop offset="60%" stop-color="#0e0a06"/>
+      <stop offset="100%" stop-color="#070503"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c9a96a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#c9a96a" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="beret" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a221a"/>
+      <stop offset="100%" stop-color="#15110b"/>
+    </linearGradient>
+    <linearGradient id="jacket" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0e0a07"/>
+      <stop offset="100%" stop-color="#050302"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#bg)"/>
+
+  <!-- soft brushwork on the canvas -->
+  <g opacity="0.18">
+    <path d="M0 320 Q140 280 240 320 T400 308" stroke="#c9a96a" stroke-width="0.6" fill="none"/>
+    <path d="M0 350 Q160 318 260 348 T400 340" stroke="#c9a96a" stroke-width="0.5" fill="none"/>
+    <path d="M0 380 Q180 358 280 378 T400 372" stroke="#c9a96a" stroke-width="0.5" fill="none"/>
+  </g>
+
+  <!-- profile silhouette: head, neck, collar, jacket — facing right -->
+  <g>
+    <!-- jacket / shoulders -->
+    <path d="M44 400 L44 280 Q120 246 196 244 Q280 244 354 286 L354 400 Z" fill="url(#jacket)" stroke="url(#rim)" stroke-width="1.4"/>
+    <!-- lapel hint -->
+    <path d="M168 250 L210 320 L242 250" fill="none" stroke="#c9a96a" stroke-width="0.7" opacity="0.6"/>
+    <!-- collar shadow -->
+    <path d="M170 248 Q200 260 232 248" fill="none" stroke="#c9a96a" stroke-width="0.6" opacity="0.4"/>
+
+    <!-- neck -->
+    <path d="M175 244 Q188 232 210 232 Q236 232 244 244 L244 252 Q220 258 200 258 Q186 258 175 252 Z" fill="#0e0a07" stroke="url(#rim)" stroke-width="1"/>
+
+    <!-- head: profile silhouette (facing right) -->
+    <path d="M148 232 Q138 192 144 168 Q150 138 168 116 Q186 96 218 92 Q258 88 282 110 Q302 130 305 162 Q307 188 298 210 Q286 232 256 240 L210 244 Z" fill="#0e0a07" stroke="url(#rim)" stroke-width="1.6"/>
+
+    <!-- nose ridge + tip -->
+    <path d="M295 152 L307 158 L304 168 L298 170" fill="none" stroke="#c9a96a" stroke-width="1" opacity="0.75"/>
+
+    <!-- mouth -->
+    <path d="M276 198 Q284 200 292 197" fill="none" stroke="#c9a96a" stroke-width="0.9" opacity="0.55"/>
+
+    <!-- chin shadow -->
+    <path d="M260 224 Q244 232 226 232" fill="none" stroke="#c9a96a" stroke-width="0.5" opacity="0.4"/>
+
+    <!-- moustache -->
+    <path d="M256 188 Q272 184 286 186 M286 186 Q298 184 304 188" stroke="#c9a96a" stroke-width="1.3" fill="none" opacity="0.78"/>
+
+    <!-- ear -->
+    <path d="M168 178 Q160 178 158 188 Q160 198 170 200" fill="none" stroke="#c9a96a" stroke-width="0.7" opacity="0.5"/>
+
+    <!-- eye: cyan flicker, the painter's seeing -->
+    <ellipse cx="262" cy="156" rx="4.5" ry="2.6" fill="#5fcfe0" opacity="0.95"/>
+    <circle cx="262" cy="156" r="1.4" fill="#0a0a0a"/>
+    <!-- brow -->
+    <path d="M252 142 Q262 138 274 142" stroke="#c9a96a" stroke-width="1.4" fill="none" opacity="0.7"/>
+
+    <!-- beret -->
+    <path d="M152 132 Q162 78 226 70 Q284 64 304 96 Q316 118 296 130 Q260 138 220 138 Q186 140 158 138 Z" fill="url(#beret)" stroke="url(#rim)" stroke-width="1.4"/>
+    <!-- beret stalk -->
+    <circle cx="298" cy="74" r="4.5" fill="#c9a96a" opacity="0.85"/>
+    <circle cx="298" cy="74" r="1.5" fill="#e6c98a"/>
+  </g>
+
+  <!-- name plaque -->
+  <g opacity="0.9">
+    <text x="200" y="382" fill="#c9a96a" font-family="'Iowan Old Style','Hoefler Text',Georgia,serif" font-size="13" letter-spacing="6" text-anchor="middle">PABLO</text>
+  </g>
+</svg>
