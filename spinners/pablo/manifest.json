@@ -9,7 +9,13 @@
   "entrypoint": "./src/index.ts",
   "model": "kepler/qwen-2.5-14b-instruct",
   "vault": [],
-  "spools": [],
+  "spools": [
+    {
+      "name": "library",
+      "spool": "@webspinner-foundation/pablo-references",
+      "required": true
+    }
+  ],
   "env": [],
   "dependsOn": [],
   "capabilities": [
