@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "start": "node build/index.js",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "WARP_PB_EMAIL=$(<~/.warp/bootstrap/pb-email) WARP_PB_PASSWORD=$(<~/.warp/bootstrap/pb-password) playwright test",
     "prepare": "svelte-kit sync"
   },
@@ -27,6 +29,7 @@
     "@types/node": "24.12.3",
     "svelte": "5.55.5",
     "svelte-check": "4.4.8",
-    "vite": "8.0.11"
+    "vite": "8.0.11",
+    "vitest": "3.2.4"
   }
 }

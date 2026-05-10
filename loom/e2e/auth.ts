@@ -22,12 +22,18 @@ export function getCreds(): { email: string; password: string } {
   return cached;
 }
 
-/** Sign in as superuser, ending up on /admin. */
+/**
+ * Sign in (as registered Wizard or bootstrap superuser), ending up on /admin.
+ *
+ * The login form uses non-standard input names — `wizard_id` and
+ * `passphrase` (with CSS-masked text) — so Safari's Keychain heuristics
+ * never treat this as a sign-in form. See `~/warp/loom/src/routes/login/+page.svelte`.
+ */
 export async function signIn(page: Page): Promise<void> {
   const { email, password } = getCreds();
   await page.goto('/login');
-  await page.locator('input[name="email"]').fill(email);
-  await page.locator('input[name="password"]').fill(password);
+  await page.locator('input[name="wizard_id"]').fill(email);
+  await page.locator('input[name="passphrase"]').fill(password);
   await page.locator('button[type="submit"]').click();
   await expect(page).toHaveURL(/\/admin$/);
 }
