@@ -244,3 +244,57 @@ What's still open: BGE re-ranker (canon §4 stage 3), grounding verification (st
 
 Validated end-to-end on Kepler with an integration test that exercises register → unverified-blocked-from-/admin → verify-pending → click verify → /admin allows → consumed-token-rejection.
 **Why:** Direct operator instruction: "If you can't make me verify my identity on registration then registration is not working." Identity verification is canon-table-stakes; deferring it was wrong. The Resend send and Turnstile bot-check verify infrastructure are now wired but operationally inert until secrets land in the vault — the bootstrap fallback keeps the Wizard unblocked on his own first registration without secret-paste friction.
+
+## 2026-05-10 — Capability invocation UX — per-capability forms and results
+
+**Decision:** The Spinner detail page (`/admin/spinners/[name]`) no longer renders a single JSON
+input form for every capability. Each capability has its own typed UX:
+
+- `consult` — single "Your question" textarea; result rendered as manuscript-serif prose with citations as chips and a quiet provenance line.
+- `record` — labelled Title / Body / Supersedes fields; result is the drafted DECISIONS.md entry in a code block with a Copy button.
+- `audit` — Subject field plus Kind radio (file path / inline text); result is a severity-tagged drift list.
+- `surface` — no input; result groups threads by kind (uncommitted / open-question / spec-pending / todo).
+- `review` (Pablo) — Surface label / Wizard intent / Rendered HTML fields; result is the verdict pill, voice line, and severity-card findings.
+
+A "Developer view" toggle keeps the raw JSON envelope one click away for debugging. Per-capability components are inlined in `/admin/spinners/[name]/+page.svelte` for v0; extraction to `loom/src/lib/admin/capabilities/<Capability>{Form,Result}.svelte` is open work but not blocking.
+
+**Why:** The Wizard's call-out was direct: "Why would a consult be in JSON? Isn't this for a human to fill in?" The capability invocation surface was a developer playground masquerading as an admin surface. The new shape binds form-and-result to capability semantics — a question is a question, a decision is a decision, a critique is a critique.
+
+## 2026-05-10 — Pablo trigger in the admin ribbon (and ⌘⇧P)
+
+**Decision:** Every `/admin/*` surface ships with a "Pablo" trigger in the ribbon
+(keyboard shortcut ⌘⇧P / Ctrl⇧P). Click captures `document.documentElement.outerHTML`, POSTs to `/admin/spinners/pablo/invoke` with capability `review`, slides a panel in from the right with verdict pill, voice line, and severity-card findings. ESC closes.
+
+The panel is rendered inline in `admin/+layout.svelte` (no library import; component extraction logged but not blocking).
+
+**Why:** Pablo is only useful if invoking him is friction-free. One click on any admin surface keeps the design-quality bar attached to the work, not to the discipline.
+
+## 2026-05-10 — Dev SSR auth bypass for internal tooling
+
+**Decision:** The admin layout's auth gate honours a `X-Warp-Dev-Token` header on GET-only requests when the value matches the `WARP_DEV_BYPASS_TOKEN` env var (constant-time comparison). The token lives in `~/.warp/bootstrap/dev-bypass-token` on Kepler (mode 600); the Loom plist injects it into the process env. POST / form actions still require a real session.
+
+`tools/pablo <route>` uses this to fetch any admin route and feed the rendered HTML to Pablo via Quiet Loom directly — closes the design-critique loop in 15-30s.
+
+**Why:** The Wizard asked what was slowing review iteration. The honest answer was: every Pablo run required manual cookie creation. A dev-only, GET-only, env-token-gated bypass closes the loop without compromising production auth.
+
+## 2026-05-10 — Quiet Loom default model: Qwen2.5-14B-Instruct-4bit
+
+**Decision:** The Quiet Loom (`com.webspinner.mlx-server.plist`, `127.0.0.1:11445`) defaults to `mlx-community/Qwen2.5-14B-Instruct-4bit`. The 7B model proved too small for nuanced design critique — hallucinated findings in early Pablo runs. The 14B is stable when given a fresh boot; warm-up to first response is ~13s on Kepler.
+
+**Why:** Pablo's quality bar requires a model that can hold the cited library plus a meaningful HTML artifact and return strict JSON. 7B failed that bar; 14B clears it. Stability under prompt-pump load (sustained high-token requests) remains an open question.
+
+## 2026-05-10 — Embeddings sidecar named for what it is
+
+**Decision:** The Loom's embedding pipeline — formerly `pablo-retrieval.ts` / `pabloEmbed` / `WARP_PABLO_URL` / `kepler.pablo` — renamed to `embedding-retrieval.ts` / `embed` / `WARP_EMBEDDINGS_URL` / `kepler.embeddings`. The embeddings sidecar (sentence-transformers/MiniLM-L6-v2) is infrastructure; Pablo is the design-quality Spinner. They were two different things wearing the same name.
+
+**Why:** Vocabulary collision was confusing — when the Wizard said "use Pablo to critique design" the code already had "Pablo" pointing at the embedder. Cleanly disambiguated.
+
+## 2026-05-10 — Pablo's foundation library v0 committed
+
+**Decision:** `spinners/pablo/library/` ships with six entries: `README.md`, `contrast.md`, `typography.md`, `composition.md`, `brand-consistency.md`, `cards.md`. Each entry states the rule, names the source (WCAG / web.dev / NN/g / Stephen Few / Bringhurst / Tufte / M3 / Apple HIG), gives an explicit Pablo check protocol, lists common failures.
+
+Findings cited to a library entry are *appealable* — a Wizard overrides Pablo by writing an `**Override:**` reason that references the same entry. Pablo accepts the override on the next walk.
+
+The Wizard's earlier critiques (e.g. `~/sitoolmaker-com/agents/pablo-critiques/2026-05-06-sitoolmaker-v0.1.md`) cite this library by name; now those citations resolve to files on disk. Library files currently inlined in Pablo's Mission Lock; future revision wires the directory as a `pablo-references` Spool Pablo declares.
+
+**Why:** The Foundation cannot run design quality on an unstated rulebook. The library is the rulebook.

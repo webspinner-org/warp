@@ -185,32 +185,15 @@ Today's "ground the entire canon" works because the canon is small (~30 KB → ~
 **Why it matters:** Cell provisioning is the Foundation's most-leveraged Spinner — every operator runs it. Its shape sets the precedent for any Spinner that needs to perform OS-level operations.
 **Status:** Spec pending. Likely answer: a `context.shell({ command, args, cwd, env })` helper exposed *only* to Spinners that declare the corresponding capability in their manifest (e.g., `provisionToolchain` declares `requires: ['shell:brew', 'shell:apt']`); the Weaver enforces the allowlist. For the very first Cell, a tiny `~/warp/cli/genesis-bootstrap` CLI runs the same handlers without the Weaver — closing the chicken-and-egg.
 
-## Pablo's foundation library — write it as a Spool
+## Pablo's foundation library — port to a Spool
 
-**Question:** Pablo's Mission Lock currently inlines the cited library (WCAG 2.2 SCs, web.dev typography, NN/g composition, Stephen Few, Webspinner brand consistency, em-dash preservation). The Foundation library is meant to be a separate, citable corpus — `f-pattern-scanning.md`, `composition.md`, `cards.md`, `brand-consistency.md`, `typography.md`, `contrast.md`, `ai-image-artifacts.md`, `zigzag-layouts.md`, `image-focused-design.md`, `download-artifact-ux.md`, `progress-revealing.md`. Where does it live (`~/warp/spinners/pablo/library/`? `~/webspinner-foundation/agents/release/pablo-references/`?) and when does it become a Spool that Pablo retrieves from rather than carrying inline?
-**Why it matters:** Inline rules cap Pablo at the system-prompt budget; a Spool lets the library grow without bloating context. Citations also get sharper when each rule lives in a versioned file rather than a paragraph in the lock.
-**Status:** Library lives inline as v0.1. A `pablo-references` Spool lands when the foundation library is committed. Author is the Wizard; the Wizard's existing Pablo critiques (e.g., `~/sitoolmaker-com/agents/pablo-critiques/2026-05-06-sitoolmaker-v0.1.md`) cite this library by name — write the cited files first, then port to a Spool.
-
-## Pablo on every admin page — the "have Pablo review this" affordance
-
-**Question:** Pablo is now a registered Spinner with capability `review`. The next move is a button on every admin page that POSTs the rendered HTML to `pablo.review` and surfaces findings inline (severity-tagged cards, evidence quoted, fix imperative). Where does the affordance live — a global control in the admin shell, a per-page button, or a global keyboard shortcut?
-**Why it matters:** Pablo is only useful if invoking him is friction-free. Every patron-facing surface should be reviewable in one click.
-**Status:** Spec pending. v0.1 candidate: a small "Have Pablo review this" floating button bottom-right of every `/admin/*` page; click POSTs `document.documentElement.outerHTML` to the Pablo review endpoint and renders findings as a slide-in panel.
+**Question:** The v0 foundation library now lives on disk at `~/warp/spinners/pablo/library/` (six entries: `README`, `contrast`, `typography`, `composition`, `brand-consistency`, `cards`). Pablo's Mission Lock still inlines the rules; the library files are appealable references the Wizard quotes when overriding. The next move is to make the directory a `pablo-references` Spool that Pablo retrieves from at invocation, so the library can grow without bloating his system prompt, and so Pablo's citations resolve to specific file+section anchors rather than to paragraphs in the lock.
+**Why it matters:** Inline rules cap Pablo at the system-prompt budget; the library files are unbounded. Spool retrieval also makes the citation chain ("WCAG 2.2 SC 1.4.3 — see `contrast.md`") clickable from Pablo's findings.
+**Status:** v0 library files committed. Spool wiring spec pending: probably `@webspinner-foundation/pablo-references` declared in Pablo's manifest, registered via `spools.ts`, read by `dispatchPablo` and concatenated into the system prompt at top-k chunks for the surface under review.
 
 ## Quiet Loom — 14B model stability under prompt-pump load
 
-**Question:** The 14B model (`mlx-community/Qwen2.5-14B-Instruct-4bit`) processed 3989 input tokens then crashed the mlx-server (semaphore leak warning), forcing a restart. The 7B model (default) is stable but too small for nuanced design critique — it hallucinates findings (claimed "AI" appeared in code where it did not). What does the failure mode actually look like, and is it the 14B model itself, the prompt-pump pattern, or the mlx-server's session caching?
-**Why it matters:** Pablo's nuance lives in the larger model. If 14B is fragile, the Cell's design-quality bar is capped at 7B.
-**Status:** Logged as observed behaviour. Reproduce against the 14B with a smaller prompt; check `~/Library/Logs/webspinner-mlx-server/stderr.log`. May need to bump the mlx-server's memory budget or pin the model rather than swap.
-
-## Loom code names — `pablo-retrieval`, `pabloEmbed` mismatch
-
-**Question:** The Loom currently uses the name "Pablo" for the embeddings sidecar — `~/warp/loom/src/lib/server/pablo-retrieval.ts`, `pabloEmbed()`, audit metadata `via: 'kepler.pablo'`. With the real Pablo now ported as a Spinner whose job is design critique, the embeddings sidecar should be renamed (it is sentence-transformers/MiniLM, not Pablo) — perhaps `embedding-retrieval.ts` and `embed()`, with audit metadata `via: 'kepler.embeddings'`.
-**Why it matters:** The vocabulary collision will only get worse as more Spinners arrive. Pablo is a Spinner; the embedder is infrastructure.
-**Status:** Rename pending. Mechanical refactor; do it before any other code grows references to `pabloEmbed`.
-
-## Capability invocation UX — JSON form is wrong for `consult`
-
-**Question:** The Spinner detail page (`/admin/spinners/[name]`) renders a generic "Capability + JSON input" form regardless of the capability's semantics. For `consult`, the Wizard should see a single labelled "Your question" textarea; for `record`, labelled Title + Body fields; for `audit`, labelled Subject + Kind dropdown. The result should also render as prose (with citations as a sidebar) for `consult` and as severity-tagged cards for Pablo's `review` — not as raw JSON. What is the right contract: per-capability custom UI components keyed off `capability.name`, or a JSON-Schema-driven form generator that reads `inputSchema`?
-**Why it matters:** A Wizard who wants to ask "What does the Pledge say about hyperscale operation?" should not have to type `{"question": "..."}`. The current UX is a developer playground masquerading as an admin surface.
+**Question:** The 14B model (`mlx-community/Qwen2.5-14B-Instruct-4bit`) is now the launchd default and runs Pablo reliably on a fresh boot. Earlier it processed 3989 input tokens then crashed the mlx-server (semaphore leak warning), forcing a restart. What does the failure mode actually look like, and is it the 14B model itself, the prompt-pump pattern, or the mlx-server's session caching?
+**Why it matters:** Pablo's nuance lives in the larger model. Sustained Pablo use (every admin page reviewed multiple times in a single session) is the load profile.
+**Status:** Logged as observed behaviour. After a clean boot+bootstrap on Kepler the 14B is stable on the first 5-10 Pablo runs. Continued use over a session may surface the crash again — needs an isolation test (sustained prompt-pump against the 14B endpoint with the Pablo system prompt). `~/Library/Logs/webspinner-mlx-server/stderr.log` is the channel; the semaphore-leak warning is the signal.
 **Status:** Spec pending. v0.1 candidate: per-capability components in `loom/src/lib/admin/capabilities/`, picked by capability name; fallback to JSON for unrecognised capabilities (with a "Show developer view" toggle always available).
