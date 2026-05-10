@@ -1,4 +1,7 @@
-# Python
+# Python — root-anchored where they exist as Python conventions only.
+# Unanchored `lib/` and `bin/` would shadow `loom/src/lib/` (SvelteKit
+# server modules) and silently drop the entire Loom server tree from
+# git history. They are anchored to repo root here.
 __pycache__/
 *.py[cod]
 *$py.class
@@ -10,13 +13,13 @@ dist/
 build/
 eggs/
 parts/
-bin/
-var/
+/bin/
+/var/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
-lib64/
+/lib/
+/lib64/
 MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
@@ -41,12 +44,19 @@ ENV/
 .uv/
 
 # Environment and secrets — NEVER commit
+# Anchored to repo-root or to specific extensions; an unanchored
+# `secrets.*` would silently exclude `loom/src/lib/server/secrets.ts`
+# (the source code that manages the encrypted vault).
 .env
 .env.*
 *.pem
 *.key
-secrets/
-secrets.*
+/secrets/
+secrets.env
+secrets.env.*
+secrets.json
+secrets.yaml
+secrets.yml
 *.secret
 *.tfvars
 credentials.json
@@ -66,10 +76,12 @@ postgres_data/
 *.sqlite3
 *.db
 
-# Audit logs (operational state, not source)
-audit/
+# Audit logs (operational state, not source) — root-anchored so they
+# do not shadow `loom/src/routes/admin/audit/` (the source for the
+# audit-log admin page).
+/audit/
 *.log
-logs/
+/logs/
 
 # Local provisioning artifacts
 provisioning/local/
