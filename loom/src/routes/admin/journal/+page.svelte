@@ -16,6 +16,67 @@
 
   let filter = $state<'all' | Kind>('all');
 
+  // Bootstrap context — generates the markdown the next Claude session
+  // needs to pick up where this one left off.
+  let bootstrapHorizon = $state(14);
+  let bootstrapScope = $state('');
+  let bootstrapInvoking = $state(false);
+  let bootstrapContext = $state<string | null>(null);
+  let bootstrapStats = $state<{ totalEntries: number; recentEntries: number; horizonDays: number } | null>(null);
+  let bootstrapError = $state<string | null>(null);
+
+  async function generateBootstrap() {
+    if (bootstrapInvoking) return;
+    bootstrapInvoking = true;
+    bootstrapError = null;
+    const input: Record<string, unknown> = {};
+    if (bootstrapScope.trim().length > 0) input.scope = bootstrapScope;
+    if (bootstrapHorizon > 0) input.horizonDays = bootstrapHorizon;
+    try {
+      const res = await fetch('/admin/spinners/wizards-journal/invoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ capability: 'bootstrap', input }),
+      });
+      const reply = await res.json();
+      if (!res.ok || reply.ok === false) {
+        bootstrapError = reply.message ?? `Failed (${res.status}).`;
+      } else if (reply.output) {
+        bootstrapContext = reply.output.context ?? null;
+        bootstrapStats = reply.output.stats ?? null;
+      }
+    } catch (e) {
+      bootstrapError = e instanceof Error ? e.message : String(e);
+    } finally {
+      bootstrapInvoking = false;
+    }
+  }
+
+  async function copyBootstrap() {
+    if (!bootstrapContext) return;
+    try {
+      await navigator.clipboard.writeText(bootstrapContext);
+    } catch {
+      // best-effort
+    }
+  }
+
+  function downloadBootstrap() {
+    if (!bootstrapContext) return;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const blob = new Blob([bootstrapContext], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wizard-journal-context-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  }
+
   const visible = $derived.by(() => {
     if (filter === 'all') return data.entries;
     return data.entries.filter((e) => e.kind === filter);
@@ -151,6 +212,48 @@
       </button>
     </div>
   </form>
+</section>
+
+<section class="bootstrap">
+  <h2>Session context</h2>
+  <p class="bootstrap-lede">
+    Generate a markdown context block for the next Claude (or Wizard) session — current focus,
+    recent actions, last decisions, open questions. Paste into a <code>CLAUDE.md</code>, hand to
+    a fresh chat, or keep beside the day's work.
+  </p>
+
+  <div class="bootstrap-controls">
+    <label class="field inline">
+      <span>Horizon (days)</span>
+      <input type="number" min="1" max="365" bind:value={bootstrapHorizon} />
+    </label>
+    <label class="field inline grow">
+      <span>Scope <span class="opt">(optional topic filter)</span></span>
+      <input type="text" bind:value={bootstrapScope} placeholder="pablo, vault, federation…" />
+    </label>
+    <button type="button" class="generate" onclick={generateBootstrap} disabled={bootstrapInvoking}>
+      {bootstrapInvoking ? 'Generating…' : bootstrapContext ? 'Regenerate' : 'Generate'}
+    </button>
+  </div>
+
+  {#if bootstrapError}
+    <p class="error inline" role="alert">{bootstrapError}</p>
+  {/if}
+
+  {#if bootstrapContext}
+    <div class="bootstrap-viewer">
+      <div class="bootstrap-actions">
+        <button type="button" class="copy" onclick={copyBootstrap}>Copy</button>
+        <button type="button" class="copy" onclick={downloadBootstrap}>Download .md</button>
+        {#if bootstrapStats}
+          <span class="bootstrap-stats">
+            {bootstrapStats.recentEntries} of {bootstrapStats.totalEntries} entries · {bootstrapStats.horizonDays}-day horizon
+          </span>
+        {/if}
+      </div>
+      <pre><code>{bootstrapContext}</code></pre>
+    </div>
+  {/if}
 </section>
 
 <section class="recent">
@@ -548,5 +651,126 @@
     background: var(--bg-2, #161616);
     border: 1px solid var(--line, #1f1f1f);
     font-family: var(--font-data);
+  }
+
+  /* ── Session context (bootstrap) ────────────────────────────────── */
+  .bootstrap-lede {
+    margin: 0 0 1rem;
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    max-width: 60ch;
+    font-family: var(--font-prose);
+    font-style: italic;
+  }
+
+  .bootstrap-lede code {
+    background: var(--bg-1, #111);
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    font-style: normal;
+    font-family: var(--font-mono);
+  }
+
+  .bootstrap-controls {
+    display: flex;
+    gap: 0.85rem;
+    align-items: end;
+    max-width: 48rem;
+    margin-bottom: 0.85rem;
+    flex-wrap: wrap;
+  }
+
+  .field.inline {
+    flex: 0 0 auto;
+  }
+
+  .field.inline.grow {
+    flex: 1 1 18rem;
+  }
+
+  .field.inline input[type='number'] {
+    width: 7rem;
+  }
+
+  .generate {
+    background: var(--gold);
+    color: #1a1306;
+    border: 0;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.02em;
+    height: 2.4rem;
+  }
+
+  .generate:hover:not(:disabled) {
+    background: var(--gold-bright);
+  }
+
+  .generate:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  .bootstrap-viewer {
+    margin-top: 1rem;
+    max-width: 56rem;
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 8px;
+    background: var(--bg-1, #111);
+    overflow: hidden;
+  }
+
+  .bootstrap-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--line, #1f1f1f);
+    background: #0a0a0a;
+  }
+
+  .bootstrap-actions .copy {
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold-dim, #a08658);
+    border-radius: 4px;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .bootstrap-actions .copy:hover {
+    background: rgba(201, 169, 106, 0.1);
+  }
+
+  .bootstrap-stats {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bootstrap-viewer pre {
+    margin: 0;
+    padding: 0.95rem 1.15rem;
+    overflow: auto;
+    max-height: 60vh;
+  }
+
+  .bootstrap-viewer pre code {
+    color: var(--text);
+    font-size: 0.88rem;
+    line-height: 1.65;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
   }
 </style>

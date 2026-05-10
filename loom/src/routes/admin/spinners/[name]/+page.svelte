@@ -21,6 +21,24 @@
   let reviewTopic = $state('');
   let fallbackJson = $state('{}');
 
+  // Wizard's Journal capabilities — record (journal flavour),
+  // recall, bootstrap. `record` collides with the Bootstrap Spinner's
+  // record capability; we disambiguate on manifest name.
+  type JournalKind = 'action' | 'decision' | 'problem' | 'learning' | 'note';
+  const isJournal = data.manifest.name === '@webspinner-foundation/wizards-journal';
+  let journalKind = $state<JournalKind>('action');
+  let journalTags = $state('');
+  let journalPublic = $state(false);
+
+  let recallQuery = $state('');
+  let recallKind = $state<'' | JournalKind>('');
+  let recallSince = $state('');
+  let recallTag = $state('');
+  let recallLimit = $state(10);
+
+  let bootstrapScope = $state('');
+  let bootstrapHorizon = $state(14);
+
   function buildInput(): { ok: true; value: unknown } | { ok: false; error: string } {
     switch (activeCapability) {
       case 'consult': {
@@ -32,8 +50,41 @@
         if (recordTitle.trim().length === 0)
           return { ok: false, error: 'Title is required.' };
         if (recordBody.trim().length === 0) return { ok: false, error: 'Body is required.' };
+        if (isJournal) {
+          const tags = journalTags
+            .split(',')
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0);
+          return {
+            ok: true,
+            value: {
+              kind: journalKind,
+              title: recordTitle,
+              body: recordBody,
+              tags,
+              public: journalPublic,
+            },
+          };
+        }
         const v: Record<string, string> = { title: recordTitle, body: recordBody };
         if (recordSupersedes.trim().length > 0) v.supersedes = recordSupersedes;
+        return { ok: true, value: v };
+      }
+      case 'recall': {
+        if (recallQuery.trim().length === 0)
+          return { ok: false, error: 'Query is required.' };
+        const v: Record<string, unknown> = { query: recallQuery };
+        if (recallKind !== '') v.kind = recallKind;
+        if (recallSince.trim().length > 0) v.since = recallSince;
+        if (recallTag.trim().length > 0) v.tag = recallTag;
+        if (typeof recallLimit === 'number' && recallLimit > 0) v.limit = recallLimit;
+        return { ok: true, value: v };
+      }
+      case 'bootstrap': {
+        const v: Record<string, unknown> = {};
+        if (bootstrapScope.trim().length > 0) v.scope = bootstrapScope;
+        if (typeof bootstrapHorizon === 'number' && bootstrapHorizon > 0)
+          v.horizonDays = bootstrapHorizon;
         return { ok: true, value: v };
       }
       case 'audit': {
@@ -131,6 +182,21 @@
     } catch {
       // best-effort
     }
+  }
+
+  function downloadContext(text: string) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wizard-journal-context-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
   }
 </script>
 
@@ -356,6 +422,40 @@
         ></textarea>
         <span class="hint">Grounded in the Spinner's declared Spools. Citations come back with the answer.</span>
       </label>
+    {:else if activeCapability === 'record' && isJournal}
+      <div class="field">
+        <span>Kind</span>
+        <div class="kind-chips">
+          {#each (['action', 'decision', 'problem', 'learning', 'note'] as JournalKind[]) as k}
+            <label class="kind-chip">
+              <input type="radio" name="journal-kind" value={k} bind:group={journalKind} />
+              <span class={`kind kind-${k}`}>{k}</span>
+            </label>
+          {/each}
+        </div>
+      </div>
+      <label class="field">
+        <span>Title</span>
+        <input bind:value={recordTitle} placeholder="Short, present-tense" maxlength="200" />
+      </label>
+      <label class="field">
+        <span>Body</span>
+        <textarea
+          bind:value={recordBody}
+          placeholder="What happened, why, what next."
+          rows="6"
+        ></textarea>
+      </label>
+      <div class="meta-row">
+        <label class="field">
+          <span>Tags <span class="opt">(comma-separated)</span></span>
+          <input bind:value={journalTags} placeholder="focus, ux, pablo" />
+        </label>
+        <label class="public-toggle-inline">
+          <input type="checkbox" bind:checked={journalPublic} />
+          <span>Eligible for public docs</span>
+        </label>
+      </div>
     {:else if activeCapability === 'record'}
       <label class="field">
         <span>Title</span>
@@ -373,6 +473,54 @@
         <span>Supersedes <span class="opt">(optional)</span></span>
         <input bind:value={recordSupersedes} placeholder="2026-04-15 — *Old decision title*" />
       </label>
+    {:else if activeCapability === 'recall'}
+      <label class="field">
+        <span>Query</span>
+        <input bind:value={recallQuery} placeholder="What you are looking for, in plain words" />
+        <span class="hint">Semantic search across the journal. Cosine similarity against MiniLM-L6-v2 embeddings.</span>
+      </label>
+      <div class="meta-row">
+        <label class="field">
+          <span>Kind <span class="opt">(optional)</span></span>
+          <select bind:value={recallKind}>
+            <option value="">(any)</option>
+            <option value="action">action</option>
+            <option value="decision">decision</option>
+            <option value="problem">problem</option>
+            <option value="learning">learning</option>
+            <option value="note">note</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Tag <span class="opt">(optional)</span></span>
+          <input bind:value={recallTag} placeholder="focus" />
+        </label>
+      </div>
+      <div class="meta-row">
+        <label class="field">
+          <span>Since <span class="opt">(ISO timestamp)</span></span>
+          <input bind:value={recallSince} placeholder="2026-04-15T00:00:00Z" />
+        </label>
+        <label class="field">
+          <span>Limit</span>
+          <input type="number" min="1" max="50" bind:value={recallLimit} />
+        </label>
+      </div>
+    {:else if activeCapability === 'bootstrap'}
+      <p class="hint">
+        Generates a markdown context block — current focus, recent actions, last decisions, open
+        questions — for pasting into a fresh Claude (or Wizard) session.
+      </p>
+      <div class="meta-row">
+        <label class="field">
+          <span>Scope <span class="opt">(optional topic filter)</span></span>
+          <input bind:value={bootstrapScope} placeholder="pablo, vault, federation…" />
+        </label>
+        <label class="field">
+          <span>Horizon (days)</span>
+          <input type="number" min="1" max="365" bind:value={bootstrapHorizon} />
+        </label>
+      </div>
     {:else if activeCapability === 'audit'}
       <label class="field">
         <span>Subject</span>
@@ -510,6 +658,16 @@
           <p class="muted">No findings. Pablo blesses this surface.</p>
         {/if}
       </article>
+    {:else if activeCapability === 'record' && typeof out.id === 'string' && typeof out.title === 'string'}
+      <article class="entry-result">
+        <header><strong>Recorded</strong></header>
+        <p class="record-success">
+          <span class={`kind kind-${out.kind}`}>{out.kind}</span>
+          <strong>{out.title}</strong>
+          <span class="timestamp">{out.timestamp}</span>
+        </p>
+        <p class="hint">Entry id: <code>{out.id}</code>. Visible on <a href="/admin/journal">/admin/journal</a> and recallable by semantic query.</p>
+      </article>
     {:else if activeCapability === 'record' && typeof out.entry === 'string'}
       <article class="entry-result">
         <header>
@@ -518,6 +676,51 @@
         </header>
         <pre><code>{out.entry}</code></pre>
         <p class="hint">Append this to <code>DECISIONS.md</code> — do not rewrite existing entries.</p>
+      </article>
+    {:else if activeCapability === 'recall' && Array.isArray(out.entries)}
+      <article class="recall-result">
+        <header>
+          <strong>{out.entries.length} match{out.entries.length === 1 ? '' : 'es'}</strong>
+          {#if typeof out.totalScanned === 'number'}
+            <span class="duration">scanned {out.totalScanned}</span>
+          {/if}
+        </header>
+        {#if out.entries.length === 0}
+          <p class="muted">No matches.</p>
+        {:else}
+          <ol class="recall-entries">
+            {#each out.entries as e}
+              <li>
+                <header>
+                  <span class={`kind kind-${e.kind}`}>{e.kind}</span>
+                  <strong>{e.title}</strong>
+                  <span class="score">{(e.score * 100).toFixed(0)}%</span>
+                  <span class="timestamp">{e.timestamp.slice(0, 10)}</span>
+                </header>
+                <p class="recall-body">{e.body.length > 280 ? e.body.slice(0, 280) + '…' : e.body}</p>
+                {#if Array.isArray(e.tags) && e.tags.length > 0}
+                  <div class="recall-tags">
+                    {#each e.tags as t}<span class="tag-chip">{t}</span>{/each}
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ol>
+        {/if}
+      </article>
+    {:else if activeCapability === 'bootstrap' && typeof out.context === 'string'}
+      <article class="bootstrap-result">
+        <header>
+          <strong>Session context</strong>
+          <button type="button" class="copy" onclick={() => copyToClipboard(out.context)}>Copy</button>
+          <button type="button" class="copy" onclick={() => downloadContext(out.context)}>Download .md</button>
+        </header>
+        <pre class="context"><code>{out.context}</code></pre>
+        {#if out.stats}
+          <p class="hint">
+            {out.stats.recentEntries} of {out.stats.totalEntries} entries within {out.stats.horizonDays}-day horizon.
+          </p>
+        {/if}
       </article>
     {:else if activeCapability === 'audit' && Array.isArray(out.drift)}
       <article class="drift-result">
@@ -1622,5 +1825,261 @@
     color: var(--text-mute);
     font-size: 0.76rem;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Journal capabilities ───────────────────────────────────────── */
+  .kind-chips {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .kind-chip {
+    cursor: pointer;
+  }
+
+  .kind-chip input {
+    display: none;
+  }
+
+  .kind {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    border: 1px solid var(--line, #1f1f1f);
+    color: var(--text-mute);
+    background: var(--bg-1, #111);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    line-height: 1.4;
+  }
+
+  .kind-chip input:checked + .kind {
+    color: var(--cyan);
+    border-color: var(--cyan-dim, #4ba9b8);
+    background: rgba(95, 207, 224, 0.08);
+  }
+
+  .kind.kind-action { color: var(--cyan-dim, #4ba9b8); border-color: var(--cyan-dim, #4ba9b8); background: rgba(95, 207, 224, 0.06); }
+  .kind.kind-decision { color: var(--gold); border-color: #3a3220; background: #1a160a; }
+  .kind.kind-problem { color: #f88; border-color: #602020; background: #2a0808; }
+  .kind.kind-learning { color: #9fd99f; border-color: #2a4020; background: #0d1a0d; }
+  .kind.kind-note { color: var(--text-mute); border-color: var(--line, #1f1f1f); }
+
+  .meta-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+  }
+
+  .public-toggle-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-mute);
+    font-size: 0.85rem;
+    align-self: end;
+    padding-bottom: 0.55rem;
+    cursor: pointer;
+  }
+
+  .public-toggle-inline input {
+    accent-color: var(--cyan);
+  }
+
+  /* ── Record success (journal) ───────────────────────────────────── */
+  .record-success {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    font-family: var(--font-prose);
+    font-size: 1rem;
+    color: var(--text);
+  }
+
+  .record-success strong {
+    color: var(--gold);
+    font-weight: 600;
+  }
+
+  .record-success .timestamp {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Recall result ──────────────────────────────────────────────── */
+  .recall-result {
+    margin-top: 1.5rem;
+    max-width: 56rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 8px;
+    background: var(--bg-1, #111);
+  }
+
+  .recall-result > header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .recall-result > header strong {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    color: var(--cyan);
+  }
+
+  .recall-result .duration {
+    color: var(--text-mute);
+    font-size: 0.74rem;
+    margin-left: auto;
+  }
+
+  .recall-entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .recall-entries li {
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 6px;
+    padding: 0.7rem 0.85rem;
+    background: #0a0a0a;
+  }
+
+  .recall-entries li > header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.45rem;
+  }
+
+  .recall-entries li > header strong {
+    color: var(--gold);
+    font-weight: 600;
+    font-size: 0.96rem;
+    font-family: var(--font-prose);
+  }
+
+  .recall-entries .score {
+    color: var(--cyan);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    background: rgba(95, 207, 224, 0.08);
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--cyan-dim, #4ba9b8);
+  }
+
+  .recall-entries .timestamp {
+    color: var(--text-mute);
+    font-size: 0.72rem;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .recall-body {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    font-family: var(--font-prose);
+  }
+
+  .recall-tags {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    margin-top: 0.45rem;
+  }
+
+  .tag-chip {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    color: var(--text-mute);
+    background: var(--bg-2, #161616);
+    border: 1px solid var(--line, #1f1f1f);
+    font-family: var(--font-data);
+  }
+
+  /* ── Bootstrap context result ───────────────────────────────────── */
+  .bootstrap-result {
+    margin-top: 1.5rem;
+    max-width: 56rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 8px;
+    background: var(--bg-1, #111);
+  }
+
+  .bootstrap-result > header {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .bootstrap-result > header strong {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    color: var(--cyan);
+  }
+
+  .bootstrap-result .copy {
+    margin-left: 0.4rem;
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold-dim, #a08658);
+    border-radius: 4px;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .bootstrap-result .copy:first-of-type {
+    margin-left: auto;
+  }
+
+  .bootstrap-result .copy:hover {
+    background: rgba(201, 169, 106, 0.1);
+  }
+
+  .bootstrap-result .context {
+    margin: 0 0 0.6rem;
+    padding: 0.75rem 1rem;
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 4px;
+    overflow-x: auto;
+    max-height: 60vh;
+  }
+
+  .bootstrap-result .context code {
+    color: var(--text);
+    font-size: 0.86rem;
+    line-height: 1.6;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    background: transparent;
+    border: 0;
+    padding: 0;
   }
 </style>
