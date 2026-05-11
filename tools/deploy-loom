@@ -28,6 +28,12 @@
 
 set -euo pipefail
 
+# Ensure pnpm and node are on PATH even under non-interactive shells
+# (ssh sessions, launchd, cron). Homebrew lives in /opt/homebrew on
+# Apple Silicon, /usr/local on Intel. Prepend both; preserve any
+# existing PATH after.
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+
 WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
 LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
 LABEL='foundation.webspinner.loom'
