@@ -1,7 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
 
-  let { form } = $props();
+  let { data, form } = $props();
   let submitting = $state(false);
   let showPassword = $state(false);
   let showPasswordConfirm = $state(false);
@@ -9,6 +9,13 @@
 
 <svelte:head>
   <title>Register · Warp</title>
+  {#if data?.turnstileSiteKey}
+    <script
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+      async
+      defer
+    ></script>
+  {/if}
 </svelte:head>
 
 <main>
@@ -129,6 +136,12 @@
       <span>Leave this field empty</span>
       <input type="text" name="website" autocomplete="off" tabindex="-1" />
     </label>
+
+    {#if data?.turnstileSiteKey}
+      <div class="turnstile-wrap">
+        <div class="cf-turnstile" data-sitekey={data.turnstileSiteKey} data-theme="dark"></div>
+      </div>
+    {/if}
 
     {#if form?.error}
       <p class="error" role="alert">{form.error}</p>
@@ -255,6 +268,12 @@
   }
 
   /* Honeypot styling — visually hidden but available to fillers (bots). */
+  .turnstile-wrap {
+    margin: 0.4rem 0 0.2rem;
+    display: flex;
+    justify-content: center;
+  }
+
   .honeypot {
     position: absolute;
     width: 1px;

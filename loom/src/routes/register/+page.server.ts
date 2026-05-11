@@ -7,6 +7,7 @@ import {
   issueVerificationToken,
 } from '$lib/server/verifications.js';
 import { sendEmail, buildVerificationEmail } from '$lib/server/email.js';
+import { resolveTurnstileCreds, verifyTurnstileToken } from '$lib/server/turnstile.js';
 import type { Actions, PageServerLoad } from './$types.js';
 
 const RATE: Map<string, { count: number; resetAt: number }> = new Map();
@@ -24,11 +25,14 @@ function rateLimited(ip: string): boolean {
   return e.count > RATE_MAX;
 }
 
-export const load: PageServerLoad = ({ cookies }) => {
+export const load: PageServerLoad = async ({ cookies, fetch }) => {
   if (getSession(cookies)) {
     throw redirect(303, '/admin');
   }
-  return {};
+  // Site key is public-by-design — ok to ship to the browser. Null when
+  // Turnstile isn't vaulted; the form skips the widget in that case.
+  const { siteKey } = await resolveTurnstileCreds(fetch);
+  return { turnstileSiteKey: siteKey };
 };
 
 export const actions: Actions = {
@@ -51,6 +55,26 @@ export const actions: Actions = {
     const password = data.get('password')?.toString() ?? '';
     const passwordConfirm = data.get('password_confirm')?.toString() ?? '';
     const website = data.get('website')?.toString() ?? ''; // honeypot
+    const turnstileToken = data.get('cf-turnstile-response')?.toString() ?? '';
+
+    // Turnstile gate — when the vault has a secret-key, the token must
+    // verify against Cloudflare's siteverify. Without a vaulted secret,
+    // the Cell is in bootstrap mode (honeypot + rate-limit defense only).
+    const { secretKey: turnstileSecret } = await resolveTurnstileCreds(fetch);
+    const tsResult = await verifyTurnstileToken(fetch, {
+      token: turnstileToken || null,
+      secretKey: turnstileSecret,
+      remoteIp: ip,
+    });
+    if (!tsResult.ok) {
+      return fail(401, {
+        error:
+          tsResult.note ??
+          'Bot-defense challenge did not verify. Please reload the page and try again.',
+        email,
+        name,
+      });
+    }
 
     const result = await registerUser(fetch, { email, name, password, passwordConfirm, website });
     if (!result.ok) {
