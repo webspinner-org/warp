@@ -323,28 +323,39 @@
     </aside>
   {/if}
 
-  <aside class="nav">
-    {#each groups as g (g.title)}
-      <section>
-        <h2>{g.title}</h2>
-        <ul>
-          {#each g.items as item (item.href)}
-            <li>
-              <a href={item.href} class:active={isActive(item.href)}>{item.label}</a>
-            </li>
-          {/each}
-        </ul>
-      </section>
-    {/each}
-  </aside>
+  <div class="below-ribbon">
+    <aside class="nav">
+      {#each groups as g (g.title)}
+        <section>
+          <h2>{g.title}</h2>
+          <ul>
+            {#each g.items as item (item.href)}
+              <li>
+                <a href={item.href} class:active={isActive(item.href)}>{item.label}</a>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/each}
+    </aside>
 
-  <main>
-    {@render children()}
-  </main>
+    <main>
+      {@render children()}
+    </main>
+  </div>
 </div>
 
 <style>
-  :global(html, body) {
+  :global(html) {
+    /* Always make the document the scroll container. Forces the
+       vertical scrollbar to exist from the first paint, so Safari
+       and SvelteKit's client-side navigation never end up in a state
+       where the document is "not scrollable yet" after a route swap. */
+    overflow-y: scroll;
+    height: 100%;
+  }
+
+  :global(body) {
     margin: 0;
     padding: 0;
     background: #0a0a0a;
@@ -354,25 +365,28 @@
       system-ui,
       -apple-system,
       sans-serif;
+    /* No overflow constraint — body is the scroll container child. */
+    min-height: 100%;
   }
 
-  /* Window-level scrolling — `main` and `nav` no longer claim their
-     own `overflow-y`. The first-render-no-scroll bug came from
-     `main` carrying `overflow-y: auto` while grid resolved its height
-     intermittently. The ribbon stays put via `position: sticky`; the
-     nav follows suit at top: 72px. */
+  /* Window-level scrolling. Flex column instead of CSS grid for the
+     outer layout — grid + position:sticky inside a 1fr row had a
+     Safari quirk where client-side navigation could leave the body in
+     a "not scrollable" state until refresh. Flex sidesteps it. */
   .shell {
-    display: grid;
-    grid-template-columns: 220px 1fr;
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      'ribbon ribbon'
-      'nav main';
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
   }
 
+  .below-ribbon {
+    display: flex;
+    flex: 1;
+    align-items: flex-start;
+    min-height: 0;
+  }
+
   .ribbon {
-    grid-area: ribbon;
     background-color: #000;
     border-bottom: 1px solid #1a1a1a;
     display: flex;
@@ -441,15 +455,16 @@
   }
 
   .nav {
-    grid-area: nav;
     background: #060606;
     border-right: 1px solid #1a1a1a;
     padding: 1.5rem 0;
+    width: 220px;
+    flex-shrink: 0;
     position: sticky;
     top: 72px;
-    align-self: start;
     max-height: calc(100vh - 72px);
     overflow-y: auto;
+    align-self: stretch;
   }
 
   .nav section + section {
@@ -492,8 +507,9 @@
   }
 
   main {
-    grid-area: main;
+    flex: 1;
     padding: 2rem;
+    min-width: 0;
     /* No overflow constraint — window scroll handles long content.
        The sticky ribbon stays visible; the sticky nav stays beside. */
   }
