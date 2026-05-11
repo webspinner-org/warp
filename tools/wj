@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+#
+# tools/wj — Wizard's Journal CLI.
+#
+# Wraps the Loom's invocation HTTP for the wizards-journal Spinner so
+# the Wizard can drive the journal from the terminal on Kepler. Three
+# subcommands:
+#
+#   wj write <kind> "<title>" "<body>" [--tags a,b,c] [--public]
+#   wj recall "<query>" [--limit N] [--kind K] [--tag T] [--since ISO]
+#   wj bootstrap [--horizon N] [--scope "..."] [--write]
+#
+# Kinds: action | decision | problem | learning | note.
+#
+# Auth: logs in as the PocketBase superuser via the Loom's /login
+# form action (reads creds from ~/.warp/bootstrap/pb-{email,password}),
+# captures the session cookie, then POSTs to the invoke endpoint.
+# `--write` on `bootstrap` writes the context to `~/warp/BOOTSTRAP.md`
+# (a relative `BOOTSTRAP.md` in the warp repo) so the next Claude Code
+# session in `~/warp/` auto-loads it alongside `CLAUDE.md`.
+
+set -euo pipefail
+
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+BOOTSTRAP_DIR="${WARP_BOOTSTRAP_DIR:-$HOME/.warp/bootstrap}"
+COOKIE_JAR="$(mktemp -t wj-cookies-XXXXXX)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+SPINNER='wizards-journal'
+
+require_creds() {
+  if [ ! -r "$BOOTSTRAP_DIR/pb-email" ] || [ ! -r "$BOOTSTRAP_DIR/pb-password" ]; then
+    echo "error: missing $BOOTSTRAP_DIR/pb-email or pb-password" >&2
+    exit 2
+  fi
+}
+
+login() {
+  local email pass body status
+  email="$(cat "$BOOTSTRAP_DIR/pb-email")"
+  pass="$(cat "$BOOTSTRAP_DIR/pb-password")"
+  # POST to /login (the bare URL invokes the default action; `?/default`
+  # is reserved by SvelteKit and 500s). SvelteKit returns a JSON
+  # redirect descriptor (HTTP 200, body: {"type":"redirect","location":"/admin"})
+  # for form actions; we don't follow — we just verify success and
+  # trust the cookie jar.
+  body=$(curl -sS -c "$COOKIE_JAR" -w "\n%{http_code}" \
+    -H "Origin: $LOOM_BASE" \
+    --data-urlencode "wizard_id=$email" \
+    --data-urlencode "passphrase=$pass" \
+    "$LOOM_BASE/login" 2>/dev/null || echo "\n000")
+  status="${body##*$'\n'}"
+  body="${body%$'\n'*}"
+  if [ "$status" != "200" ]; then
+    echo "error: login failed (HTTP $status)" >&2
+    exit 3
+  fi
+  # SvelteKit form-action JSON: success = redirect to /admin; failure = `failure` type.
+  is_success=$(echo "$body" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+except Exception:
+  print('0'); sys.exit(0)
+if d.get('type') == 'redirect' and '/admin' in d.get('location', ''):
+  print('1')
+elif d.get('type') == 'failure':
+  print('0:' + str(d.get('data', {}).get('error', 'unknown')))
+else:
+  print('0:unexpected')
+" 2>/dev/null || echo "0:parse-failed")
+  if [ "${is_success%%:*}" != "1" ]; then
+    echo "error: login rejected — ${is_success#*:}" >&2
+    exit 3
+  fi
+  # Confirm a session cookie was set.
+  if ! grep -q "wp_session" "$COOKIE_JAR" 2>/dev/null; then
+    echo "error: login appeared to succeed but no wp_session cookie was set" >&2
+    exit 3
+  fi
+}
+
+invoke() {
+  local capability="$1" body="$2"
+  local response
+  response=$(curl -sS -b "$COOKIE_JAR" -X POST \
+    -H "Content-Type: application/json" \
+    -H "Origin: $LOOM_BASE" \
+    -d "$body" \
+    "$LOOM_BASE/admin/spinners/$SPINNER/invoke")
+  echo "$response"
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  wj write   <kind> "<title>" "<body>" [--tags a,b] [--public]
+  wj recall  "<query>"  [--limit N] [--kind K] [--tag T] [--since ISO]
+  wj bootstrap          [--horizon N] [--scope "..."] [--write]
+
+kinds: action | decision | problem | learning | note
+EOF
+  exit 1
+}
+
+cmd="${1:-}"
+[ -z "$cmd" ] && usage
+shift || true
+
+require_creds
+login
+
+case "$cmd" in
+  write)
+    kind="${1:-}"; title="${2:-}"; body="${3:-}"
+    [ -z "$kind" ] || [ -z "$title" ] || [ -z "$body" ] && usage
+    shift 3 || true
+    tags='[]'
+    publicFlag='false'
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --tags)   tags=$(python3 -c "import json,sys;print(json.dumps([t.strip() for t in sys.argv[1].split(',') if t.strip()]))" "$2"); shift 2;;
+        --public) publicFlag='true'; shift;;
+        *) echo "unknown flag: $1" >&2; usage;;
+      esac
+    done
+    payload=$(python3 -c "
+import json, sys
+kind, title, body, tags, pub = sys.argv[1:6]
+print(json.dumps({
+  'capability': 'record',
+  'input': {
+    'kind': kind, 'title': title, 'body': body,
+    'tags': json.loads(tags), 'public': pub == 'true'
+  }
+}))" "$kind" "$title" "$body" "$tags" "$publicFlag")
+    response=$(invoke record "$payload")
+    echo "$response" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  print(f\"ERROR: {r.get('message', 'invocation failed')}\", file=sys.stderr); sys.exit(4)
+o = r.get('output', {})
+print(f\"recorded · {o.get('kind')} · {o.get('title')}\")
+print(f\"  id:        {o.get('id')}\")
+print(f\"  timestamp: {o.get('timestamp')}\")
+"
+    ;;
+
+  recall)
+    query="${1:-}"
+    [ -z "$query" ] && usage
+    shift
+    limit=10; kind=''; tag=''; since=''
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --limit) limit="$2"; shift 2;;
+        --kind)  kind="$2";  shift 2;;
+        --tag)   tag="$2";   shift 2;;
+        --since) since="$2"; shift 2;;
+        *) echo "unknown flag: $1" >&2; usage;;
+      esac
+    done
+    payload=$(python3 -c "
+import json, sys
+q, limit, kind, tag, since = sys.argv[1:6]
+inp = {'query': q, 'limit': int(limit)}
+if kind:  inp['kind']  = kind
+if tag:   inp['tag']   = tag
+if since: inp['since'] = since
+print(json.dumps({'capability': 'recall', 'input': inp}))
+" "$query" "$limit" "$kind" "$tag" "$since")
+    response=$(invoke recall "$payload")
+    echo "$response" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  print(f\"ERROR: {r.get('message', 'recall failed')}\", file=sys.stderr); sys.exit(4)
+o = r.get('output', {})
+entries = o.get('entries', [])
+total = o.get('totalScanned', 0)
+print(f\"{len(entries)} of {total} entries\")
+print()
+for e in entries:
+  score_pct = int(e['score'] * 100)
+  print(f\"  [{score_pct:>3}%] {e['kind']:8} · {e['title']}\")
+  print(f\"         {e['timestamp'][:10]}  {e.get('tags', [])}\")
+  body = e['body'].replace('\n', ' ').strip()
+  if len(body) > 200: body = body[:200] + '...'
+  print(f\"         {body}\")
+  print()
+"
+    ;;
+
+  bootstrap)
+    horizon=14; scope=''; write='false'
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --horizon) horizon="$2"; shift 2;;
+        --scope)   scope="$2";   shift 2;;
+        --write)   write='true'; shift;;
+        *) echo "unknown flag: $1" >&2; usage;;
+      esac
+    done
+    payload=$(python3 -c "
+import json, sys
+horizon, scope, write = sys.argv[1:4]
+inp = {'horizonDays': int(horizon)}
+if scope: inp['scope'] = scope
+if write == 'true': inp['writeTo'] = 'BOOTSTRAP.md'
+print(json.dumps({'capability': 'bootstrap', 'input': inp}))
+" "$horizon" "$scope" "$write")
+    response=$(invoke bootstrap "$payload")
+    echo "$response" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  print(f\"ERROR: {r.get('message', 'bootstrap failed')}\", file=sys.stderr); sys.exit(4)
+o = r.get('output', {})
+stats = o.get('stats', {})
+print(o.get('context', ''))
+print()
+print(f'--- {stats.get(\"recentEntries\", 0)} of {stats.get(\"totalEntries\", 0)} entries within {stats.get(\"horizonDays\", 0)}-day horizon ---')
+if 'writtenPath' in o:
+    print(f'wrote: {o[\"writtenPath\"]}')
+"
+    ;;
+
+  *) usage;;
+esac

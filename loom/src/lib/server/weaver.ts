@@ -1241,10 +1241,21 @@ async function journalBootstrap(
   rawInput: unknown,
   ctx: JournalDispatchContext,
 ): Promise<DispatchOutput> {
-  const input = (rawInput ?? {}) as { scope?: unknown; horizonDays?: unknown };
+  const input = (rawInput ?? {}) as {
+    scope?: unknown;
+    horizonDays?: unknown;
+    writeTo?: unknown;
+  };
   const horizonDays =
     typeof input.horizonDays === 'number' && input.horizonDays > 0 ? Math.min(365, input.horizonDays) : 14;
   const scope = typeof input.scope === 'string' && input.scope.trim().length > 0 ? input.scope : undefined;
+  // Optional repo-relative path to write the context markdown to.
+  // The Wizard sets `writeTo: "BOOTSTRAP.md"` to drop the context where
+  // the next Claude Code session in `~/warp/` will pick it up.
+  const writeTo =
+    typeof input.writeTo === 'string' && input.writeTo.trim().length > 0
+      ? input.writeTo.trim()
+      : undefined;
 
   // Recent entries within horizon.
   const recentResult = await listRecent(fetch, ctx.pbToken, { horizonDays });
@@ -1323,6 +1334,20 @@ async function journalBootstrap(
 
   context += `\n_End of resume context — Wizard's Journal v0.1._`;
 
+  let writtenPath: string | undefined;
+  if (writeTo) {
+    if (writeTo.includes('..')) {
+      throw new Error('bootstrap.writeTo must be a relative path within the warp repo (no "..").');
+    }
+    const target = resolvePath(WARP_REPO_DIR, writeTo);
+    if (!target.startsWith(WARP_REPO_DIR)) {
+      throw new Error(`bootstrap.writeTo resolves outside the warp repo: ${target}`);
+    }
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(target, context, 'utf8');
+    writtenPath = target;
+  }
+
   return {
     output: {
       context,
@@ -1331,6 +1356,7 @@ async function journalBootstrap(
         recentEntries: recent.length,
         horizonDays,
       },
+      ...(writtenPath ? { writtenPath } : {}),
     },
     modelTokens: { input: 0, output: 0 },
   };

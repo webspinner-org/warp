@@ -148,6 +148,14 @@
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
       askPablo();
       e.preventDefault();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'j') {
+      // Jump to the Wizard's Journal from anywhere in /admin.
+      if (page.url.pathname !== '/admin/journal') {
+        window.location.href = '/admin/journal';
+      }
+      e.preventDefault();
     }
   }
 
