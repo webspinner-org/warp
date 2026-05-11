@@ -181,15 +181,16 @@
         class="pablo-trigger"
         onclick={askPablo}
         disabled={pabloInvoking}
-        title="Have Pablo review this page  (⌘⇧P)"
+        title="Have Pablo review this page"
         aria-label="Have Pablo review this page"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="10"/>
           <circle cx="12" cy="12" r="3" fill="currentColor"/>
         </svg>
-        <span>{pabloInvoking ? 'Pablo is looking…' : 'Pablo'}</span>
+        <span class="pablo-label">{pabloInvoking ? 'Pablo is looking…' : 'Review this page'}</span>
+        <kbd>⌘⇧P</kbd>
       </button>
       <span class="email">{data.user.email}</span>
       <form method="POST" action="/logout">
@@ -423,22 +424,23 @@
   .pablo-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    background: transparent;
+    gap: 0.5rem;
+    background: rgba(95, 207, 224, 0.05);
     color: var(--cyan, #5fcfe0);
     border: 1px solid var(--cyan-dim, #4ba9b8);
-    padding: 0.32rem 0.75rem;
+    padding: 0.42rem 0.95rem;
     border-radius: 999px;
     cursor: pointer;
     font-family: inherit;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     letter-spacing: 0.02em;
-    transition: background 0.15s ease, color 0.15s ease;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
   }
 
   .pablo-trigger:hover:not(:disabled) {
-    background: rgba(95, 207, 224, 0.08);
-    color: var(--cyan, #5fcfe0);
+    background: rgba(95, 207, 224, 0.12);
+    transform: translateY(-1px);
   }
 
   .pablo-trigger:disabled {
@@ -448,6 +450,21 @@
 
   .pablo-trigger svg {
     color: var(--gold, #c9a96a);
+  }
+
+  .pablo-label {
+    color: var(--cyan, #5fcfe0);
+  }
+
+  .pablo-trigger kbd {
+    color: var(--text-mute);
+    background: var(--bg-1, #111);
+    border: 1px solid var(--line, #1f1f1f);
+    border-radius: 4px;
+    padding: 0.05rem 0.4rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.7rem;
+    line-height: 1.3;
   }
 
   .pablo-panel {
