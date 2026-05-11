@@ -88,7 +88,7 @@ const DISPATCH = new Map<SpinnerName, Set<string>>([
 ]);
 
 const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
-  ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult'])],
+  ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
   ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
   ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain'])],
@@ -354,6 +354,12 @@ async function dispatchBootstrap(
   switch (capability) {
     case 'consult':
       return bootstrapConsult(input, ctx);
+    case 'audit':
+      return bootstrapAudit(input, ctx);
+    case 'record':
+      return bootstrapRecord(input, ctx);
+    case 'surface':
+      return bootstrapSurface(input, ctx);
     default:
       throw new Error(`bootstrap dispatch: unhandled capability "${capability}"`);
   }
@@ -441,6 +447,393 @@ const CITATION_RE = /(WARP-CANON\.md\s§[\d.]+|DECISIONS\.md\s[\d-]+|OPEN_QUESTI
 function extractCitations(text: string): readonly string[] {
   const matches = text.match(CITATION_RE) ?? [];
   return [...new Set(matches)];
+}
+
+// ── Bootstrap: audit (drift check) ────────────────────────────────────────
+//
+// Reads a subject (a file relative to the warp repo, or inline text),
+// retrieves the most-relevant canon passages via Pablo's embedding
+// pipeline, then asks the Quiet Loom to find drift — vocabulary lapses,
+// brand-consistency violations, missing citations, scope creep. Returns
+// structured findings with severity.
+
+interface AuditInput {
+  readonly subject?: unknown;
+  readonly kind?: unknown;
+}
+
+interface DriftFinding {
+  readonly severity: 'info' | 'warning' | 'error';
+  readonly rule: string;
+  readonly evidence: string;
+  readonly suggestion: string;
+}
+
+async function bootstrapAudit(
+  rawInput: unknown,
+  ctx: BootstrapDispatchContext,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as AuditInput;
+  if (typeof input.subject !== 'string' || input.subject.trim().length === 0) {
+    throw new Error('audit requires a non-empty `subject` string.');
+  }
+  if (input.kind !== 'file' && input.kind !== 'text') {
+    throw new Error('audit requires `kind` to be "file" or "text".');
+  }
+
+  let body: string;
+  let displaySubject: string;
+  if (input.kind === 'file') {
+    const relPath = input.subject;
+    // Restrict to repo-relative paths; no escaping out of the repo dir.
+    if (relPath.includes('..')) {
+      throw new Error('audit file path must not include "..".');
+    }
+    const absPath = resolvePath(WARP_REPO_DIR, relPath);
+    if (!absPath.startsWith(WARP_REPO_DIR)) {
+      throw new Error(`audit file path resolves outside the warp repo: ${absPath}`);
+    }
+    try {
+      body = await readFile(absPath, 'utf8');
+    } catch (e) {
+      throw new Error(`Failed to read ${relPath}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    displaySubject = relPath;
+  } else {
+    body = input.subject;
+    displaySubject = '(inline text)';
+  }
+
+  // Retrieve canon ground relevant to the subject.
+  const sourceFiles = [];
+  for (const ref of ctx.manifest.spools) {
+    const src = spoolToSourceFile(ref.spool);
+    if (src) sourceFiles.push(src);
+  }
+  // The "question" for retrieval is the first ~600 chars of the artifact
+  // — that's what we want to find drift against.
+  const probe = body.slice(0, 600);
+  const retrieval = await retrieveTopK({
+    question: probe,
+    sourceFiles,
+    topK: 6,
+  });
+
+  const keplerModel = resolveKeplerModel(ctx.manifest.model);
+  if (!keplerModel) {
+    throw new Error(
+      `Bootstrap Spinner declares unrecognised model "${ctx.manifest.model}". audit needs a kepler/ model.`,
+    );
+  }
+
+  const groundBlock = retrieval.passages.length
+    ? retrieval.passages
+        .map((p, i) => `## Canon passage ${i + 1} — ${p.source} (score ${p.score.toFixed(3)})\n\n${p.content}`)
+        .join('\n\n')
+    : '_(no canon passages retrieved)_';
+
+  const driftLock = `${ctx.missionLock}
+
+# Drift check task
+
+You are auditing an artifact for drift from the Warp canon. The canon
+passages above (retrieved by embedding similarity) are your reference.
+Find lapses on these axes:
+
+  - **Vocabulary** — Cell / Spinner / Spool / Skein / Silk Pattern /
+    Warp Thread / Weaver / Loom / Grimoire / Wizard / Patron. Generic
+    substitutes (tenant, agent, data source, workflow) are violations.
+  - **SI vs AI** — patron-facing copy must use "Synthetic Intelligence"
+    or "SI", never "AI" in load-bearing positions.
+  - **Em-dashes** — preserve, never replace with hyphens or commas.
+  - **Internal hostnames** — patron copy must not name "Kepler",
+    "Spindle", "Hetzner", model identifiers, ports.
+  - **Scope creep** — proposals beyond what the canon describes for
+    the current bootstrap epoch.
+  - **Missing citations** — claims about the architecture that should
+    cite a canon section or chapter and don't.
+
+Return STRICT JSON only:
+
+\`\`\`json
+{
+  "drift": [
+    {
+      "severity": "info" | "warning" | "error",
+      "rule": "<short rule name>",
+      "evidence": "<verbatim quote from the artifact>",
+      "suggestion": "<imperative fix>"
+    }
+  ]
+}
+\`\`\`
+
+Severity:
+  - **error** — vocabulary or brand violation in load-bearing patron-facing prose.
+  - **warning** — drift visible to Wizard but not to patrons.
+  - **info** — opportunities for sharper alignment.
+
+Return \`drift: []\` if the artifact is faithful.`;
+
+  const userMessage = `# Subject — \`${displaySubject}\`\n\n${trimForAudit(body)}\n\n# Retrieved canon ground\n\n${groundBlock}\n\nAudit now. Return the JSON only.`;
+
+  const result = await quietLoomChat({
+    system: driftLock,
+    userMessage,
+    model: keplerModel,
+    maxTokens: 1800,
+  });
+
+  const drift = parseDriftJson(result.text);
+
+  return {
+    output: {
+      subject: displaySubject,
+      drift,
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: result.model,
+        retrieval: {
+          via: 'kepler.embeddings',
+          totalChunks: retrieval.totalChunks,
+          returnedPassages: retrieval.passages.length,
+          elapsedMs: retrieval.elapsedMs,
+          cacheHit: retrieval.cacheHit,
+        },
+      },
+    },
+    modelTokens: { input: result.inputTokens, output: result.outputTokens },
+  };
+}
+
+function trimForAudit(body: string): string {
+  const max = 8000;
+  if (body.length <= max) return body;
+  return body.slice(0, max) + '\n\n[... truncated for audit ...]';
+}
+
+function parseDriftJson(raw: string): readonly DriftFinding[] {
+  let txt = (raw ?? '').trim();
+  if (txt.startsWith('```')) {
+    txt = txt.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '');
+  }
+  const m = txt.match(/\{[\s\S]*\}/m);
+  if (!m) return [];
+  let obj: unknown;
+  try {
+    obj = JSON.parse(m[0]);
+  } catch {
+    return [];
+  }
+  if (!obj || typeof obj !== 'object') return [];
+  const raw_drift = (obj as Record<string, unknown>)['drift'];
+  if (!Array.isArray(raw_drift)) return [];
+  const out: DriftFinding[] = [];
+  for (const f of raw_drift) {
+    if (!f || typeof f !== 'object') continue;
+    const fo = f as Record<string, unknown>;
+    out.push({
+      severity:
+        (fo['severity'] as DriftFinding['severity']) === 'error' ||
+        (fo['severity'] as DriftFinding['severity']) === 'warning' ||
+        (fo['severity'] as DriftFinding['severity']) === 'info'
+          ? (fo['severity'] as DriftFinding['severity'])
+          : 'info',
+      rule: typeof fo['rule'] === 'string' ? (fo['rule'] as string) : '',
+      evidence: typeof fo['evidence'] === 'string' ? (fo['evidence'] as string) : '',
+      suggestion: typeof fo['suggestion'] === 'string' ? (fo['suggestion'] as string) : '',
+    });
+  }
+  return out;
+}
+
+// ── Bootstrap: record (draft a DECISIONS.md entry) ────────────────────────
+//
+// Pure formatting — no LLM. The Wizard supplies the title, the body, and
+// optionally the entry being superseded; the handler shapes them into a
+// DECISIONS.md-conforming markdown block ready to append. The Wizard
+// reviews and pastes; we don't write the file from here.
+
+interface RecordInput {
+  readonly title?: unknown;
+  readonly body?: unknown;
+  readonly supersedes?: unknown;
+}
+
+async function bootstrapRecord(
+  rawInput: unknown,
+  ctx: BootstrapDispatchContext,
+): Promise<DispatchOutput> {
+  void ctx;
+  const input = (rawInput ?? {}) as RecordInput;
+  if (typeof input.title !== 'string' || input.title.trim().length === 0) {
+    throw new Error('record requires a non-empty `title`.');
+  }
+  if (typeof input.body !== 'string' || input.body.trim().length === 0) {
+    throw new Error('record requires a non-empty `body`.');
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  const title = input.title.trim();
+  const body = input.body.trim();
+  const supersedes =
+    typeof input.supersedes === 'string' && input.supersedes.trim().length > 0
+      ? input.supersedes.trim()
+      : undefined;
+
+  // If the body already starts with `**Decision:**`, leave it alone;
+  // otherwise wrap the first paragraph as the decision summary.
+  let entryBody = body;
+  if (!/^\*\*(Decision|Why)/.test(body)) {
+    const paragraphs = body.split(/\n{2,}/);
+    const first = paragraphs[0]?.trim() ?? body;
+    const rest = paragraphs.slice(1).join('\n\n').trim();
+    entryBody = rest ? `**Decision:** ${first}\n\n${rest}` : `**Decision:** ${first}`;
+  }
+
+  // If there's no Why: line anywhere, append a placeholder; the Wizard
+  // owns filling it in.
+  if (!/\*\*Why:\*\*|\bWhy:/i.test(entryBody)) {
+    entryBody += `\n\n**Why:** _(state the reason this decision was made — what hinges on it.)_`;
+  }
+
+  const supersedesBlock = supersedes ? `\n\n**Supersedes:** ${supersedes}` : '';
+
+  const entry = `## ${date} — ${title}\n\n${entryBody}${supersedesBlock}\n`;
+
+  return {
+    output: { entry },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+// ── Bootstrap: surface (unfinished threads) ───────────────────────────────
+//
+// Reads OPEN_QUESTIONS.md, recent DECISIONS sections, and scans
+// WARP-CANON.md for "spec pending" markers. Returns a flat list of
+// threads sorted by recency / staleness. Counters ADD drift — what's
+// still open in this Cell.
+
+interface SurfaceThread {
+  readonly kind: 'uncommitted' | 'open-question' | 'spec-pending' | 'todo';
+  readonly subject: string;
+  readonly ageDays: number;
+}
+
+async function bootstrapSurface(
+  rawInput: unknown,
+  ctx: BootstrapDispatchContext,
+): Promise<DispatchOutput> {
+  void rawInput;
+  void ctx;
+
+  const threads: SurfaceThread[] = [];
+
+  // Open questions — every `## ` heading in OPEN_QUESTIONS.md.
+  try {
+    const oq = await readFile(join(WARP_REPO_DIR, 'OPEN_QUESTIONS.md'), 'utf8');
+    const headings = oq
+      .split('\n')
+      .filter((line) => /^## (?!\d{4}-)/.test(line))
+      .map((line) => line.replace(/^## /, '').trim());
+    for (const h of headings) {
+      threads.push({ kind: 'open-question', subject: h, ageDays: 0 });
+    }
+  } catch {
+    // tolerate
+  }
+
+  // Spec-pending markers across WARP-CANON.md (case-insensitive grep).
+  try {
+    const canon = await readFile(join(WARP_REPO_DIR, 'WARP-CANON.md'), 'utf8');
+    const lines = canon.split('\n');
+    const seen = new Set<string>();
+    for (const line of lines) {
+      const m = line.match(/spec\s+pending/i);
+      if (!m) continue;
+      // De-dup by line content.
+      const trimmed = line.trim();
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      const subject = trimmed.length > 120 ? trimmed.slice(0, 117) + '…' : trimmed;
+      threads.push({ kind: 'spec-pending', subject, ageDays: 0 });
+    }
+  } catch {
+    // tolerate
+  }
+
+  // Dated TODOs — look for `// TODO(YYYY-MM-DD)` style markers in source.
+  try {
+    const todos = await scanForDatedTodos(WARP_REPO_DIR);
+    for (const t of todos) threads.push(t);
+  } catch {
+    // tolerate
+  }
+
+  return {
+    output: { threads },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+async function scanForDatedTodos(repoDir: string): Promise<readonly SurfaceThread[]> {
+  // Lightweight scan — only known top-level source directories, and
+  // only files we'd expect TODOs in. The full repo grep is the Wizard's
+  // tool; this is the surface counter to ADD drift, not a forensic.
+  const { readdir } = await import('node:fs/promises');
+  const candidates: string[] = [];
+  const topDirs = ['loom/src', 'sdk/src', 'spinners', 'tools'];
+  for (const d of topDirs) {
+    try {
+      await walk(join(repoDir, d), candidates, 0);
+    } catch {
+      // tolerate
+    }
+  }
+  const out: SurfaceThread[] = [];
+  const now = Date.now();
+  for (const file of candidates) {
+    try {
+      const text = await readFile(file, 'utf8');
+      const lines = text.split('\n');
+      for (const line of lines) {
+        const m = line.match(/\bTODO\s*\((\d{4}-\d{2}-\d{2})\)\s*:?\s*(.+)/);
+        if (!m) continue;
+        const date = m[1];
+        const subject = m[2].trim().slice(0, 120);
+        const ageDays = Math.max(0, Math.floor((now - new Date(date).getTime()) / 86_400_000));
+        out.push({
+          kind: 'todo',
+          subject: `${file.replace(repoDir + '/', '')}: ${subject}`,
+          ageDays,
+        });
+      }
+    } catch {
+      // tolerate
+    }
+  }
+
+  async function walk(dir: string, acc: string[], depth: number): Promise<void> {
+    if (depth > 6) return;
+    let entries: { name: string; isFile: () => boolean; isDirectory: () => boolean }[] = [];
+    try {
+      entries = (await readdir(dir, { withFileTypes: true })) as unknown as typeof entries;
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      if (e.name === 'node_modules') continue;
+      if (e.name === 'dist' || e.name === 'build') continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        await walk(full, acc, depth + 1);
+      } else if (e.isFile() && /\.(ts|tsx|js|jsx|svelte|py|md)$/.test(e.name)) {
+        acc.push(full);
+      }
+    }
+  }
+
+  return out;
 }
 
 async function resolveVaultRef(
