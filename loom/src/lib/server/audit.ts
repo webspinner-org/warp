@@ -78,6 +78,57 @@ export async function ensureAuditCollection(
   return { ok: true };
 }
 
+export interface AuditRow {
+  readonly id: string;
+  readonly event_id: string;
+  readonly event_type: string;
+  readonly event_source: string;
+  readonly event_subject: string;
+  readonly event_time: string;
+  readonly actor_kind: string;
+  readonly actor_id: string;
+  readonly actor_display_name: string;
+  readonly audit_result: string;
+  readonly audit_reason: string;
+  readonly correlation_id: string;
+  readonly ocsf_class: number;
+  readonly data: Record<string, unknown> | null;
+  readonly created: string;
+  readonly updated: string;
+}
+
+export interface ListAuditRequest {
+  readonly limit?: number;
+  readonly since?: string;
+  readonly eventType?: string;
+  readonly result?: string;
+  readonly actorId?: string;
+}
+
+export async function listAuditEvents(
+  fetchFn: typeof fetch,
+  token: string,
+  req: ListAuditRequest = {},
+): Promise<{ ok: true; events: readonly AuditRow[]; total: number } | { ok: false; status: number; body: string }> {
+  const filters: string[] = [];
+  if (req.since) filters.push(`event_time >= ${JSON.stringify(req.since)}`);
+  if (req.eventType) filters.push(`event_type = ${JSON.stringify(req.eventType)}`);
+  if (req.result) filters.push(`audit_result = ${JSON.stringify(req.result)}`);
+  if (req.actorId) filters.push(`actor_id = ${JSON.stringify(req.actorId)}`);
+
+  const params = new URLSearchParams();
+  params.set('perPage', String(Math.max(1, Math.min(200, req.limit ?? 50))));
+  params.set('sort', '-event_time');
+  if (filters.length > 0) params.set('filter', filters.join(' && '));
+
+  const res = await fetchFn(`${PB_URL}/api/collections/${COLLECTION}/records?${params.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
+  const body = (await res.json()) as { items: readonly AuditRow[]; totalItems: number };
+  return { ok: true, events: body.items, total: body.totalItems };
+}
+
 export async function writeAuditEvent(
   fetchFn: typeof fetch,
   token: string,
