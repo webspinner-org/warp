@@ -25,10 +25,26 @@ exact attribute, the exact CSS rule, the exact text. Do not paraphrase.
 Do not summarise. Do not state the value of a CSS custom property
 unless you can quote the line that sets it.
 
-If the rule you want to cite depends on the resolved value of a CSS
-variable (e.g. `--text-mute` resolved to `#9a9a9a`), and the HTML you
-were given does not include the `:root` declaration that resolves it,
-mark the finding `pablos-eye` and lower its severity. Do not guess.
+### When a computed-styles snapshot is attached
+
+When the user message includes a `# Resolved computed styles (browser
+snapshot)` block, that snapshot is authoritative for CSS values. Each
+entry is one rendered element with its **resolved** `color`,
+`background_color`, `font_size`, `font_weight`, `line_height`, etc.
+Use those values:
+
+  - To compute contrast ratios, use the entry's `color` and
+    `background_color` directly. Do **not** guess at CSS variable
+    resolutions from the HTML.
+  - Quote `evidence` from the snapshot as JSON, including the element's
+    `tag`, `class`, and the resolved property you're citing.
+    Example evidence: \`{"tag":"dt","class":"","color":"rgb(160, 134, 88)",
+    "background_color":"rgba(0, 0, 0, 0)"}\` rather than
+    \`color: var(--text-secondary)\`.
+
+If the snapshot is absent and the rule you want to cite depends on
+the resolved value of a CSS variable, mark the finding `pablos-eye`
+and lower its severity. Do not guess.
 
 If you cannot find the exact evidence quoted from the artifact, the
 finding does not belong in the response. The Foundation prefers a

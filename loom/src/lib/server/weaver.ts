@@ -873,6 +873,7 @@ interface PabloReviewInput {
   readonly html: unknown;
   readonly label?: unknown;
   readonly topic?: unknown;
+  readonly computedStyles?: unknown;
 }
 
 interface PabloFinding {
@@ -959,14 +960,31 @@ async function pabloReview(
 
   const label = typeof input.label === 'string' ? input.label : '(no label given)';
   const topic = typeof input.topic === 'string' ? input.topic : '(no topic given)';
+
+  // Computed-styles snapshot: when the caller captured resolved CSS
+  // for the surface (in-browser `getComputedStyle` walk), include it
+  // so Pablo cites real values instead of guessing at CSS variables.
+  let stylesBlock = '';
+  if (Array.isArray(input.computedStyles) && input.computedStyles.length > 0) {
+    const trimmed = (input.computedStyles as unknown[]).slice(0, 120);
+    stylesBlock =
+      '\n\n# Resolved computed styles (browser snapshot)\n\n' +
+      'Each entry is one rendered element. Cite values from this snapshot ' +
+      'as `evidence` instead of guessing CSS variable resolutions from the HTML.\n\n' +
+      '```json\n' +
+      JSON.stringify(trimmed, null, 2).slice(0, 8000) +
+      '\n```\n';
+  }
+
   const userMessage =
     `Surface label: ${JSON.stringify(label)}\n` +
     `Wizard intent / patron task: ${JSON.stringify(topic)}\n\n` +
     `HTML artifact for review (truncated if long):\n` +
     '```html\n' +
     trimmedHtml +
-    '\n```\n\n' +
-    `Review now. Return the JSON only, opening with "{".`;
+    '\n```' +
+    stylesBlock +
+    `\n\nReview now. Return the JSON only, opening with "{".`;
 
   const result = await quietLoomChat({
     system: systemPrompt,

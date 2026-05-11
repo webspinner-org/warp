@@ -55,6 +55,52 @@
   let pabloResult = $state<any>(null);
   let pabloError = $state<string | null>(null);
 
+  function captureComputedStyles(): Array<Record<string, string>> {
+    // Walk visible elements that carry text or visual weight, capture
+    // their resolved computed styles. Sent to Pablo alongside the HTML
+    // so he stops hallucinating CSS variable values.
+    const selector =
+      'h1, h2, h3, h4, p, dt, dd, li, a, button, code, strong, em, ' +
+      '.lede, .desc, .note, .placeholder, .hint, .meta, .label, .value, .pill, ' +
+      '.kind, .sev-pill, .tag-chip, .entry-title, .verdict-text, .pablo-voice, ' +
+      '.finding-body, .fix';
+    const elements = Array.from(document.querySelectorAll(selector));
+    const snapshot: Array<Record<string, string>> = [];
+    let counter = 0;
+    for (const el of elements) {
+      if (counter >= 120) break; // cap snapshot size
+      if (!(el instanceof HTMLElement)) continue;
+      // Skip elements with no visible text
+      const text = (el.textContent || '').trim();
+      if (text.length === 0) continue;
+      // Skip elements inside the Pablo panel itself (avoid recursion)
+      if (el.closest('.pablo-panel')) continue;
+      const s = window.getComputedStyle(el);
+      // Drop noisy svelte hash from class names
+      const cls = el.className
+        .toString()
+        .replace(/\bsvelte-[a-z0-9]+\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      snapshot.push({
+        tag: el.tagName.toLowerCase(),
+        class: cls,
+        text: text.length > 100 ? text.slice(0, 100) + '…' : text,
+        color: s.color,
+        background_color: s.backgroundColor,
+        font_size: s.fontSize,
+        font_family: s.fontFamily.length > 60 ? s.fontFamily.slice(0, 60) + '…' : s.fontFamily,
+        font_weight: s.fontWeight,
+        font_style: s.fontStyle,
+        line_height: s.lineHeight,
+        letter_spacing: s.letterSpacing,
+        text_transform: s.textTransform,
+      });
+      counter++;
+    }
+    return snapshot;
+  }
+
   async function askPablo() {
     if (pabloInvoking) return;
     pabloOpen = true;
@@ -62,6 +108,7 @@
     pabloError = null;
     pabloResult = null;
     const html = document.documentElement.outerHTML;
+    const computedStyles = captureComputedStyles();
     const titleEl = document.querySelector('h1');
     const label = titleEl?.textContent?.trim() || page.url.pathname;
     const topic = `Walk this admin surface (${page.url.pathname}) and tell me what is wrong.`;
@@ -69,7 +116,10 @@
       const res = await fetch('/admin/spinners/pablo/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ capability: 'review', input: { html, label, topic } }),
+        body: JSON.stringify({
+          capability: 'review',
+          input: { html, label, topic, computedStyles },
+        }),
       });
       const body = await res.json();
       if (!res.ok || body.ok === false) {
