@@ -35,9 +35,11 @@ import {
   type JournalEntry,
 } from './journal.js';
 import { createShellRunner, ShellPermissionError, type ShellRunResult } from './shell.js';
-import { readFile } from 'node:fs/promises';
+import { addSecret, ensureCollection as ensureVaultCollection } from './secrets.js';
+import { readFile, writeFile, mkdir, chmod, stat as fsStat } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
-import { platform as osPlatform } from 'node:os';
+import { platform as osPlatform, hostname as osHostname } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import {
   ensureAuditCollection,
   writeAuditEvent,
@@ -91,7 +93,7 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
   ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
-  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'verifyCell'])],
+  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'verifyCell', 'generateBootstrapState', 'seedVault', 'deployGrimoire', 'deployLoom'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -251,6 +253,7 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
         vault,
         missionLock,
         spoolReads,
+        pbToken,
       });
       output = handled.output;
       modelTokens = handled.modelTokens;
@@ -1420,10 +1423,14 @@ interface ProvisionReport {
   readonly note: string;
 }
 
+interface GenesisDispatchContext extends BootstrapDispatchContext {
+  readonly pbToken: string;
+}
+
 async function dispatchGenesis(
   capability: string,
   input: unknown,
-  ctx: BootstrapDispatchContext,
+  ctx: GenesisDispatchContext,
 ): Promise<DispatchOutput> {
   void input;
   const shell = createShellRunner(ctx.manifest.shellAllowlist ?? []);
@@ -1441,6 +1448,14 @@ async function dispatchGenesis(
       return genesisBuildWorkspace(input, shell);
     case 'verifyCell':
       return genesisVerifyCell(input);
+    case 'generateBootstrapState':
+      return genesisGenerateBootstrapState(input);
+    case 'seedVault':
+      return genesisSeedVault(input, ctx);
+    case 'deployGrimoire':
+      return genesisDeployGrimoire(input, shell);
+    case 'deployLoom':
+      return genesisDeployLoom(input, shell);
     default:
       throw new Error(`genesis dispatch: unhandled capability "${capability}"`);
   }
@@ -1712,6 +1727,438 @@ interface ProbeResult {
   readonly status?: number;
   readonly note?: string;
   readonly durationMs: number;
+}
+
+// ── Genesis: generateBootstrapState ───────────────────────────────────────
+//
+// Writes the four bootstrap state files under ~/.warp/bootstrap/, mode
+// 0600. Files: vault-master-key (32 hex bytes), dev-bypass-token (32
+// hex bytes), pb-email, pb-password (32 hex bytes). Idempotency:
+// default refuses to overwrite an existing file; `force: true`
+// regenerates all four. Returns per-file status, NEVER the value of
+// any secret.
+
+interface GenerateBootstrapStateInput {
+  readonly force?: unknown;
+  readonly emailDomain?: unknown;
+}
+
+interface BootstrapStateFile {
+  readonly path: string;
+  readonly state: 'existed' | 'created' | 'regenerated';
+  readonly mode: string;
+}
+
+async function genesisGenerateBootstrapState(
+  rawInput: unknown,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as GenerateBootstrapStateInput;
+  const force = input.force === true;
+  const emailDomain =
+    typeof input.emailDomain === 'string' && input.emailDomain.length > 0
+      ? input.emailDomain
+      : 'cell.local';
+
+  const dir = join(HOME_DIR, '.warp', 'bootstrap');
+  await mkdir(dir, { recursive: true });
+
+  const targets = [
+    { name: 'vault-master-key', generator: () => randomBytes(32).toString('hex') },
+    { name: 'dev-bypass-token', generator: () => randomBytes(32).toString('hex') },
+    { name: 'pb-email', generator: () => `wizard@${emailDomain}` },
+    { name: 'pb-password', generator: () => randomBytes(24).toString('hex') },
+  ];
+
+  const results: BootstrapStateFile[] = [];
+
+  for (const t of targets) {
+    const fullPath = join(dir, t.name);
+    let exists = false;
+    try {
+      await fsStat(fullPath);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (exists && !force) {
+      results.push({ path: fullPath, state: 'existed', mode: '0600' });
+      continue;
+    }
+    const value = t.generator();
+    await writeFile(fullPath, value, { encoding: 'utf8', mode: 0o600 });
+    await chmod(fullPath, 0o600);
+    results.push({
+      path: fullPath,
+      state: exists ? 'regenerated' : 'created',
+      mode: '0600',
+    });
+  }
+
+  return {
+    output: {
+      directory: dir,
+      files: results,
+      hint:
+        'Values are never returned in the output. Read them via `cat ~/.warp/bootstrap/<file>` only when needed; treat the directory as the operator-trusted root of the Cell.',
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+// ── Genesis: seedVault ────────────────────────────────────────────────────
+//
+// Encrypts a batch of operator-supplied secrets with the Cell's vault
+// master key and writes them to the vault_secrets collection. Idempotency:
+// duplicate names are reported but not overwritten (use the Loom's
+// /admin/vault Delete-then-Add to rotate). Per Operating Principle §17.2
+// the values must NOT pass through Claude Code; the canonical paths for
+// the Wizard are (a) /admin/vault hand-entry, (b) seedVault invoked from
+// terminal with values sourced from his keychain. This handler is the
+// (b) path's server side.
+
+interface SeedVaultInput {
+  readonly secrets?: unknown;
+}
+
+interface SeedSecret {
+  readonly name: string;
+  readonly description?: string;
+  readonly value: string;
+}
+
+interface SeedResult {
+  readonly name: string;
+  readonly state: 'created' | 'duplicate' | 'invalid' | 'error';
+  readonly note?: string;
+}
+
+async function genesisSeedVault(
+  rawInput: unknown,
+  ctx: GenesisDispatchContext,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as SeedVaultInput;
+  if (!Array.isArray(input.secrets)) {
+    throw new Error('seedVault requires `secrets: [{ name, value, description? }]`.');
+  }
+  const secrets: SeedSecret[] = [];
+  for (const raw of input.secrets as unknown[]) {
+    if (!raw || typeof raw !== 'object') continue;
+    const o = raw as Record<string, unknown>;
+    if (typeof o['name'] !== 'string' || typeof o['value'] !== 'string') continue;
+    secrets.push({
+      name: o['name'] as string,
+      value: o['value'] as string,
+      description: typeof o['description'] === 'string' ? (o['description'] as string) : '',
+    });
+  }
+
+  const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
+  if (!masterKey) {
+    throw new Error(
+      'seedVault: WARP_VAULT_MASTER_KEY is not set in the Loom\'s env. Run generateBootstrapState first and reload the Loom plist.',
+    );
+  }
+  await ensureVaultCollection(fetch, ctx.pbToken);
+
+  const results: SeedResult[] = [];
+  for (const s of secrets) {
+    try {
+      const r = await addSecret(
+        fetch,
+        ctx.pbToken,
+        masterKey,
+        s.name,
+        s.value,
+        s.description ?? '',
+      );
+      if (r.ok) {
+        results.push({ name: s.name, state: 'created' });
+      } else if (r.error.kind === 'duplicate-name') {
+        results.push({ name: s.name, state: 'duplicate', note: 'a secret with this name already exists' });
+      } else if (r.error.kind === 'invalid-name') {
+        results.push({ name: s.name, state: 'invalid', note: 'name must match [a-zA-Z0-9_./-]+' });
+      } else {
+        results.push({
+          name: s.name,
+          state: 'error',
+          note: `backend error: ${JSON.stringify(r.error)}`,
+        });
+      }
+    } catch (e) {
+      results.push({ name: s.name, state: 'error', note: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  const created = results.filter((r) => r.state === 'created').length;
+  const duplicate = results.filter((r) => r.state === 'duplicate').length;
+  const errored = results.filter((r) => r.state === 'error' || r.state === 'invalid').length;
+
+  return {
+    output: {
+      attempted: secrets.length,
+      created,
+      duplicate,
+      errored,
+      results,
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+// ── Genesis: deployGrimoire and deployLoom ────────────────────────────────
+//
+// Both write a launchd plist under ~/Library/LaunchAgents/ and load it
+// via launchctl. Linux systemd path is a separate decision
+// (OPEN_QUESTIONS.md). macOS-only for v0.2; refuses if osPlatform() !==
+// 'darwin' so the linux path lands explicitly when written.
+
+interface DeployServiceInput {
+  readonly force?: unknown;
+  readonly plistPath?: unknown;
+}
+
+interface DeployResult {
+  readonly plistPath: string;
+  readonly state: 'existed-unchanged' | 'created' | 'updated';
+  readonly loaded: boolean;
+  readonly note?: string;
+}
+
+async function writeAndLoadPlist(
+  args: {
+    readonly label: string;
+    readonly plistPath: string;
+    readonly content: string;
+    readonly force: boolean;
+  },
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DeployResult> {
+  let prior: string | undefined;
+  try {
+    prior = await readFile(args.plistPath, 'utf8');
+  } catch {
+    prior = undefined;
+  }
+  const unchanged = prior !== undefined && prior === args.content;
+  if (unchanged) {
+    // Verify it's loaded.
+    const list = await shell.run({ command: 'launchctl', args: ['list', args.label], timeoutMs: 3_000 });
+    const loaded = list.exitCode === 0;
+    return { plistPath: args.plistPath, state: 'existed-unchanged', loaded };
+  }
+  if (prior !== undefined && !args.force) {
+    return {
+      plistPath: args.plistPath,
+      state: 'existed-unchanged',
+      loaded: false,
+      note: 'plist differs from the on-disk version; pass `force: true` to update.',
+    };
+  }
+
+  await mkdir(resolvePath(args.plistPath, '..'), { recursive: true });
+  await writeFile(args.plistPath, args.content, { encoding: 'utf8', mode: 0o600 });
+  await chmod(args.plistPath, 0o600);
+
+  // bootout (best-effort), then bootstrap.
+  const uid = process.getuid?.() ?? 501;
+  await shell.run({ command: 'launchctl', args: ['bootout', `gui/${uid}/${args.label}`], timeoutMs: 3_000 }).catch(() => undefined);
+  const boot = await shell.run({
+    command: 'launchctl',
+    args: ['bootstrap', `gui/${uid}`, args.plistPath],
+    timeoutMs: 5_000,
+  });
+  const loaded = boot.exitCode === 0;
+  return {
+    plistPath: args.plistPath,
+    state: prior !== undefined ? 'updated' : 'created',
+    loaded,
+    note: loaded ? undefined : `launchctl bootstrap exited ${boot.exitCode}: ${boot.stderr.trim()}`,
+  };
+}
+
+interface DeployGrimoireInput extends DeployServiceInput {
+  readonly pocketbaseBin?: unknown;
+  readonly dataDir?: unknown;
+  readonly port?: unknown;
+}
+
+async function genesisDeployGrimoire(
+  rawInput: unknown,
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DispatchOutput> {
+  if (osPlatform() !== 'darwin') {
+    throw new Error(
+      'deployGrimoire v0.2 is macOS-only (launchd). Linux systemd path is open work.',
+    );
+  }
+  const input = (rawInput ?? {}) as DeployGrimoireInput;
+  const force = input.force === true;
+  const label = 'foundation.webspinner.grimoire';
+  const plistPath =
+    typeof input.plistPath === 'string' && input.plistPath.length > 0
+      ? resolveTargetPath(input.plistPath, '')
+      : join(HOME_DIR, 'Library', 'LaunchAgents', `${label}.plist`);
+  const pbBin =
+    typeof input.pocketbaseBin === 'string' && input.pocketbaseBin.length > 0
+      ? input.pocketbaseBin
+      : '/opt/homebrew/bin/pocketbase';
+  const dataDir =
+    typeof input.dataDir === 'string' && input.dataDir.length > 0
+      ? input.dataDir
+      : join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Grimoire', 'pb_data');
+  const port = typeof input.port === 'number' && input.port > 0 ? input.port : 8090;
+
+  await mkdir(dataDir, { recursive: true });
+  const logDir = join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Grimoire', 'logs');
+  await mkdir(logDir, { recursive: true });
+
+  const content = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${pbBin}</string>
+    <string>serve</string>
+    <string>--http</string>
+    <string>127.0.0.1:${port}</string>
+    <string>--dir</string>
+    <string>${dataDir}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${join(logDir, 'grimoire.out.log')}</string>
+  <key>StandardErrorPath</key>
+  <string>${join(logDir, 'grimoire.err.log')}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>${HOME_DIR}</string>
+  </dict>
+</dict>
+</plist>
+`;
+
+  const result = await writeAndLoadPlist({ label, plistPath, content, force }, shell);
+  return {
+    output: { service: 'grimoire', label, port, dataDir, ...result },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+interface DeployLoomInput extends DeployServiceInput {
+  readonly nodeBin?: unknown;
+  readonly loomEntry?: unknown;
+  readonly port?: unknown;
+  readonly origin?: unknown;
+}
+
+async function genesisDeployLoom(
+  rawInput: unknown,
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DispatchOutput> {
+  if (osPlatform() !== 'darwin') {
+    throw new Error(
+      'deployLoom v0.2 is macOS-only (launchd). Linux systemd path is open work.',
+    );
+  }
+  const input = (rawInput ?? {}) as DeployLoomInput;
+  const force = input.force === true;
+  const label = 'foundation.webspinner.loom';
+  const plistPath =
+    typeof input.plistPath === 'string' && input.plistPath.length > 0
+      ? resolveTargetPath(input.plistPath, '')
+      : join(HOME_DIR, 'Library', 'LaunchAgents', `${label}.plist`);
+  const nodeBin =
+    typeof input.nodeBin === 'string' && input.nodeBin.length > 0
+      ? input.nodeBin
+      : '/opt/homebrew/bin/node';
+  const loomEntry =
+    typeof input.loomEntry === 'string' && input.loomEntry.length > 0
+      ? input.loomEntry
+      : join(HOME_DIR, 'warp', 'loom', 'build', 'index.js');
+  const port = typeof input.port === 'number' && input.port > 0 ? input.port : 3000;
+  const origin =
+    typeof input.origin === 'string' && input.origin.length > 0
+      ? input.origin
+      : `http://${osHostname()}:${port}`;
+  const logDir = join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Loom', 'logs');
+  await mkdir(logDir, { recursive: true });
+
+  const content = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${nodeBin}</string>
+    <string>${loomEntry}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${join(logDir, 'loom.out.log')}</string>
+  <key>StandardErrorPath</key>
+  <string>${join(logDir, 'loom.err.log')}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>${HOME_DIR}</string>
+    <key>HOST</key>
+    <string>0.0.0.0</string>
+    <key>PORT</key>
+    <string>${port}</string>
+    <key>ORIGIN</key>
+    <string>${origin}</string>
+    <key>PROTOCOL_HEADER</key>
+    <string>x-forwarded-proto</string>
+    <key>HOST_HEADER</key>
+    <string>x-forwarded-host</string>
+    <key>WARP_REPO_DIR</key>
+    <string>${join(HOME_DIR, 'warp')}</string>
+  </dict>
+</dict>
+</plist>
+`;
+
+  const result = await writeAndLoadPlist({ label, plistPath, content, force }, shell);
+  return {
+    output: {
+      service: 'loom',
+      label,
+      port,
+      origin,
+      loomEntry,
+      ...result,
+      note:
+        result.note ||
+        'Loom plist written. Note: this v0.2 deployLoom does not set vault master key, PB superuser creds, or Resend keys — those env vars come from generateBootstrapState + manual plist enrichment for now.',
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
 }
 
 async function genesisVerifyCell(rawInput: unknown): Promise<DispatchOutput> {
