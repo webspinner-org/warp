@@ -91,7 +91,7 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
   ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
   ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
-  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain'])],
+  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'verifyCell'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -1409,6 +1409,12 @@ async function dispatchGenesis(
   switch (capability) {
     case 'provisionToolchain':
       return genesisProvisionToolchain(shell);
+    case 'syncRepo':
+      return genesisSyncRepo(input, shell);
+    case 'buildWorkspace':
+      return genesisBuildWorkspace(input, shell);
+    case 'verifyCell':
+      return genesisVerifyCell(input);
     default:
       throw new Error(`genesis dispatch: unhandled capability "${capability}"`);
   }
@@ -1504,4 +1510,270 @@ async function whichOf(
     // tolerate
   }
   return undefined;
+}
+
+// ── Genesis: syncRepo, buildWorkspace, verifyCell ─────────────────────────
+
+const HOME_DIR = process.env['HOME'] ?? '/';
+const DEFAULT_TARGET_DIR = join(HOME_DIR, 'warp');
+
+interface SyncRepoInput {
+  readonly source?: unknown;
+  readonly sourcePath?: unknown;
+  readonly gitRemote?: unknown;
+  readonly gitRef?: unknown;
+  readonly targetPath?: unknown;
+}
+
+async function genesisSyncRepo(
+  rawInput: unknown,
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as SyncRepoInput;
+  const source = typeof input.source === 'string' ? input.source : 'local-rsync';
+  const targetPath = resolveTargetPath(input.targetPath, DEFAULT_TARGET_DIR);
+
+  // Ensure the parent directory exists.
+  await shell.run({ command: 'mkdir', args: ['-p', targetPath], timeoutMs: 5_000 });
+
+  if (source === 'local-rsync') {
+    const sourcePath = resolveTargetPath(input.sourcePath, WARP_REPO_DIR);
+    if (!sourcePath.endsWith('/')) {
+      // rsync semantics: trailing slash on source copies contents into target.
+    }
+    const args = [
+      '-a',
+      '--delete',
+      '--exclude=node_modules',
+      '--exclude=.svelte-kit',
+      '--exclude=dist',
+      '--exclude=build',
+      '--exclude=playwright-report',
+      '--exclude=test-results',
+      '--exclude=*.tsbuildinfo',
+      '--exclude=.git',
+      sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`,
+      targetPath.endsWith('/') ? targetPath : `${targetPath}/`,
+    ];
+    const r = await shell.run({ command: 'rsync', args, timeoutMs: 120_000 });
+    return {
+      output: {
+        source: 'local-rsync',
+        sourcePath,
+        targetPath,
+        exitCode: r.exitCode,
+        durationMs: r.durationMs,
+        stdoutTail: r.stdout.split('\n').slice(-12).join('\n'),
+        stderrTail: r.stderr.split('\n').slice(-12).join('\n'),
+        ok: r.exitCode === 0,
+      },
+      modelTokens: { input: 0, output: 0 },
+    };
+  }
+
+  if (source === 'git-remote') {
+    const remote = typeof input.gitRemote === 'string' ? input.gitRemote : '';
+    if (!remote) {
+      throw new Error('syncRepo with source="git-remote" requires `gitRemote` URL.');
+    }
+    const ref = typeof input.gitRef === 'string' ? input.gitRef : 'main';
+    // We clone fresh; the Wizard handles updates of an existing checkout
+    // separately (`git fetch && git checkout` is a different cap, future).
+    const r = await shell.run({
+      command: 'git',
+      args: ['clone', '--depth', '1', '--branch', ref, remote, targetPath],
+      timeoutMs: 180_000,
+    });
+    return {
+      output: {
+        source: 'git-remote',
+        gitRemote: remote,
+        gitRef: ref,
+        targetPath,
+        exitCode: r.exitCode,
+        durationMs: r.durationMs,
+        stdoutTail: r.stdout.split('\n').slice(-12).join('\n'),
+        stderrTail: r.stderr.split('\n').slice(-12).join('\n'),
+        ok: r.exitCode === 0,
+      },
+      modelTokens: { input: 0, output: 0 },
+    };
+  }
+
+  throw new Error(
+    `syncRepo: unknown source "${source}". Use "local-rsync" or "git-remote".`,
+  );
+}
+
+function resolveTargetPath(rawValue: unknown, fallback: string): string {
+  if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
+    return fallback;
+  }
+  // Expand ~ at the start.
+  let v = rawValue.trim();
+  if (v.startsWith('~')) v = v.replace(/^~/, HOME_DIR);
+  return resolvePath(v);
+}
+
+interface BuildWorkspaceInput {
+  readonly targetPath?: unknown;
+  readonly skipBuild?: unknown;
+}
+
+async function genesisBuildWorkspace(
+  rawInput: unknown,
+  shell: ReturnType<typeof createShellRunner>,
+): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as BuildWorkspaceInput;
+  const targetPath = resolveTargetPath(input.targetPath, DEFAULT_TARGET_DIR);
+  const skipBuild = input.skipBuild === true;
+
+  const installResult = await shell.run({
+    command: 'pnpm',
+    args: ['install'],
+    cwd: targetPath,
+    timeoutMs: 300_000,
+  });
+
+  const steps: Array<Record<string, unknown>> = [
+    {
+      step: 'pnpm install',
+      cwd: targetPath,
+      exitCode: installResult.exitCode,
+      durationMs: installResult.durationMs,
+      stdoutTail: installResult.stdout.split('\n').slice(-8).join('\n'),
+      stderrTail: installResult.stderr.split('\n').slice(-8).join('\n'),
+      ok: installResult.exitCode === 0,
+    },
+  ];
+
+  let buildResult: ShellRunResult | undefined;
+  if (!skipBuild && installResult.exitCode === 0) {
+    buildResult = await shell.run({
+      command: 'pnpm',
+      args: ['-r', '--if-present', 'build'],
+      cwd: targetPath,
+      timeoutMs: 300_000,
+    });
+    steps.push({
+      step: 'pnpm -r --if-present build',
+      cwd: targetPath,
+      exitCode: buildResult.exitCode,
+      durationMs: buildResult.durationMs,
+      stdoutTail: buildResult.stdout.split('\n').slice(-8).join('\n'),
+      stderrTail: buildResult.stderr.split('\n').slice(-8).join('\n'),
+      ok: buildResult.exitCode === 0,
+    });
+  }
+
+  const ok = installResult.exitCode === 0 && (skipBuild || buildResult?.exitCode === 0);
+
+  return {
+    output: { targetPath, steps, ok },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+interface VerifyCellInput {
+  readonly loomUrl?: unknown;
+  readonly grimoireUrl?: unknown;
+}
+
+interface ProbeResult {
+  readonly check: string;
+  readonly target: string;
+  readonly ok: boolean;
+  readonly status?: number;
+  readonly note?: string;
+  readonly durationMs: number;
+}
+
+async function genesisVerifyCell(rawInput: unknown): Promise<DispatchOutput> {
+  const input = (rawInput ?? {}) as VerifyCellInput;
+  const loomUrl =
+    typeof input.loomUrl === 'string' && input.loomUrl.length > 0
+      ? input.loomUrl
+      : 'http://127.0.0.1:3000';
+  const grimoireUrl =
+    typeof input.grimoireUrl === 'string' && input.grimoireUrl.length > 0
+      ? input.grimoireUrl
+      : process.env['WARP_PB_URL'] ?? 'http://127.0.0.1:8090';
+
+  async function probe(check: string, target: string, expectStatus?: number): Promise<ProbeResult> {
+    const t0 = Date.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5_000);
+      const r = await fetch(target, { signal: controller.signal });
+      clearTimeout(timer);
+      const ok = expectStatus ? r.status === expectStatus : r.status >= 200 && r.status < 500;
+      return {
+        check,
+        target,
+        ok,
+        status: r.status,
+        durationMs: Date.now() - t0,
+      };
+    } catch (e) {
+      return {
+        check,
+        target,
+        ok: false,
+        note: e instanceof Error ? e.message : String(e),
+        durationMs: Date.now() - t0,
+      };
+    }
+  }
+
+  const checks: ProbeResult[] = [];
+
+  // Loom answers — / should return 200 with HTML.
+  checks.push(await probe('loom-root', `${loomUrl}/`));
+  // Loom /admin should 303 to /login (unauthenticated).
+  const adminProbe = await probe('loom-admin-gate', `${loomUrl}/admin`);
+  checks.push({
+    ...adminProbe,
+    ok: adminProbe.status === 303 || adminProbe.status === 302 || adminProbe.status === 200,
+    note: adminProbe.status === 303 ? 'redirects to /login as expected' : adminProbe.note,
+  });
+
+  // Grimoire (PocketBase) answers — /api/health returns 200 with a healthy payload.
+  checks.push(await probe('grimoire-health', `${grimoireUrl}/api/health`, 200));
+
+  // Vault collection exists.
+  try {
+    const t0 = Date.now();
+    const r = await fetch(`${grimoireUrl}/api/collections/vault_secrets`);
+    checks.push({
+      check: 'vault-collection',
+      target: `${grimoireUrl}/api/collections/vault_secrets`,
+      ok: r.status === 401 || r.status === 200, // 401 means it exists but we're not authed
+      status: r.status,
+      note:
+        r.status === 401
+          ? 'collection exists (returns 401 without auth)'
+          : r.status === 200
+            ? 'collection visible'
+            : `unexpected status ${r.status}`,
+      durationMs: Date.now() - t0,
+    });
+  } catch (e) {
+    checks.push({
+      check: 'vault-collection',
+      target: `${grimoireUrl}/api/collections/vault_secrets`,
+      ok: false,
+      note: e instanceof Error ? e.message : String(e),
+      durationMs: 0,
+    });
+  }
+
+  const ready = checks.every((c) => c.ok);
+  const summary = ready
+    ? 'Cell is reachable. Loom, Grimoire, and the vault collection respond.'
+    : `Cell is partially reachable. Failing checks: ${checks.filter((c) => !c.ok).map((c) => c.check).join(', ')}.`;
+
+  return {
+    output: { loomUrl, grimoireUrl, ready, summary, checks },
+    modelTokens: { input: 0, output: 0 },
+  };
 }

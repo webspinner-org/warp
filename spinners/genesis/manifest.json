@@ -85,7 +85,9 @@
     "git",
     "launchctl",
     "ls",
-    "stat"
+    "stat",
+    "rsync",
+    "mkdir"
   ],
   "documentation": {
     "howItWorks": "./how-it-works.md",
