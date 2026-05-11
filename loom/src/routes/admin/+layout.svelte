@@ -54,6 +54,47 @@
   let pabloInvoking = $state(false);
   let pabloResult = $state<any>(null);
   let pabloError = $state<string | null>(null);
+  let pabloElapsed = $state(0);
+  let pabloPhase = $state('Sending to Pablo');
+  let pabloController: AbortController | null = null;
+  let pabloTimerId: ReturnType<typeof setInterval> | null = null;
+
+  const PABLO_PHASES = [
+    { atSec: 0, label: 'Sending to Pablo' },
+    { atSec: 4, label: 'Walking the surface' },
+    { atSec: 12, label: 'Consulting the library' },
+    { atSec: 28, label: 'Drafting findings' },
+    { atSec: 55, label: 'Pablo is still working — this prompt is heavy' },
+  ];
+
+  function startPabloTimer() {
+    pabloElapsed = 0;
+    pabloPhase = PABLO_PHASES[0].label;
+    const t0 = Date.now();
+    pabloTimerId = setInterval(() => {
+      pabloElapsed = Math.floor((Date.now() - t0) / 1000);
+      for (const p of PABLO_PHASES) {
+        if (pabloElapsed >= p.atSec) pabloPhase = p.label;
+      }
+    }, 250);
+  }
+
+  function stopPabloTimer() {
+    if (pabloTimerId !== null) {
+      clearInterval(pabloTimerId);
+      pabloTimerId = null;
+    }
+  }
+
+  function cancelPablo() {
+    if (pabloController) {
+      pabloController.abort();
+      pabloController = null;
+    }
+    stopPabloTimer();
+    pabloInvoking = false;
+    pabloError = 'Cancelled. Quiet Loom may still be generating in the background; future invocations will reuse its warmed prompt cache.';
+  }
 
   function captureComputedStyles(): Array<Record<string, string>> {
     // Walk visible elements that carry text or visual weight, capture
@@ -112,6 +153,12 @@
     const titleEl = document.querySelector('h1');
     const label = titleEl?.textContent?.trim() || page.url.pathname;
     const topic = `Walk this admin surface (${page.url.pathname}) and tell me what is wrong.`;
+
+    pabloController = new AbortController();
+    // Hard cap: 120 s. Past that, Quiet Loom is almost certainly stuck.
+    const timeoutId = setTimeout(() => pabloController?.abort('timeout'), 120_000);
+    startPabloTimer();
+
     try {
       const res = await fetch('/admin/spinners/pablo/invoke', {
         method: 'POST',
@@ -120,6 +167,7 @@
           capability: 'review',
           input: { html, label, topic, computedStyles },
         }),
+        signal: pabloController.signal,
       });
       const body = await res.json();
       if (!res.ok || body.ok === false) {
@@ -129,8 +177,18 @@
         pabloResult = body;
       }
     } catch (e) {
-      pabloError = e instanceof Error ? e.message : String(e);
+      if (pabloController?.signal.aborted && pabloController.signal.reason === 'timeout') {
+        pabloError =
+          'Pablo timed out after 120 s. The Quiet Loom is likely overwhelmed by a heavy prompt; try again — the prompt cache may make the next run much faster.';
+      } else if (pabloController?.signal.aborted) {
+        // user cancelled — message already set in cancelPablo()
+      } else {
+        pabloError = e instanceof Error ? e.message : String(e);
+      }
     } finally {
+      clearTimeout(timeoutId);
+      pabloController = null;
+      stopPabloTimer();
       pabloInvoking = false;
     }
   }
@@ -210,7 +268,13 @@
       {#if pabloInvoking}
         <div class="working">
           <div class="spinner" aria-hidden="true"></div>
-          <p>Pablo is walking the surface — this takes 15-30s on the Cell's Quiet Loom.</p>
+          <p class="phase">{pabloPhase}</p>
+          <p class="elapsed">{pabloElapsed}s</p>
+          <button type="button" class="cancel" onclick={cancelPablo}>Cancel</button>
+          <p class="hint">
+            Quiet Loom on 14B usually finishes in 30-60 s on a warm prompt cache. Cold prompts can
+            take ~90 s.
+          </p>
         </div>
       {:else if pabloError}
         <div class="panel-error" role="alert">
@@ -292,10 +356,15 @@
       sans-serif;
   }
 
+  /* Window-level scrolling — `main` and `nav` no longer claim their
+     own `overflow-y`. The first-render-no-scroll bug came from
+     `main` carrying `overflow-y: auto` while grid resolved its height
+     intermittently. The ribbon stays put via `position: sticky`; the
+     nav follows suit at top: 72px. */
   .shell {
     display: grid;
     grid-template-columns: 220px 1fr;
-    grid-template-rows: 72px 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-areas:
       'ribbon ribbon'
       'nav main';
@@ -310,6 +379,10 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 1.25rem;
+    height: 72px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
   }
 
   .ribbon-brand {
@@ -372,6 +445,10 @@
     background: #060606;
     border-right: 1px solid #1a1a1a;
     padding: 1.5rem 0;
+    position: sticky;
+    top: 72px;
+    align-self: start;
+    max-height: calc(100vh - 72px);
     overflow-y: auto;
   }
 
@@ -417,7 +494,8 @@
   main {
     grid-area: main;
     padding: 2rem;
-    overflow-y: auto;
+    /* No overflow constraint — window scroll handles long content.
+       The sticky ribbon stays visible; the sticky nav stays beside. */
   }
 
   /* ── Pablo trigger button + panel ──────────────────────────────── */
@@ -559,6 +637,46 @@
     border: 2px solid var(--line);
     border-top-color: var(--gold);
     animation: spin 0.9s linear infinite;
+  }
+
+  .pablo-panel .working .phase {
+    color: var(--gold);
+    font-family: var(--font-prose, 'Iowan Old Style');
+    font-style: italic;
+    font-size: 1.05rem;
+    margin: 0;
+  }
+
+  .pablo-panel .working .elapsed {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+
+  .pablo-panel .working .cancel {
+    background: transparent;
+    color: var(--text-mute);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.3rem 0.9rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 0.35rem;
+  }
+
+  .pablo-panel .working .cancel:hover {
+    color: var(--text);
+    border-color: #2a2a2a;
+  }
+
+  .pablo-panel .working .hint {
+    color: var(--text-mute);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    max-width: 28ch;
+    margin-top: 0.6rem;
   }
 
   @keyframes spin {

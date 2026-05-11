@@ -966,19 +966,31 @@ async function pabloReview(
   const trimmedHtml = trimHtmlForReview(input.html);
 
   // Pablo's library — concatenated from the `pablo-references` Spool
-  // declared in his manifest. Each library file shows up as a passage
-  // tagged "library/<filename>"; Pablo cites them by that path in his
-  // findings. Falls back gracefully when the spool is empty (e.g.
-  // before the library files are committed).
+  // declared in his manifest. Capped to a token budget so the prompt
+  // doesn't blow past the model's prompt-processing comfort zone.
+  // Files included in order; each truncated; first dropped when over
+  // budget. Pablo cites by `library/<file>` path.
   const libraryPassages = ctx.spoolReads['library'] ?? [];
-  const libraryBlock =
-    libraryPassages.length > 0
-      ? '# Pablo library — cited references\n\n' +
-        libraryPassages
-          .map((p) => `## ${p.source}\n\n${p.content.trim()}`)
-          .join('\n\n---\n\n') +
-        '\n\nWhen you cite a rule, use the path as written (e.g. `library/contrast.md`).'
-      : '';
+  const LIBRARY_BUDGET_CHARS = 12_000;
+  const PER_FILE_CAP = 2_400;
+  let libraryBlock = '';
+  if (libraryPassages.length > 0) {
+    let runningTotal = 0;
+    const sections: string[] = [];
+    for (const p of libraryPassages) {
+      if (runningTotal >= LIBRARY_BUDGET_CHARS) break;
+      const trimmed = p.content.trim();
+      const headerLen = `## ${p.source}\n\n`.length;
+      const allowed = Math.min(PER_FILE_CAP, LIBRARY_BUDGET_CHARS - runningTotal - headerLen);
+      const slice = trimmed.length > allowed ? trimmed.slice(0, allowed) + '\n\n_[trimmed]_' : trimmed;
+      sections.push(`## ${p.source}\n\n${slice}`);
+      runningTotal += headerLen + slice.length + 6;
+    }
+    libraryBlock =
+      '# Pablo library — cited references\n\n' +
+      sections.join('\n\n---\n\n') +
+      '\n\nWhen you cite a rule, use the path as written (e.g. `library/contrast.md`).';
+  }
 
   const systemPrompt = libraryBlock
     ? `${libraryBlock}\n\n---\n\n${ctx.missionLock}`
@@ -990,15 +1002,16 @@ async function pabloReview(
   // Computed-styles snapshot: when the caller captured resolved CSS
   // for the surface (in-browser `getComputedStyle` walk), include it
   // so Pablo cites real values instead of guessing at CSS variables.
+  // Trimmed to 40 elements + compact JSON to keep the prompt short.
   let stylesBlock = '';
   if (Array.isArray(input.computedStyles) && input.computedStyles.length > 0) {
-    const trimmed = (input.computedStyles as unknown[]).slice(0, 120);
+    const trimmed = (input.computedStyles as unknown[]).slice(0, 40);
     stylesBlock =
       '\n\n# Resolved computed styles (browser snapshot)\n\n' +
       'Each entry is one rendered element. Cite values from this snapshot ' +
-      'as `evidence` instead of guessing CSS variable resolutions from the HTML.\n\n' +
+      'as `evidence` instead of guessing CSS variable resolutions.\n\n' +
       '```json\n' +
-      JSON.stringify(trimmed, null, 2).slice(0, 8000) +
+      JSON.stringify(trimmed).slice(0, 4000) +
       '\n```\n';
   }
 
@@ -1037,12 +1050,14 @@ async function pabloReview(
 }
 
 function trimHtmlForReview(html: string): string {
-  const limit = 12_000;
+  // Aggressive trim — Pablo doesn't need every byte. Total ~6KB max.
+  const limit = 6_000;
   if (html.length <= limit) return html;
   const headEndIdx = html.indexOf('</head>');
-  const headEnd = headEndIdx > 0 ? headEndIdx + 7 : 4_000;
-  const head = html.slice(0, Math.max(headEnd, 4_000));
-  const bodySlice = headEnd > 0 ? html.slice(headEnd, headEnd + 8_000) : html.slice(4_000, 12_000);
+  const headEnd = headEndIdx > 0 ? Math.min(headEndIdx + 7, 2_000) : 2_000;
+  const head = html.slice(0, Math.max(headEnd, 1_500));
+  const bodySlice =
+    headEnd > 0 ? html.slice(headEnd, headEnd + 4_000) : html.slice(2_000, 6_000);
   return head + '\n<!-- … (body truncated for review) … -->\n' + bodySlice;
 }
 
