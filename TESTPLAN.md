@@ -490,7 +490,8 @@ These are tracked in `OPEN_QUESTIONS.md` and stay there until they ship.
 
 If a step doesn't behave as expected:
 
-  - **Loom unreachable** — `launchctl kickstart -k gui/$(id -u)/foundation.webspinner.loom` on Kepler.
+  - **`/` or `/admin` returns HTTP 500 with "Cannot find module '...chunks/<hash>.js'"** — stale build manifest. Run `~/warp/tools/deploy-loom` on Kepler (clean rebuild + bootout/bootstrap; the safe reload). `launchctl kickstart -k` alone is NOT enough after a rebuild that regenerates chunk hashes — it restarts the process but the on-disk manifest references chunks vite already deleted.
+  - **Loom unreachable (no response at all)** — `launchctl kickstart -k gui/$(id -u)/foundation.webspinner.loom` on Kepler. If kickstart doesn't help, run `~/warp/tools/deploy-loom` (full reload).
   - **Quiet Loom slow / hanging** — `tail ~/Library/Logs/webspinner-mlx-server/stderr.log`; if the semaphore-leak signal appears (`OPEN_QUESTIONS.md` — *Quiet Loom — 14B model stability*), bootout/bootstrap the mlx-server.
   - **PocketBase errors in the Loom log** — `tail ~/Library/Application Support/Webspinner Foundation/Loom/logs/loom.err.log`.
   - **Pablo hallucinated CSS** — the in-browser button captures computed styles; the CLI path doesn't (yet). Use ⌘⇧P for accuracy.

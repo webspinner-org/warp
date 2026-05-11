@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# tools/deploy-loom — safe Loom reload after a code change.
+#
+# The lesson logged 2026-05-10 evening: `launchctl kickstart -k` is NOT
+# safe after a `pnpm build` that regenerates chunk hashes. The running
+# Node process keeps its module-resolver cache, and the on-disk
+# `manifest.js` may reference chunks that vite just deleted under it,
+# producing `Cannot find module '.../chunks/<hash>.js'` 500s on routes
+# whose chunks were renamed.
+#
+# Safe sequence:
+#
+#   1. Clean `build/` and `.svelte-kit/` so vite emits a fresh,
+#      internally-consistent manifest+chunks set.
+#   2. Build (typecheck optional — pass --typecheck if you want it).
+#   3. `launchctl bootout` the loom agent, then `launchctl bootstrap`
+#      it — a full reload, not a kickstart.
+#   4. Smoke `/`, `/login`, `/admin` to confirm.
+#
+# Usage:
+#
+#   tools/deploy-loom              # rsync (if SPINDLE_SYNC=1) → clean build → bootout/bootstrap → smoke
+#   tools/deploy-loom --typecheck  # additionally typecheck before build
+#   tools/deploy-loom --no-clean   # skip the build/ clean (faster, riskier)
+#
+# Reads ~/warp/.env or the WARP_LOOM_BASE env var for the smoke URL.
+
+set -euo pipefail
+
+WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+LABEL='foundation.webspinner.loom'
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+with_typecheck=false
+clean=true
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --typecheck) with_typecheck=true; shift;;
+    --no-clean)  clean=false; shift;;
+    -h|--help) sed -n '4,28p' "$0"; exit 0;;
+    *) echo "unknown flag: $1" >&2; exit 1;;
+  esac
+done
+
+cd "$WARP_DIR"
+
+if $clean; then
+  echo "→ removing loom/build and loom/.svelte-kit"
+  rm -rf loom/build loom/.svelte-kit
+fi
+
+if $with_typecheck; then
+  echo "→ pnpm typecheck"
+  pnpm -r --if-present typecheck 2>&1 | tail -5
+fi
+
+echo "→ pnpm build"
+pnpm -r --if-present build 2>&1 | tail -3
+
+UID_=$(id -u)
+echo "→ launchctl bootout $LABEL  (best effort)"
+launchctl bootout "gui/$UID_/$LABEL" 2>&1 || true
+sleep 1
+echo "→ launchctl bootstrap $LABEL"
+launchctl bootstrap "gui/$UID_" "$PLIST"
+sleep 3
+
+echo ""
+echo "→ smoke"
+for p in / /login /admin; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" "$LOOM_BASE$p" 2>/dev/null || echo "000")
+  case "$p:$code" in
+    /:200|/login:200|/admin:303) ok='✓';;
+    *) ok='✗';;
+  esac
+  echo "   $ok  $p → HTTP $code"
+done
