@@ -39,6 +39,56 @@
   let bootstrapScope = $state('');
   let bootstrapHorizon = $state(14);
 
+  // Genesis capabilities — eight handlers across read-only probes
+  // and host-mutating provisioning. Forms keyed by capability name.
+  const isGenesis = data.manifest.name === '@webspinner-foundation/genesis';
+
+  // syncRepo
+  let syncSource = $state<'local-rsync' | 'git-remote'>('local-rsync');
+  let syncSourcePath = $state('');
+  let syncGitRemote = $state('');
+  let syncGitRef = $state('main');
+  let syncTargetPath = $state('');
+
+  // buildWorkspace
+  let buildTargetPath = $state('');
+  let buildSkip = $state(false);
+
+  // verifyCell
+  let verifyLoomUrl = $state('');
+  let verifyGrimoireUrl = $state('');
+
+  // generateBootstrapState
+  let genStateForce = $state(false);
+  let genStateEmailDomain = $state('cell.local');
+
+  // seedVault
+  let seedVaultJson = $state(
+    '[\n  {"name": "anthropic-api-key", "value": "sk-…", "description": "build-time only"}\n]',
+  );
+
+  // deployGrimoire
+  let deployGrimoireForce = $state(false);
+  let deployGrimoirePort = $state(8090);
+  let deployGrimoireDataDir = $state('');
+  let deployGrimoireBin = $state('');
+
+  // deployLoom
+  let deployLoomForce = $state(false);
+  let deployLoomPort = $state(3000);
+  let deployLoomOrigin = $state('');
+  let deployLoomNodeBin = $state('');
+  let deployLoomEntry = $state('');
+
+  // Confirmation gate for host-mutating Genesis capabilities.
+  let confirmDestructive = $state(false);
+  const destructiveCaps = new Set([
+    'generateBootstrapState',
+    'seedVault',
+    'deployGrimoire',
+    'deployLoom',
+  ]);
+
   function buildInput(): { ok: true; value: unknown } | { ok: false; error: string } {
     switch (activeCapability) {
       case 'consult': {
@@ -87,6 +137,71 @@
           v.horizonDays = bootstrapHorizon;
         return { ok: true, value: v };
       }
+      case 'provisionToolchain':
+        return { ok: true, value: {} };
+      case 'syncRepo': {
+        const v: Record<string, unknown> = { source: syncSource };
+        if (syncSource === 'local-rsync') {
+          if (syncSourcePath.trim().length > 0) v.sourcePath = syncSourcePath.trim();
+        } else {
+          if (syncGitRemote.trim().length === 0)
+            return { ok: false, error: 'Git remote URL is required.' };
+          v.gitRemote = syncGitRemote.trim();
+          if (syncGitRef.trim().length > 0) v.gitRef = syncGitRef.trim();
+        }
+        if (syncTargetPath.trim().length > 0) v.targetPath = syncTargetPath.trim();
+        return { ok: true, value: v };
+      }
+      case 'buildWorkspace': {
+        const v: Record<string, unknown> = {};
+        if (buildTargetPath.trim().length > 0) v.targetPath = buildTargetPath.trim();
+        if (buildSkip) v.skipBuild = true;
+        return { ok: true, value: v };
+      }
+      case 'verifyCell': {
+        const v: Record<string, unknown> = {};
+        if (verifyLoomUrl.trim().length > 0) v.loomUrl = verifyLoomUrl.trim();
+        if (verifyGrimoireUrl.trim().length > 0) v.grimoireUrl = verifyGrimoireUrl.trim();
+        return { ok: true, value: v };
+      }
+      case 'generateBootstrapState': {
+        const v: Record<string, unknown> = {};
+        if (genStateForce) v.force = true;
+        if (genStateEmailDomain.trim().length > 0) v.emailDomain = genStateEmailDomain.trim();
+        return { ok: true, value: v };
+      }
+      case 'seedVault': {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(seedVaultJson);
+        } catch (e) {
+          return {
+            ok: false,
+            error: `seedVault input is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+          };
+        }
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          return { ok: false, error: 'seedVault input must be a non-empty JSON array.' };
+        }
+        return { ok: true, value: { secrets: parsed } };
+      }
+      case 'deployGrimoire': {
+        const v: Record<string, unknown> = {};
+        if (deployGrimoireForce) v.force = true;
+        if (deployGrimoirePort > 0) v.port = deployGrimoirePort;
+        if (deployGrimoireDataDir.trim().length > 0) v.dataDir = deployGrimoireDataDir.trim();
+        if (deployGrimoireBin.trim().length > 0) v.pocketbaseBin = deployGrimoireBin.trim();
+        return { ok: true, value: v };
+      }
+      case 'deployLoom': {
+        const v: Record<string, unknown> = {};
+        if (deployLoomForce) v.force = true;
+        if (deployLoomPort > 0) v.port = deployLoomPort;
+        if (deployLoomOrigin.trim().length > 0) v.origin = deployLoomOrigin.trim();
+        if (deployLoomNodeBin.trim().length > 0) v.nodeBin = deployLoomNodeBin.trim();
+        if (deployLoomEntry.trim().length > 0) v.loomEntry = deployLoomEntry.trim();
+        return { ok: true, value: v };
+      }
       case 'audit': {
         if (auditSubject.trim().length === 0)
           return { ok: false, error: 'Subject is required.' };
@@ -116,6 +231,11 @@
   async function runInvocation(e: SubmitEvent) {
     e.preventDefault();
     if (!activeCapability) return;
+    if (destructiveCaps.has(activeCapability) && !confirmDestructive) {
+      invokeError =
+        'This capability writes to your host (vault, launchd, file system). Tick the "Yes, run it" confirmation box first.';
+      return;
+    }
     const built = buildInput();
     if (!built.ok) {
       invokeError = built.error;
@@ -561,6 +681,146 @@
         ></textarea>
         <span class="hint">Or run <code>tools/pablo &lt;route&gt;</code> from the repo for a one-command critique loop.</span>
       </label>
+    {:else if activeCapability === 'provisionToolchain'}
+      <p class="hint">
+        Read-only probe — checks <code>uname</code>, <code>sw_vers</code> (macOS), and the presence
+        and version of <code>brew</code>, <code>node</code>, <code>pnpm</code>,
+        <code>tailscale</code>, <code>git</code>. No host state is modified.
+      </p>
+    {:else if activeCapability === 'syncRepo'}
+      <fieldset class="field radio-group">
+        <legend>Source</legend>
+        <label class="radio">
+          <input type="radio" name="sync-source" value="local-rsync" bind:group={syncSource} />
+          <span>Local rsync (copy from this Loom's repo)</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="sync-source" value="git-remote" bind:group={syncSource} />
+          <span>Git remote (shallow clone)</span>
+        </label>
+      </fieldset>
+      {#if syncSource === 'local-rsync'}
+        <label class="field">
+          <span>Source path <span class="opt">(optional; defaults to this Loom's repo dir)</span></span>
+          <input bind:value={syncSourcePath} placeholder="/Users/.../warp" />
+        </label>
+      {:else}
+        <label class="field">
+          <span>Git remote URL</span>
+          <input bind:value={syncGitRemote} placeholder="https://github.com/webspinner-org/warp.git" />
+        </label>
+        <label class="field">
+          <span>Git ref</span>
+          <input bind:value={syncGitRef} placeholder="main" />
+        </label>
+      {/if}
+      <label class="field">
+        <span>Target path <span class="opt">(default: <code>~/warp</code>)</span></span>
+        <input bind:value={syncTargetPath} placeholder="~/warp" />
+      </label>
+    {:else if activeCapability === 'buildWorkspace'}
+      <label class="field">
+        <span>Target path <span class="opt">(default <code>~/warp</code>)</span></span>
+        <input bind:value={buildTargetPath} placeholder="~/warp" />
+      </label>
+      <label class="radio">
+        <input type="checkbox" bind:checked={buildSkip} />
+        <span>Skip <code>pnpm -r --if-present build</code> after install</span>
+      </label>
+    {:else if activeCapability === 'verifyCell'}
+      <p class="hint">
+        HTTP probes for the Loom root, the admin gate, the Grimoire health endpoint, and the
+        <code>vault_secrets</code> collection. Read-only.
+      </p>
+      <div class="meta-row">
+        <label class="field">
+          <span>Loom URL <span class="opt">(default <code>http://127.0.0.1:3000</code>)</span></span>
+          <input bind:value={verifyLoomUrl} placeholder="http://127.0.0.1:3000" />
+        </label>
+        <label class="field">
+          <span>Grimoire URL <span class="opt">(default <code>http://127.0.0.1:8090</code>)</span></span>
+          <input bind:value={verifyGrimoireUrl} placeholder="http://127.0.0.1:8090" />
+        </label>
+      </div>
+    {:else if activeCapability === 'generateBootstrapState'}
+      <p class="hint">
+        Writes four files under <code>~/.warp/bootstrap/</code> mode 0600:
+        <code>vault-master-key</code>, <code>dev-bypass-token</code>, <code>pb-email</code>,
+        <code>pb-password</code>. Values never leave the host. Without <em>force</em>, existing
+        files are preserved.
+      </p>
+      <label class="radio">
+        <input type="checkbox" bind:checked={genStateForce} />
+        <span>Force regenerate (overwrite existing files)</span>
+      </label>
+      <label class="field">
+        <span>Email domain <span class="opt">(used in pb-email)</span></span>
+        <input bind:value={genStateEmailDomain} placeholder="cell.local" />
+      </label>
+    {:else if activeCapability === 'seedVault'}
+      <p class="hint">
+        Encrypts each secret with the Cell's vault master key and writes to the
+        <code>vault_secrets</code> collection. Duplicates are reported, not overwritten —
+        rotate via <a href="/admin/vault">/admin/vault</a>.
+      </p>
+      <label class="field">
+        <span>Secrets <span class="opt">(JSON array)</span></span>
+        <textarea bind:value={seedVaultJson} rows="8" spellcheck="false"></textarea>
+        <span class="hint">Each item: <code>{`{ "name": "...", "value": "...", "description": "..." }`}</code>.</span>
+      </label>
+    {:else if activeCapability === 'deployGrimoire'}
+      <p class="hint">
+        Writes <code>~/Library/LaunchAgents/foundation.webspinner.grimoire.plist</code> and
+        bootstraps it via launchctl. Idempotent: no-op when content matches.
+      </p>
+      <div class="meta-row">
+        <label class="field">
+          <span>Port</span>
+          <input type="number" min="1024" max="65535" bind:value={deployGrimoirePort} />
+        </label>
+        <label class="field">
+          <span>PocketBase binary <span class="opt">(default <code>/opt/homebrew/bin/pocketbase</code>)</span></span>
+          <input bind:value={deployGrimoireBin} placeholder="/opt/homebrew/bin/pocketbase" />
+        </label>
+      </div>
+      <label class="field">
+        <span>Data dir <span class="opt">(default ~/Library/Application Support/.../Grimoire/pb_data)</span></span>
+        <input bind:value={deployGrimoireDataDir} placeholder="(default)" />
+      </label>
+      <label class="radio">
+        <input type="checkbox" bind:checked={deployGrimoireForce} />
+        <span>Force overwrite if on-disk plist differs</span>
+      </label>
+    {:else if activeCapability === 'deployLoom'}
+      <p class="hint">
+        Writes <code>~/Library/LaunchAgents/foundation.webspinner.loom.plist</code> and
+        bootstraps it via launchctl. v0.2 plist does NOT inject vault keys or PB creds —
+        the operator enriches the plist manually after this runs.
+      </p>
+      <div class="meta-row">
+        <label class="field">
+          <span>Port</span>
+          <input type="number" min="1024" max="65535" bind:value={deployLoomPort} />
+        </label>
+        <label class="field">
+          <span>Origin <span class="opt">(default <code>http://&lt;hostname&gt;:&lt;port&gt;</code>)</span></span>
+          <input bind:value={deployLoomOrigin} placeholder="http://kepler.local:3000" />
+        </label>
+      </div>
+      <div class="meta-row">
+        <label class="field">
+          <span>Node binary</span>
+          <input bind:value={deployLoomNodeBin} placeholder="/opt/homebrew/bin/node" />
+        </label>
+        <label class="field">
+          <span>Loom entry</span>
+          <input bind:value={deployLoomEntry} placeholder="~/warp/loom/build/index.js" />
+        </label>
+      </div>
+      <label class="radio">
+        <input type="checkbox" bind:checked={deployLoomForce} />
+        <span>Force overwrite if on-disk plist differs</span>
+      </label>
     {:else}
       <label class="field">
         <span>Input (JSON) <span class="opt">— fallback for unrecognised capabilities</span></span>
@@ -568,8 +828,23 @@
       </label>
     {/if}
 
+    {#if destructiveCaps.has(activeCapability)}
+      <div class="destructive-confirm">
+        <label class="radio">
+          <input type="checkbox" bind:checked={confirmDestructive} />
+          <span>
+            <strong>Yes, run it.</strong>
+            <em>This capability writes to your host (vault rows, launchd plists, or files under <code>~/.warp/bootstrap/</code>). It is idempotent where possible but real.</em>
+          </span>
+        </label>
+      </div>
+    {/if}
+
     <div class="actions">
-      <button type="submit" disabled={invoking || !activeCapability}>
+      <button
+        type="submit"
+        disabled={invoking || !activeCapability || (destructiveCaps.has(activeCapability) && !confirmDestructive)}
+      >
         {invoking ? 'Running…' : 'Run'}
       </button>
       {#if invokeResult || invokeError}
