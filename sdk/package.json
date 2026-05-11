@@ -4,7 +4,7 @@
   "description": "Foundational types for Warp: VaultURI, AuditEvent, SpinnerManifest, WarpThreadManifest, integrity primitives. Every Spinner imports from here.",
   "type": "module",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/webspinner-org/warp/tree/main/sdk",
+  "homepage": "https://webspinner.ai/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/webspinner-org/warp.git",

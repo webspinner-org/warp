@@ -1,5 +1,11 @@
 # Warp
 
+**Foundation site: [webspinner.ai](https://webspinner.ai/)** &middot;
+[Read the canon](https://webspinner.ai/canon/) &middot;
+[Spinner vs Container](https://webspinner.ai/compare/) &middot;
+[The Foundation Pledge](https://webspinner.ai/foundation/) &middot;
+[Roadmap](https://webspinner.ai/roadmap/)
+
 Reference implementations and protocol specifications for the Warp architecture — sovereign Synthetic Intelligence built from Cells (Loom, Weaver, Grimoire) federated by the Capability Bus, grounded by Webspinner Retrieval-Augmented Grounding (WRAG), and invoked under Bring-Your-Own-Key (BYOK) contracts the user controls.
 
 The architecture and the moral case for it are set out in *AI Enclosure: Why Sovereign Intelligence Demands Warp Speed* by John D. Marx (Webspinner Foundation, 2026). The manuscript is the canonical text. This repo is its working code and protocols.
