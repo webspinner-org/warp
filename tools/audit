@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+#
+# tools/audit — Bootstrap Spinner audit capability from the terminal.
+#
+# Invokes `@webspinner-foundation/bootstrap` capability `audit` against
+# either a repo-relative file or inline text. Renders findings with
+# severity, rule, evidence, and suggestion.
+#
+#   tools/audit <repo-relative-path>
+#   tools/audit --text "<inline text to audit>"
+#   tools/audit --json <path>   # raw JSON output (for piping)
+
+set -euo pipefail
+
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+BOOTSTRAP_DIR="${WARP_BOOTSTRAP_DIR:-$HOME/.warp/bootstrap}"
+COOKIE_JAR="$(mktemp -t audit-cookies-XXXXXX)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+mode='file'
+output='pretty'
+subject=''
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --text) mode='text'; subject="$2"; shift 2;;
+    --json) output='json'; shift;;
+    -h|--help)
+      sed -n '4,12p' "$0"; exit 0;;
+    -*) echo "unknown flag: $1" >&2; exit 1;;
+    *) subject="$1"; shift;;
+  esac
+done
+
+if [ -z "$subject" ]; then
+  echo "usage: tools/audit <repo-relative-path>   or   tools/audit --text \"...\"" >&2
+  exit 1
+fi
+
+require_creds() {
+  if [ ! -r "$BOOTSTRAP_DIR/pb-email" ] || [ ! -r "$BOOTSTRAP_DIR/pb-password" ]; then
+    echo "error: missing $BOOTSTRAP_DIR/pb-email or pb-password" >&2
+    exit 2
+  fi
+}
+
+login() {
+  local email pass body status
+  email="$(cat "$BOOTSTRAP_DIR/pb-email")"
+  pass="$(cat "$BOOTSTRAP_DIR/pb-password")"
+  body=$(curl -sS -c "$COOKIE_JAR" -w "\n%{http_code}" \
+    -H "Origin: $LOOM_BASE" \
+    --data-urlencode "wizard_id=$email" \
+    --data-urlencode "passphrase=$pass" \
+    "$LOOM_BASE/login" 2>/dev/null || echo $'\n000')
+  status="${body##*$'\n'}"
+  body="${body%$'\n'*}"
+  if [ "$status" != "200" ]; then
+    echo "error: login failed (HTTP $status)" >&2
+    exit 3
+  fi
+  is_success=$(echo "$body" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+except Exception:
+  print('0'); sys.exit(0)
+if d.get('type') == 'redirect' and '/admin' in d.get('location', ''):
+  print('1')
+else:
+  print('0:' + str(d.get('data', {}).get('error', 'unknown')))
+" 2>/dev/null || echo '0:parse-failed')
+  if [ "${is_success%%:*}" != "1" ]; then
+    echo "error: login rejected — ${is_success#*:}" >&2
+    exit 3
+  fi
+}
+
+require_creds
+login
+
+payload=$(python3 -c "
+import json, sys
+mode, subject = sys.argv[1:3]
+print(json.dumps({
+  'capability': 'audit',
+  'input': {'subject': subject, 'kind': mode}
+}))
+" "$mode" "$subject")
+
+echo "→ POST to Bootstrap.audit (kind: $mode)"
+response=$(curl -sS -b "$COOKIE_JAR" -X POST \
+  -H "Content-Type: application/json" \
+  -H "Origin: $LOOM_BASE" \
+  -d "$payload" \
+  "$LOOM_BASE/admin/spinners/bootstrap/invoke")
+
+if [ "$output" = 'json' ]; then
+  echo "$response" | python3 -m json.tool
+  exit 0
+fi
+
+echo "$response" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  print(f\"ERROR: {r.get('message', 'invocation failed')}\", file=sys.stderr); sys.exit(4)
+o = r.get('output', {})
+drift = o.get('drift', [])
+prov = o.get('provenance', {})
+ret = prov.get('retrieval', {})
+elapsed = r.get('durationMs', 0)
+print(f\"  ← Bootstrap.audit finished in {elapsed/1000:.1f}s (model: {prov.get('model','?').rsplit('/',1)[-1]})\")
+if ret:
+  print(f\"    canon retrieval: {ret.get('returnedPassages',0)} of {ret.get('totalChunks',0)} chunks\" + (' [cache hit]' if ret.get('cacheHit') else ''))
+print()
+if not drift:
+  print('No drift found. The Foundation blesses this artifact.')
+  sys.exit(0)
+sev_label = {'error': '[ERR]', 'warning': '[WRN]', 'info': '[INF]'}
+print(f\"Drift findings ({len(drift)}):\")
+print()
+for i, f in enumerate(drift, 1):
+  sev = sev_label.get(f.get('severity',''), '[?  ]')
+  rule = f.get('rule', '?')
+  evidence = f.get('evidence', '').strip()
+  fix = f.get('suggestion', '').strip()
+  if len(evidence) > 200: evidence = evidence[:200] + '...'
+  print(f\"  {sev} #{i}  rule: {rule}\")
+  if evidence: print(f\"         evidence: {evidence}\")
+  if fix: print(f\"         suggestion: {fix}\")
+  print()
+"

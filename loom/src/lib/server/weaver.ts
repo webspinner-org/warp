@@ -547,14 +547,35 @@ Find lapses on these axes:
     Warp Thread / Weaver / Loom / Grimoire / Wizard / Patron. Generic
     substitutes (tenant, agent, data source, workflow) are violations.
   - **SI vs AI** — patron-facing copy must use "Synthetic Intelligence"
-    or "SI", never "AI" in load-bearing positions.
+    or "SI", never "AI" as a load-bearing standalone word. "AI" as a
+    substring of unrelated words (e.g. "Sinai", "main", "available")
+    is NOT a violation. Identifiers, class names, and file names are
+    exempt from the SI/AI rule.
   - **Em-dashes** — preserve, never replace with hyphens or commas.
   - **Internal hostnames** — patron copy must not name "Kepler",
-    "Spindle", "Hetzner", model identifiers, ports.
+    "Spindle", "Hetzner", model identifiers, ports. Admin / developer
+    surfaces are exempt.
   - **Scope creep** — proposals beyond what the canon describes for
     the current bootstrap epoch.
   - **Missing citations** — claims about the architecture that should
     cite a canon section or chapter and don't.
+
+## Evidence discipline
+
+The \`evidence\` field on every finding must be **quoted verbatim**
+from the artifact under review — the exact line, sentence, or phrase
+as it appears in the source. Do NOT paraphrase, summarise, or invent
+sentences. If you cannot quote the exact passage that supports the
+finding, the finding does not belong in the response.
+
+Before returning any finding, mentally search the artifact for the
+literal characters in your \`evidence\`. If you don't find them, drop
+the finding.
+
+The Foundation prefers a shorter list of grounded findings over a
+longer list of plausible-sounding ones.
+
+## Output
 
 Return STRICT JSON only:
 
@@ -576,7 +597,9 @@ Severity:
   - **warning** — drift visible to Wizard but not to patrons.
   - **info** — opportunities for sharper alignment.
 
-Return \`drift: []\` if the artifact is faithful.`;
+Return \`drift: []\` if the artifact is faithful. The Foundation
+treats an honest empty list as a higher signal than a padded list of
+INF findings.`;
 
   const userMessage = `# Subject — \`${displaySubject}\`\n\n${trimForAudit(body)}\n\n# Retrieved canon ground\n\n${groundBlock}\n\nAudit now. Return the JSON only.`;
 
