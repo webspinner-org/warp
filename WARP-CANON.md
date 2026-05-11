@@ -347,6 +347,14 @@ Operating-level principles that complement the Pledge (§11) and the Covenant (�
 
    *Why:* the Webspinner is not a CLI user. The vernacular is the Wizard's, not the technologist's. A Webspinner who is awed by the Loom learns the architecture by using it; one who is asked to forgive a clunky surface learns to mistrust it. The discipline is structural — there is no "we will make it pretty later" — because *later* is where technical debt and broken promises live.
 
+6. **Test Discipline.** Every Spinner capability, every Loom surface, every shared module ships with a regression net. Two harnesses — Vitest for pure logic and server modules, Playwright for end-to-end browser flows — live in the workspace and are run before each release tag. New behaviour without a corresponding test is a structural violation, equivalent to a missing How-It-Works document. The Wizard does not catch regressions by remembering to click the surface; the harness catches them.
+
+   *Why:* a Cell of one Wizard can absorb the occasional regression by hand-testing the next time he opens the surface. A Cell that has admitted a peer Wizard cannot — every regression at peer-handoff becomes a debt the peer pays for. The discipline is structural so that the Foundation's federation arrives without that debt. (`DECISIONS.md` 2026-05-10 — *Test harness — Vitest unit + Playwright e2e*.)
+
+7. **Session Continuity through the Journal.** Operational state between Claude Code sessions in `~/warp/` flows through the Wizard's Journal Spinner. The Journal's `bootstrap` capability composes a markdown context block — current focus, recent actions, last decisions, open questions — that the Wizard writes to `BOOTSTRAP.md` at the repo root. `CLAUDE.md` loads `BOOTSTRAP.md` if present, ahead of the deep canon dive. The Journal is not the canon; it carries operational continuity the canon does not. (`DECISIONS.md` 2026-05-10 — *Close meta-bootstrap loop*.)
+
+   *Why:* the canon is the architecture, fixed in time per its revisions. The Journal is the moment-to-moment of building, and the moment-to-moment is what the next session needs to pick up where the last one left off. Without the Journal, every new session reconstructs the operational state from `DECISIONS.md` + `OPEN_QUESTIONS.md` + git log, which is lossy. With it, the Wizard's ADD is no longer the operative bottleneck on session-to-session memory.
+
 ---
 
 ## 18. Mission Lock for Claude Code Sessions
@@ -450,6 +458,20 @@ Spinners inherit the refused-use categories of §13. In addition:
 - A Spinner must not run outside the Weaver. The reference implementations refuse to expose entrypoints through any other path. A Spinner that does is a structural violation, regardless of its declared capabilities.
 - A Spinner must not silently use the Webspinner's data for purposes the manifest does not declare and the Webspinner has not authorized.
 - A Spinner must not embed credentials in its bundle. Secrets are vault-referenced. Embedding violates Operating Principle §17.2 and is detectable by the canonical-bundle scanner (open work).
+
+### 19.9 Spinners registered with this Cell
+
+The Webspinner Foundation Cell ships four Spinners as of v0.5. Each is a sealed bundle under `~/warp/spinners/<slug>/` with `manifest.json`, `mission-lock.md`, `how-it-works.md`, `README.md`, `thumbnail.svg`, `src/index.ts`. Each is registered with the Weaver and discoverable via the Loom's Skein view (`/admin/spinners`).
+
+- **`@webspinner-foundation/bootstrap`** — the founding Spinner. Capabilities: `consult` (answer a question grounded in the canon and the manuscript), `audit` (find drift between an artifact and the canon), `record` (draft a `DECISIONS.md` entry in canonical format), `surface` (list unfinished threads to counter ADD drift). Model: Quiet Loom (Qwen2.5-14B-Instruct on Kepler).
+
+- **`@webspinner-foundation/pablo`** — the design-quality reviewer. Capability: `review` (walk a rendered HTML surface against the cited library and return severity-tagged findings). Theatrical in voice; exact in citations. References live as a Spool at `spinners/pablo/library/` — `contrast.md`, `typography.md`, `composition.md`, `brand-consistency.md`, `cards.md`, with `f-pattern-scanning.md` and `progress-revealing.md` added in v0.6. A computed-styles snapshot from the in-browser Pablo button improves CSS-value grounding. Model: Quiet Loom.
+
+- **`@webspinner-foundation/wizards-journal`** — the operational diary. Capabilities: `record` (append a kind-tagged entry, embedded for recall), `recall` (semantic search via cosine against MiniLM-L6-v2 embeddings), `bootstrap` (compose a markdown context block for the next Claude Code session; optionally writes to `BOOTSTRAP.md`). Storage: PocketBase `wp_journal_entries`. The Journal is the operative substrate for §17.7 (Session Continuity).
+
+- **`@webspinner-foundation/genesis`** — the re-runnable Cell provisioning Spinner. Capabilities (8/8 implemented as of v0.5): `provisionToolchain` (probe Homebrew / Node / pnpm / Tailscale / git), `syncRepo` (rsync or `git clone`), `buildWorkspace` (pnpm install + build), `verifyCell` (HTTP probes for Loom / Grimoire / vault), `generateBootstrapState` (vault master key + dev bypass token + PB superuser creds as mode 0600 files under `~/.warp/bootstrap/`), `seedVault` (encrypt operator BYOK keys into the vault collection), `deployGrimoire` (PocketBase launchd plist), `deployLoom` (Node Loom launchd plist). Uses the **shell-capability contract** — a `shellAllowlist` in the manifest declares the binaries the Weaver may invoke on the Spinner's behalf; out-of-list commands throw `ShellPermissionError`. Idempotency primitive: write-if-different-with-force-flag; refuse otherwise.
+
+When new Spinners ship, add them here and reference the dated DECISIONS entry.
 
 ---
 
