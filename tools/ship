@@ -1,0 +1,406 @@
+#!/usr/bin/env bash
+#
+# tools/ship — standard end-of-batch wrapper.
+#
+# Wraps lint + typecheck + tests + doc-audit + commit + push + journal
+# in one command so the operational discipline is structural, not vibes.
+# Every batch ships through this script; CLAUDE.md and the rest of the
+# canon point here.
+#
+# Usage:
+#
+#   tools/ship <batch-name> --message-file <path> [options]
+#   tools/ship <batch-name> --message "inline body" [options]
+#
+# Required:
+#   <batch-name>              Short label (kebab-case). Becomes the commit
+#                             subject and the Wizard's Journal title.
+#   --message-file <path>     Read commit body from file (Claude Code path).
+#   --message <text>          Inline body (terminal path; mutually exclusive
+#                             with --message-file).
+#
+# Options:
+#   --journal-kind <kind>     action | decision | problem | learning | note
+#                             (default: decision)
+#   --journal-tags <csv>      Comma-separated tags for the journal entry
+#                             (default: derived from the batch-name slug)
+#   --no-audit                Skip doc audit (default: audit every changed *.md)
+#   --no-push                 Commit but don't push to origin
+#   --no-journal              Skip wp_journal write
+#   --no-bootstrap-refresh    Skip BOOTSTRAP.md regeneration
+#   --skip-tests              Skip pnpm test (use sparingly; tests are a gate)
+#   --skip-typecheck          Skip pnpm typecheck (same caveat)
+#   --skip-format             Skip prettier --write + eslint --fix
+#   --dry-run                 Show what would happen; do not commit or push
+#   -h, --help                Show this help
+#
+# Exit codes:
+#   0  shipped successfully
+#   1  lint/test/typecheck/audit failure (nothing committed)
+#   2  setup error (wrong cwd, missing message, no changes, etc.)
+#   3  Loom unreachable (commit + push succeeded; audit/journal pending)
+#   4  push failed (commit is local; retry with `git push`)
+#
+# Notes for off-host execution:
+#   When running from a host that can't reach the Loom (no creds, wrong
+#   bootstrap dir, network), the audit and journal steps fail soft and
+#   exit code 3 is returned AFTER a successful commit + push. The
+#   Wizard then reconciles on Kepler by running, manually:
+#       tools/audit <each-changed-md>
+#       tools/wj write <kind> "<batch-name>" "<summary>"
+#       tools/wj bootstrap --write
+#
+# Sequence:
+#   1. Sanity (cwd, branch, dirty tree)
+#   2. Format (prettier + eslint --fix) on the whole working tree
+#   3. Typecheck (pnpm -r --if-present typecheck)
+#   4. Tests (pnpm -r --if-present test)
+#   5. Audit (tools/audit per changed *.md)        — soft-fail on Loom errors
+#   6. git add -A
+#   7. git commit -s -m <subject> + body + trailers
+#   8. git push origin main                         — unless --no-push
+#   9. tools/wj write                               — soft-fail on Loom errors
+#   10. tools/wj bootstrap --write                  — soft-fail on Loom errors
+#
+# Co-Authored-By and Signed-off-by trailers are appended automatically;
+# the body should NOT include them.
+
+set -euo pipefail
+
+WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
+COAUTHOR_TRAILER="Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+
+# ── arg parsing ───────────────────────────────────────────────────────
+
+batch_name=''
+message_file=''
+message=''
+journal_kind='decision'
+journal_tags=''
+audit='auto'
+push='true'
+journal='true'
+bootstrap_refresh='true'
+run_tests='true'
+run_typecheck='true'
+run_format='true'
+dry_run='false'
+
+usage() {
+  sed -n '4,55p' "$0"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --message-file) message_file="$2"; shift 2;;
+    --message)      message="$2"; shift 2;;
+    --journal-kind) journal_kind="$2"; shift 2;;
+    --journal-tags) journal_tags="$2"; shift 2;;
+    --no-audit)     audit='no'; shift;;
+    --no-push)      push='false'; shift;;
+    --no-journal)   journal='false'; shift;;
+    --no-bootstrap-refresh) bootstrap_refresh='false'; shift;;
+    --skip-tests)   run_tests='false'; shift;;
+    --skip-typecheck) run_typecheck='false'; shift;;
+    --skip-format)  run_format='false'; shift;;
+    --dry-run)      dry_run='true'; shift;;
+    -h|--help)      usage; exit 0;;
+    --*)            echo "unknown flag: $1" >&2; exit 2;;
+    *)
+      if [ -z "$batch_name" ]; then batch_name="$1"; shift
+      else echo "error: extra argument: $1" >&2; exit 2; fi;;
+  esac
+done
+
+if [ -z "$batch_name" ]; then
+  echo "error: batch-name is required" >&2
+  usage >&2
+  exit 2
+fi
+
+# Validate batch-name slug.
+if [[ ! "$batch_name" =~ ^[a-z0-9][a-z0-9.+/_-]*$ ]]; then
+  echo "error: batch-name must be kebab-case (lowercase, alphanumerics, -/_./+): '$batch_name'" >&2
+  exit 2
+fi
+
+if [ -n "$message_file" ] && [ -n "$message" ]; then
+  echo "error: --message-file and --message are mutually exclusive" >&2
+  exit 2
+fi
+if [ -z "$message_file" ] && [ -z "$message" ]; then
+  echo "error: --message-file or --message is required" >&2
+  exit 2
+fi
+if [ -n "$message_file" ] && [ ! -r "$message_file" ]; then
+  echo "error: cannot read --message-file: $message_file" >&2
+  exit 2
+fi
+
+# Derive journal tags from batch name if not given.
+if [ -z "$journal_tags" ]; then
+  journal_tags=$(echo "$batch_name" | tr '/' ',' | tr '+' ',' | tr '_' ',')
+fi
+
+# ── sanity ─────────────────────────────────────────────────────────────
+
+if [ ! -d "$WARP_DIR/.git" ]; then
+  echo "error: not in a warp repo: $WARP_DIR" >&2
+  exit 2
+fi
+cd "$WARP_DIR"
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" != 'main' ]; then
+  echo "error: not on main (on $branch)" >&2
+  exit 2
+fi
+
+# Diff vs HEAD covers both staged and unstaged.
+changed=$(git status --porcelain=v1 | wc -l | tr -d ' ')
+if [ "$changed" = '0' ]; then
+  echo "nothing to ship — working tree clean against HEAD" >&2
+  exit 2
+fi
+
+echo "▸ shipping: $batch_name"
+echo "  branch:  $branch"
+echo "  changes: $changed file(s)"
+[ "$dry_run" = 'true' ] && echo "  (dry-run — no commit, no push)"
+
+# ── format ────────────────────────────────────────────────────────────
+
+if [ "$run_format" = 'true' ]; then
+  echo
+  echo "▸ format (prettier + eslint --fix on changed files only)"
+  # Only target files that differ from HEAD (modified) and untracked,
+  # not the whole tree. Running prettier/eslint globally would
+  # silently reformat unrelated files; that's scope creep.
+  changed_files=$(git diff --name-only HEAD; git ls-files --others --exclude-standard)
+  if [ -z "$changed_files" ]; then
+    echo "  (no changed files to format)"
+  else
+    fmt_targets=$(echo "$changed_files" | grep -E '\.(js|ts|svelte|mjs|cjs|json|yaml|yml|md|css|html)$' | xargs -I {} sh -c 'test -f "{}" && echo "{}"' 2>/dev/null || true)
+    lint_targets=$(echo "$changed_files" | grep -E '\.(js|ts|svelte|mjs|cjs)$' | xargs -I {} sh -c 'test -f "{}" && echo "{}"' 2>/dev/null || true)
+    if [ "$dry_run" = 'true' ]; then
+      if [ -n "$fmt_targets" ]; then
+        echo "  would prettier --check on: $(echo "$fmt_targets" | wc -l | tr -d ' ') file(s)"
+      fi
+    else
+      if [ -n "$fmt_targets" ]; then
+        echo "$fmt_targets" | xargs pnpm exec prettier --write 2>&1 | tail -3 || true
+      fi
+      if [ -n "$lint_targets" ]; then
+        # eslint --fix; tolerate non-zero (real errors will resurface at
+        # commit time via lefthook, where we re-stage and retry once).
+        echo "$lint_targets" | xargs pnpm exec eslint --fix 2>&1 | tail -3 || true
+      fi
+    fi
+  fi
+fi
+
+# ── typecheck ─────────────────────────────────────────────────────────
+
+if [ "$run_typecheck" = 'true' ]; then
+  echo
+  echo "▸ typecheck (pnpm -r typecheck)"
+  if ! pnpm -r --if-present typecheck 2>&1 | tail -10; then
+    echo "✗ typecheck failed — not shipping" >&2
+    exit 1
+  fi
+  echo "  ✓ typecheck clean"
+fi
+
+# ── tests ─────────────────────────────────────────────────────────────
+
+if [ "$run_tests" = 'true' ]; then
+  echo
+  echo "▸ tests (pnpm -r test)"
+  test_output=$(pnpm -r --if-present test 2>&1) || {
+    echo "$test_output" | tail -30
+    echo "✗ tests failed — not shipping" >&2
+    exit 1
+  }
+  # Extract the summary lines.
+  echo "$test_output" | grep -E '^(\s*Test Files|\s*Tests)' | tail -10 || true
+  echo "  ✓ tests pass"
+fi
+
+# ── audit ─────────────────────────────────────────────────────────────
+
+audit_warnings=0
+audit_failed_loom='false'
+if [ "$audit" != 'no' ]; then
+  changed_md=$(git status --porcelain=v1 | awk '$1 ~ /[AM?]/ && $NF ~ /\.md$/ {print $NF}')
+  if [ -n "$changed_md" ]; then
+    echo
+    echo "▸ audit (tools/audit per changed *.md)"
+    while IFS= read -r mdfile; do
+      [ -z "$mdfile" ] && continue
+      echo "  · $mdfile"
+      if ! audit_out=$(tools/audit --json "$mdfile" 2>&1); then
+        # Distinguish Loom-unreachable from doc-with-drift.
+        if echo "$audit_out" | grep -q "login failed\|login rejected\|HTTP 000"; then
+          audit_failed_loom='true'
+          break
+        fi
+        # Other audit invocation error — surface but don't gate (gate is
+        # on ERR-severity findings inside the JSON, parsed below).
+        echo "    (audit invocation error — see output)" >&2
+        echo "$audit_out" >&2
+        audit_warnings=$((audit_warnings + 1))
+        continue
+      fi
+      # Parse drift findings; gate on any error-severity.
+      err_count=$(echo "$audit_out" | python3 -c "
+import json, sys
+try: d = json.load(sys.stdin)
+except: print(0); sys.exit(0)
+o = d.get('output', {})
+drift = o.get('drift', [])
+errs = [f for f in drift if f.get('severity') == 'error']
+print(len(errs))
+" 2>/dev/null || echo 0)
+      warn_count=$(echo "$audit_out" | python3 -c "
+import json, sys
+try: d = json.load(sys.stdin)
+except: print(0); sys.exit(0)
+o = d.get('output', {})
+drift = o.get('drift', [])
+warns = [f for f in drift if f.get('severity') == 'warning']
+print(len(warns))
+" 2>/dev/null || echo 0)
+      if [ "$err_count" -gt 0 ]; then
+        echo "    [ERR] $err_count error-severity finding(s) — not shipping"
+        echo "$audit_out" | python3 -m json.tool >&2
+        echo "✗ doc audit failed on $mdfile — fix drift and re-run" >&2
+        exit 1
+      fi
+      if [ "$warn_count" -gt 0 ]; then
+        echo "    [WRN] $warn_count warning(s) (shipping anyway)"
+        audit_warnings=$((audit_warnings + warn_count))
+      else
+        echo "    ✓ no drift"
+      fi
+    done <<< "$changed_md"
+    if [ "$audit_failed_loom" = 'true' ]; then
+      echo "  ⚠ Loom unreachable — audit skipped (reconcile on Kepler)"
+    fi
+  fi
+fi
+
+# ── compose commit ────────────────────────────────────────────────────
+
+if [ -n "$message_file" ]; then
+  body=$(cat "$message_file")
+else
+  body="$message"
+fi
+
+# Build the full commit message: subject + blank + body + trailers.
+commit_message=$(mktemp -t ship-commit-XXXXXX)
+trap 'rm -f "$commit_message"' EXIT
+
+{
+  echo "$batch_name"
+  echo
+  echo "$body"
+  echo
+  echo "$COAUTHOR_TRAILER"
+} > "$commit_message"
+
+if [ "$dry_run" = 'true' ]; then
+  echo
+  echo "▸ would commit:"
+  sed 's/^/    /' "$commit_message"
+  echo
+  echo "(dry-run — exit before commit)"
+  exit 0
+fi
+
+# ── commit ─────────────────────────────────────────────────────────────
+
+echo
+echo "▸ commit"
+git add -A
+if ! git commit -s -F "$commit_message" 2>&1 | tail -5; then
+  # If lefthook reformatted, files are unstaged. Re-stage and retry once.
+  if git status --porcelain=v1 | grep -q .; then
+    echo "  · lefthook reformatted — restaging + retrying once"
+    git add -A
+    if ! git commit -s -F "$commit_message" 2>&1 | tail -5; then
+      echo "✗ commit failed after retry" >&2
+      exit 1
+    fi
+  else
+    echo "✗ commit failed" >&2
+    exit 1
+  fi
+fi
+short=$(git rev-parse --short HEAD)
+echo "  ✓ committed: $short"
+
+# ── push ───────────────────────────────────────────────────────────────
+
+push_failed='false'
+if [ "$push" = 'true' ]; then
+  echo
+  echo "▸ push"
+  if git push origin main 2>&1 | tail -3; then
+    echo "  ✓ pushed: $short"
+  else
+    push_failed='true'
+    echo "✗ push failed — commit is local; retry with: git push" >&2
+  fi
+fi
+
+# ── journal ────────────────────────────────────────────────────────────
+
+journal_failed='false'
+if [ "$journal" = 'true' ]; then
+  echo
+  echo "▸ journal"
+  summary="Shipped $short. $(echo "$body" | head -1)"
+  tags_flag=()
+  [ -n "$journal_tags" ] && tags_flag=(--tags "$journal_tags")
+  if tools/wj write "$journal_kind" "$batch_name" "$summary" "${tags_flag[@]}" 2>&1 | tail -3; then
+    echo "  ✓ journal entry recorded"
+  else
+    journal_failed='true'
+    echo "  ⚠ journal write failed — reconcile on Kepler:" >&2
+    echo "    tools/wj write $journal_kind \"$batch_name\" \"$summary\" ${tags_flag[*]}" >&2
+  fi
+fi
+
+# ── bootstrap refresh ──────────────────────────────────────────────────
+
+bootstrap_failed='false'
+if [ "$bootstrap_refresh" = 'true' ] && [ "$journal_failed" = 'false' ]; then
+  echo
+  echo "▸ bootstrap refresh"
+  if tools/wj bootstrap --write 2>&1 | tail -3; then
+    echo "  ✓ BOOTSTRAP.md refreshed"
+  else
+    bootstrap_failed='true'
+    echo "  ⚠ BOOTSTRAP.md refresh failed (commit + push still succeeded)" >&2
+  fi
+fi
+
+# ── summary ────────────────────────────────────────────────────────────
+
+echo
+echo "── ship report ───────────────────────────────────────────────────"
+echo "  batch:        $batch_name"
+echo "  commit:       $short"
+[ "$push" = 'true' ]   && echo "  pushed:       $([ "$push_failed" = 'false' ] && echo yes || echo NO — RETRY)"
+[ "$audit_warnings" -gt 0 ] && echo "  audit:        $audit_warnings warning(s)"
+[ "$audit_failed_loom" = 'true' ] && echo "  audit:        skipped (Loom unreachable — reconcile)"
+[ "$journal" = 'true' ] && echo "  journal:      $([ "$journal_failed" = 'false' ] && echo recorded || echo PENDING — RECONCILE)"
+[ "$bootstrap_refresh" = 'true' ] && [ "$journal" = 'true' ] && [ "$journal_failed" = 'false' ] \
+  && echo "  bootstrap:    $([ "$bootstrap_failed" = 'false' ] && echo refreshed || echo PENDING)"
+echo "──────────────────────────────────────────────────────────────────"
+
+# Exit code priority: push failure > Loom warnings > clean.
+if [ "$push_failed" = 'true' ]; then exit 4; fi
+if [ "$audit_failed_loom" = 'true' ] || [ "$journal_failed" = 'true' ]; then exit 3; fi
+exit 0
