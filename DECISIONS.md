@@ -344,3 +344,41 @@ The Wizard's earlier critiques (e.g. `~/sitoolmaker-com/agents/pablo-critiques/2
 **Why:** The Wizard's stated goal — *enable the Loom to do everything without the user* — requires a storage and credential model that makes the Loom the chokepoint for every operation. Mirroring the proven git + registry pattern from npm / cargo / Go modules / Helm gives Webspinner industry-standard rails. The static-file Foundation Skein honors STANCE.md's "build the primitive, not the scaling apparatus." Authoring-in-repo is the explainability default; the opt-out flag preserves the agility for commercial cases.
 
 Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md`. CLAUDE.md boot order references it.
+
+## 2026-05-12 — `Cells` monorepo supersedes per-Spinner-repo polyrepo
+
+**Decision:** All Cell-authored Spinners live in one Foundation-controlled monorepo at `github.com/webspinner-org/Cells` (created 2026-05-12), with one subdirectory per Spinner under `spinners/<slug>/` and per-Spinner SemVer release tags prefixed by the Spinner slug (`<slug>-vMAJOR.MINOR.PATCH` — the Lerna / Nx / Bazel monorepo convention).
+
+This supersedes the choice in the earlier 2026-05-12 entry ("one git repository per Spinner under a Foundation-controlled GitHub organization"). The polyrepo variant remains an option for the future if scale warrants — `git filter-repo` extracts any Spinner subdirectory cleanly into its own repo if needed.
+
+The split between repositories is now:
+
+  - **`webspinner-org/warp`** — the Warp architecture: canon, docs, the Loom app source, the Genesis Spinners (`bootstrap`, `pablo`, `wizards-journal`, `genesis`), the tools, the test harness. These are the architecture's primitives; they ship with the reference implementation.
+  - **`webspinner-org/Cells`** — all Cell-authored Spinners. Populated by the Loom's authoring meta-runtime. Private during the bootstrap epoch; opens public when the meta-runtime + the first Cell-authored Spinner clear the production-candidate quality bar.
+
+Cell-local runtime mirror:
+
+  - **`~/warp/spinners/<name>/`** — Genesis Spinners only.
+  - **`~/Cells/spinners/<name>/`** — Cell-authored Spinners, checked out at a specific `<slug>-v<version>` tag. Also the live authoring workspace during draft.
+
+The Weaver loads Spinners from both trees; the local Skein (`wp_skein`) records the source-tree path along with the digest + signature.
+
+**Why monorepo over polyrepo for Cells:**
+
+  - One credential boundary, one push remote, one PR-ingest path into the Foundation Skein.
+  - Cross-Spinner refactors are one PR, not N coordinated PRs.
+  - Per-Spinner SemVer rhythm preserved via tag prefix.
+  - Cheap to migrate later — the Spinner directories are self-contained.
+
+**Repos we will need next (not now):**
+
+  - **`webspinner-org/library`** — the corpus of industry-best-practice patterns the authoring conversation queries (accounting patterns, intake-form patterns, e-commerce patterns, donor-tracking patterns, etc.). Critical for precedent-based authoring per `STANDARDS.md`. Today: doesn't exist. Trigger to create: first authoring meta-runtime build, since the precedent search needs a corpus to query.
+
+**Repos we do not need yet:**
+
+  - **`webspinner-org/loom`** — the Loom currently lives in `~/warp/loom/`. Splitting it out is *scaling apparatus*, not primitive. Per `STANCE.md`. Trigger to extract: first peer Wizard adopts a Cell and needs to install the Loom independently of the reference repo. Until then, the Loom rides with `warp`.
+  - **`webspinner-org/weaver`** — extract when the canonical Python + FastAPI Weaver work begins. Today the bootstrap Weaver is the shim at `warp/loom/src/lib/server/weaver.ts`; that suffices.
+  - **`webspinner-org/skein`** — when the Foundation Skein graduates from a static JSON file behind a Foundation URL to a service. Per `STANCE.md`, not yet.
+  - **`webspinner-org/canon`** — the canon currently lives in `warp/`. Extract if the canon's release rhythm diverges from the reference implementation's. Today it doesn't.
+
+Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md` §2.1, §2.2, §5. `Cells` scaffolded with README.md, CLAUDE.md, TRADEMARK.md, CONTRIBUTING.md, .gitignore, SKEIN.json, and `spinners/` directory at commit `webspinner-org/Cells@43586fb`.
