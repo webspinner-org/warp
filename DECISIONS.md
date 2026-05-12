@@ -318,3 +318,29 @@ The Wizard's earlier critiques (e.g. `~/sitoolmaker-com/agents/pablo-critiques/2
 
 **Decision:** `loom/src/lib/server/turnstile.ts` resolves `turnstile-site-key` and `turnstile-secret-key` from the vault; the register page server loads the site key into `data.turnstileSiteKey` (public-by-design, ok in the browser bundle). The register form embeds `<div class="cf-turnstile" data-sitekey="…" data-theme="dark">` plus the official `challenges.cloudflare.com/turnstile/v0/api.js` script when the site key is present. The register action posts the form's `cf-turnstile-response` to `siteverify` with the secret; verification failure returns `fail(401)`. **Bootstrap mode:** when either key is missing from the vault, `verifyTurnstileToken` returns `{ ok: true, mode: 'bootstrap-skipped' }` and registration proceeds with honeypot + rate-limit defense only. This is how the Wizard's founding registration completes without waiting on credentials in the vault.
 **Why:** Production-grade registration needs bot defense beyond honeypot + rate-limit. Cloudflare Turnstile is privacy-respecting, free, and integrates without binding to the Cloudflare network. Bootstrap mode keeps the Cell self-bootable without the Wizard pasting secrets through Claude Code (Operating Principle §17.2).
+
+## 2026-05-12 — Spinner artifact + storage architecture
+
+**Decision:** The Spinner lifecycle storage model is established. Three deliberate tiers:
+
+1. **Design-time (source)** — one git repository per Spinner, hosted under a Foundation-controlled GitHub organization (`github.com/webspinner-spinners/<name>` for recognized; the operator's own GitHub for Cell-published). Repository holds the full bundle: manifest, mission-lock, how-it-works, README, thumbnail, changelog, src + tests, optional library + assets, provenance/<digest>.json + provenance/<digest>.sig, authoring/ subdirectory with initial-sentence + precedent + dialogue.jsonl + review-notes. Authoring artifacts in-repo by default; opt-out via manifest `authoring-private: true` moves dialogue to the Grimoire.
+
+2. **Runtime (Cell-local)** — each Cell has a clone at `~/warp/spinners/<name>/` checked out at a specific signed version. Sovereignty: no runtime dependency on the registry. Integrity-on-load: bytes are present for the Weaver to re-hash. Working tree is also the authoring scratch space during draft.
+
+3. **Registry (the Foundation Skein)** — static JSON index at a Foundation-operated URL (skein.webspinner.org or as a page on webspinner.ai). Updated by GitHub-PR-based ingest. Each entry lists Foundation-recognized Spinners with versions, digests, source-repo URLs, signatures, recognition timestamps, deprecation flags. Static-file design per STANCE.md (build the primitive that scales, not the scaling apparatus); promote to service when search-by-capability or recognition-revocation streaming becomes a regular workflow.
+
+4. **Local Skein (per Cell)** — PocketBase collection `wp_skein` indexes what this Cell has installed. /admin/spinners reads from it; the disk clones are the bytes, the collection is the index.
+
+**The meta-runtime** is named as an architectural concept: the Loom's ability to perform multi-step operations on the Wizard's behalf (authoring, publishing, updating, uninstalling). Operations are typed, audited (each step emits `wp.operation.step`), resumable (state persisted to a new `wp_operations` collection), cancellable (surfaced in /admin/operations), and credential-aware (every external API call uses a vault-stored credential by name; values never logged). Parallel architectural primitive to the Spinner runtime (the Weaver).
+
+**The Loom does everything.** No shell. No git CLI. No credential paste. The Wizard speaks intent through a conversation in the Loom; the Loom searches precedents, runs the dialogue, scaffolds the bundle, runs Pablo + Bootstrap, polishes, creates the GitHub repo, signs, pushes, registers locally, emits audit. The Wizard sees the artifact land in their Skein, ready to run.
+
+**Documentation discipline.** Every Spinner ships with how-it-works.md (patron-facing), mission-lock.md (operative law), README.md, manifest.json (with capability-doc inline), changelog.md. The Loom additionally generates an API reference, example invocations (with real captured outputs from the first successful invocation), and a provenance page. A Spinner without how-it-works or mission-lock fails Weaver manifest validation at install — structural, not a checklist item.
+
+**Credentials in the vault, GitHub PAT for bootstrap, GitHub App for scale.** All external-service credentials are vault entries with declared purpose + scope. The abstraction in code is a `GitHubCredential` interface; PAT today, App later.
+
+**ed25519 signatures via @noble/curves**, detached signatures stored at `provenance/<digest>.sig` alongside the manifest, signer-fingerprint included in filename for disambiguation. Foundation release key + Cell identity keys are the two signers in v1.
+
+**Why:** The Wizard's stated goal — *enable the Loom to do everything without the user* — requires a storage and credential model that makes the Loom the chokepoint for every operation. Mirroring the proven git + registry pattern from npm / cargo / Go modules / Helm gives Webspinner industry-standard rails. The static-file Foundation Skein honors STANCE.md's "build the primitive, not the scaling apparatus." Authoring-in-repo is the explainability default; the opt-out flag preserves the agility for commercial cases.
+
+Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md`. CLAUDE.md boot order references it.

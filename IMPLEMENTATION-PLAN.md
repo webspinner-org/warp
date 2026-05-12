@@ -232,38 +232,59 @@ process. The interactive mode requires the Cell's Quiet Loom +
 embeddings sidecar to be reachable; degrade gracefully to
 template-only when unavailable.
 
-### 1.2 In-Loom Spinner authoring — `/admin/spinners/new`
+### 1.2 In-Loom Spinner authoring — `/admin/spinners/new` + the meta-runtime
 
-**Why.** A Wizard who has never seen a Mission Lock needs a guided
-surface. The CLI is for the developer-Wizard; the Loom path is for
-the patron-Wizard who is one step earlier in the learning curve.
+**Why.** The Wizard speaks one sentence. The Loom does the rest.
+Authoring is the canonical non-technical-Wizard experience.
 
 **Definition of done.**
 
 - New nav entry "New Spinner" under the Spinners group.
-- Multi-step form: choose template → name + describe → capabilities
-  (each with input/output schema editor) → mission-lock editor with
-  Pablo-style suggestions inline → vault + Spool declarations →
-  preview the manifest → sign + register.
-- Each step has a Pablo-or-Bootstrap-assisted suggestion button
-  ("Draft the mission lock from the description" — invokes Bootstrap
-  with a `draft-mission-lock` capability that needs to land in
-  Bootstrap).
-- The "register" step is the same `webspinner install` path the CLI
-  uses — shared code, single implementation.
+- The authoring conversation per `VISION.md` §"The authoring
+  conversation" — Wizard speaks a sentence → Loom searches Skein
+  + Foundation library precedents → proposes a starting point →
+  walks dynamic clarifying-question forms → specializes the
+  bundle. Iterative *"make it more X"* refinement supported.
+- The polishing pipeline (output staging per `STANDARDS.md` §3 —
+  draft → reviewed → audited → polished → delivered). Pablo runs
+  on UI; Bootstrap audits prose; both findings inform the polish
+  pass. Nothing reaches the Wizard before `delivered`.
+- **The meta-runtime** (per `ARTIFACTS-AND-STORAGE.md` §3.2) — a
+  typed, audited, resumable operations layer. Authoring is the
+  first meta-runtime operation:
+  search-precedents → run-dialogue → scaffold-bundle → run-tests
+  → run-Pablo → run-Bootstrap → polish → compute-digest →
+  sign-with-identity-key → create-GitHub-repo → initial-commit
+  → push → tag-v1.0.0 → register-in-local-Skein → reload-Weaver
+  → emit-`wp.spinner.installed`-audit.
+- New PocketBase collection `wp_operations` records every step;
+  new Loom surface at `/admin/operations` surfaces running and
+  completed operations with Cancel affordance.
+- GitHub credential (PAT in vault under
+  `vault://_self/github-pat`; identity-key signs each commit; the
+  credential is never logged, never passed to Claude Code).
+- The Wizard's experience: one sentence, a dialogue of forms, a
+  polished Spinner in their Skein. No shell, no git, no token.
 
-**Best open source.** No new dependencies; the Loom already has
-SvelteKit + Marked + Vitest. Reuse `ajv` from 0.2 in the browser
-for client-side validation.
+**Best open source.** Per `STANDARDS.md`: `ajv` for client-side
+validation, `@octokit/rest` for GitHub API, `simple-git` for
+local git operations (or shell out to the `git` binary directly
+for cleaner audit), `@noble/curves` for signing. The `xstate`
+patterns from Tier 2.1 inform the meta-runtime state machine
+even though that work hasn't landed yet — the meta-runtime is
+the first place we hand-roll the durable-state-machine pattern.
 
-**Empirical study.** Look at GitHub Issues' "open a new issue"
-flow, GitLab's "new project" wizard, and Hugging Face Spaces' "new
-space" experience for IA inspiration. The closest analog is
-Vercel's "deploy template" flow — clone, customize, deploy.
+**Empirical study.** Beyond what's in Tier 1.1 — look at Vercel
+deploy logs as a meta-runtime UX precedent; look at Cloudflare
+Pages build logs; look at GitLab's pipeline UI; look at Argo's
+Workflow visualisation. Cite.
 
-**Risk.** The authoring surface is the most-visible Wow-as-Baseline
-surface in the Foundation's portfolio. Plan for Pablo to review it
-five times during build.
+**Risk.** The authoring surface is the highest-stakes patron-
+facing Wow-as-Baseline surface the Foundation will ship. Pablo
+reviews it weekly during build. The meta-runtime has its own
+risk surface — long-running operations that fail mid-stream need
+clean state to resume from. Audit-chain steps are the
+recovery substrate.
 
 ### 1.3 Templates — the starting points
 
