@@ -18,11 +18,12 @@ On any non-trivial task in this repo:
 4. Read `VISION.md` — the operative promise (normal people, real power through SI, one sentence → working application, works the first time, delights and astounds). It frames *what we are building toward* and *for whom*.
 5. Read `STANCE.md` — the operative posture for the current epoch (brand vs proof, software now / scale later, what we will deliberately not build yet). It frames what counts as in-scope and what doesn't.
 6. Read `STANDARDS.md` — the three operative standards (UX, Rules/Logic, Output staging), schema versioning, structured + unstructured persistence, the open-source-by-layer table, and the precedent-based-authoring principle. It governs *how* Spinners are built.
-7. Read `ARTIFACTS-AND-STORAGE.md` — what artifacts a Spinner produces, where design-time + runtime artifacts live (one git repo per Spinner; Cell-local clone at `~/warp/spinners/<name>/`; static-JSON Foundation Skein; PocketBase `wp_skein` for the local index), and the **meta-runtime** — the Loom's audited / resumable / cancellable operations layer that does everything on the Wizard's behalf (no shell, no git, no token). Required reading before touching the storage model or external integrations.
-8. Read `IMPLEMENTATION-PLAN.md` — the dependency-ordered tiers from v0.7 to the Webspinner-creates-Spinners milestone. It is the operational map.
-9. If the task touches a specific architectural area (Cell, WRAG, Capability Bus, Compute Farm, BYOK, threat model, pillars, rights), open the named chapter from `~/ai-enclosure/chapters/` per the index in `WARP-CANON.md` §16.
-10. Check `DECISIONS.md` for what is settled and `OPEN_QUESTIONS.md` for what is in flight.
-11. Proceed.
+7. Read `ARTIFACTS-AND-STORAGE.md` — what artifacts a Spinner produces, where design-time + runtime artifacts live (`Cells` monorepo with one subdirectory per Spinner under `spinners/<slug>/`; Cell-local clones at `~/warp/spinners/<name>/` for Genesis and `~/Cells/spinners/<name>/` for Cell-authored; static-JSON Foundation Skein; PocketBase `wp_skein` for the local index), and the **meta-runtime** — the Loom's audited / resumable / cancellable operations layer that does everything on the Wizard's behalf (no shell, no git, no token). Required reading before touching the storage model or external integrations.
+8. Read `RUNNERS.md` — the immutable, ephemeral, encapsulated execution environments in which Spinners run isolated from the Loom host. Three backends (container, Firecracker microVM, full Linux VM); runner pool not on Kepler (Spindle in bootstrap; Hetzner in production); typed meta-runtime operation contract; no inbound network on runner instances; outbound confined to declared endpoints. Required reading before touching Spinner execution, testing, or isolation policy.
+9. Read `IMPLEMENTATION-PLAN.md` — the dependency-ordered tiers from v0.7 to the Webspinner-creates-Spinners milestone. It is the operational map.
+10. If the task touches a specific architectural area (Cell, WRAG, Capability Bus, Compute Farm, BYOK, threat model, pillars, rights), open the named chapter from `~/ai-enclosure/chapters/` per the index in `WARP-CANON.md` §16.
+11. Check `DECISIONS.md` for what is settled and `OPEN_QUESTIONS.md` for what is in flight.
+12. Proceed.
 
 The canon is the working spec; chapters are the long form. When the canon and a chapter disagree, the chapter wins — flag the drift in `OPEN_QUESTIONS.md` and reconcile.
 
