@@ -63,6 +63,18 @@ export {
 } from './signing.js';
 
 export type {
+  ProvenanceWriter,
+  SignerRecord,
+  SignersManifest,
+  WriteProvenanceInput,
+  WriteProvenanceError,
+  WriteProvenanceResult,
+  ReadProvenanceResult,
+  ProvenanceVerifyReport,
+} from './provenance.js';
+export { writeProvenance, readProvenance, verifyProvenance } from './provenance.js';
+
+export type {
   WarpThreadManifest,
   WarpThreadName,
   WarpThreadStep,
