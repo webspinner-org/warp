@@ -1,0 +1,249 @@
+# STANDARDS.md — architectural standards for Spinner agility
+
+The Wizard's standing rule: **any system that requires DBAs, rigid
+schemas, or opaque parameter passing is a system that resists
+agility.** Salesforce and SAP succeeded because they engineered
+around their own rigidity by becoming parameter-driven. Webspinner
+is parameter-driven from day one.
+
+This file enumerates the standards that make Spinner agility
+durable. Read this with `VISION.md` (what we're for),
+`STANCE.md` (how we work in this epoch), and
+`IMPLEMENTATION-PLAN.md` (the path through it).
+
+When this file conflicts with `WARP-CANON.md`, the canon wins.
+
+---
+
+## Three standards govern every Spinner
+
+### 1. The UX standard
+
+Every output that has a user-interface surface conforms to the
+Foundation design system. The Pablo library at
+`~/warp/spinners/pablo/library/` is the cited reference.
+
+- **Palette**: gold (`#c9a96a`) + cyan (`#5fcfe0`) on dark canvas
+  (`#0a0a0a`). Manuscript-grade.
+- **Typography**: manuscript serif (`--font-prose`) for voice
+  surfaces; refined sans (`--font-data`) for chrome; monospace
+  (`--font-mono`) for code. Em-dashes preserved.
+- **Vocabulary**: "Synthetic Intelligence" or "SI" — never "AI" as
+  a load-bearing standalone word. The full canonical vocabulary
+  (Cell, Spinner, Spool, Skein, Silk Pattern, Warp Thread, Weaver,
+  Loom, Grimoire, Wizard, Patron) is operative.
+- **Accessibility**: WCAG AA on body text; AAA on prose surfaces.
+  Focus-visible on every interactive control.
+- **Affordance**: each region earns its first line; one focal
+  point per screen-height; F-pattern scan respected.
+
+**Operative discipline**: Pablo runs on every UI-producing
+Spinner's output *before delivery*. The Wizard does not see
+un-reviewed UI.
+
+### 2. The rules / logic standard
+
+Business logic is **declarative when possible, code when necessary.**
+
+- When a Spinner's logic can be expressed as rules over typed
+  inputs, it is encoded in `json-logic-js` (the canonical engine
+  for declarative rules in the Webspinner stack). Rules are
+  portable, inspectable, language-agnostic.
+- When the logic requires synthetic-intelligence reasoning, the
+  Mission Lock is the operative contract. The lock is in
+  `mission-lock.md` of every Spinner bundle, injected as the
+  system prompt for every model call.
+- When the logic is deterministic computation (parse, transform,
+  validate), it lives in `src/index.ts` of the Spinner bundle —
+  inspectable code, not prompts.
+- Side effects are explicit. Audit emissions, vault reads, Spool
+  reads, state writes, model calls — all named in the manifest,
+  all captured in the audit chain.
+
+**Operative discipline**: a Spinner's logic should be inspectable
+by a future Wizard reading the bundle, not hidden behind opaque
+prompt engineering. The lock and the rules are the contract.
+
+### 3. The output staging standard
+
+Every artifact-producing Spinner emits its output through declared
+stages. Stages are typed checkpoints; Warp Threads compose across
+them.
+
+**Canonical stages**, in order:
+
+1. **`draft`** — the Spinner's first emission. Internal only.
+2. **`reviewed`** — Pablo has critiqued the UX; findings applied.
+3. **`audited`** — Bootstrap has audited the prose for canon drift;
+   findings applied.
+4. **`polished`** — the Spinner's final pass on its own draft,
+   informed by Pablo + Bootstrap findings.
+5. **`delivered`** — what lands in front of the Wizard.
+
+Nothing reaches the Wizard before `delivered`. Intermediate stages
+are private; the audit chain captures them; the Loom surfaces them
+to operators but not to patrons.
+
+A Spinner's manifest declares which stages it emits. A Warp Thread
+declares which stage of each step it consumes.
+
+**Operative discipline**: a Spinner that delivers a draft as the
+final output is a Spinner that violates Wow as Baseline (canon
+§17.5) and the *works the first time* clause of `VISION.md`.
+
+---
+
+## Schema versioning — loose coupling, runtime compatibility
+
+Schemas are versioned. Always. The reason: **Spinners are loosely
+coupled. A Spinner cannot trust a caller's contract unless that
+contract is named and versioned.**
+
+- Every capability's `inputSchema` and `outputSchema` carries its
+  own SemVer in a top-level `$id` URN:
+  `urn:webspinner:capability:<spinner-name>:<capability-name>:vMAJOR.MINOR.PATCH`.
+- Manifests declare *compatible version ranges* when a Spinner
+  depends on another's capability — `dependsOn: [{ name: ..., capability: ..., versionRange: "^1.2" }]`.
+- The Weaver enforces compatibility at install (registration) and at
+  invocation (each call). Failure modes: `schema-incompatible-caller`,
+  `schema-incompatible-callee` — both gated, like integrity failures.
+- **Breaking changes** bump major. Additive changes bump minor.
+  Bug-fix / clarification changes bump patch.
+- **Backwards-compatible deprecations** are signaled with a
+  `deprecated: true` flag on the deprecated field + a `replacedBy`
+  pointer to the new field. The Loom surfaces deprecations to
+  operators.
+
+This is the *only* way loosely-coupled Spinners stay agile across
+deployments. The alternative is a coordinated upgrade dance every
+time anyone changes a capability — exactly the rigidity the Wizard
+refuses.
+
+---
+
+## Structured + unstructured persistence
+
+The Grimoire holds both. The choice between them is per-Spinner,
+declared in the manifest.
+
+- **Structured**: PocketBase collections. SQLite-backed; schema is
+  expressed in PocketBase's flexible-schema model (typed fields +
+  JSON fields where shape varies). Not a traditional RDBMS — there
+  is no DBA, there are no migrations-by-hand, and the schema
+  declaration lives in the Spinner that owns the collection.
+- **Unstructured (semantic)**: vector embeddings via the embeddings
+  sidecar. MiniLM-L6-v2 today (384-dim, normalized, dot-product
+  similarity). BGE-M3 at scale.
+- **Documents**: file system + Spool reader pattern. Markdown,
+  JSON, source code, manuscripts — all readable by Spinners through
+  declared Spools.
+
+Every Spinner declares in its manifest which persistence categories
+it reads from and writes to. The Weaver enforces — a Spinner cannot
+write to a collection it did not declare.
+
+When the scale demands it, PocketBase is supplanted by Postgres +
+Qdrant per the canon's default stack. The contract — typed-but-
+flexible collections + vector store + Spool-mediated documents —
+does not change. This is the *doesn't preclude* discipline from
+`STANCE.md`.
+
+---
+
+## Best open source by layer
+
+The Foundation prefers vetted, well-maintained, openly licensed
+libraries over hand-rolled primitives. Hand-rolling is reserved for
+genuinely Warp-specific primitives (the Weaver dispatch, the Mission
+Lock injection pattern, the Silk Pattern shape).
+
+Canonical picks per architectural layer. These are reviewed when a
+better-maintained or more capable alternative emerges, or when the
+current pick is unmaintained for >12 months.
+
+| Layer | Pick | Why |
+|---|---|---|
+| Manifest validation | `ajv` | Fastest JSON Schema validator; supports Draft 2020-12 |
+| Bundle digest hashing | `@noble/hashes` (sha256) | Audited, zero-dependency, TS-first |
+| Signing | `@noble/curves` (ed25519) | Audited, zero-dependency, no native deps |
+| CLI shell | `commander` | Wide adoption; minimal API |
+| Interactive prompts | `@inquirer/prompts` | Modular, accessible, modern API |
+| JSON Pointer | `jsonpointer` | Focused, RFC 6901 compliant |
+| Rules engine | `json-logic-js` | Declarative, language-portable, the canonical parameter-driven-logic primitive |
+| State machines | `xstate` | Visualizable, typed, popular (or its patterns hand-rolled for Cell-local) |
+| Form schema | JSON Schema | Source of truth for form fields, validation, and bindings |
+| Form rendering | Svelte + JSON Schema renderer | Native to the Loom; renderer hand-rolled against JSON Schema |
+| Markdown | `marked` | Already in use; predictable |
+| Static site generation | Astro | Already in use on webspinner.ai; minimal JS, fast |
+| Web app framework | SvelteKit | Already in use on the Loom |
+| Structured DB | PocketBase (bootstrap); Postgres + Qdrant (scale) | Flexible-schema; parameter-driven |
+| Vector embedding | sentence-transformers MiniLM-L6-v2 (today); BGE-M3 (scale) | Cell-local; no off-Cell calls |
+| Re-ranker | BGE-reranker-v2 | Open weights; MLX-compatible |
+| Audit envelope | CloudEvents 1.0 | Industry standard; tooling-friendly |
+| Test framework | Vitest + Playwright | Already in use |
+| Image processing | `sharp` | Industry standard for Node |
+| Tracing | OpenTelemetry | Scale-only; not now (per STANCE.md) |
+
+Hand-rolling reserved for: the Weaver dispatch table, the Mission
+Lock injection pattern, the Silk Pattern persistence shape, the
+canonical bundle digest serialization (sort-keys + LF terminate),
+and any primitive uniquely Warp-architectural.
+
+---
+
+## Precedent-based authoring
+
+The Wizard's standing rule: **every new Spinner starts from an
+existing or bespoke precedent.** No blank-manifest authoring.
+
+How this works in practice:
+
+1. The Wizard speaks the sentence.
+2. The authoring Spinner (the meta-Spinner) searches the Skein for
+   existing Spinners with overlapping intent.
+3. It searches the Foundation library for *patterns* — accounting
+   patterns, form patterns, site patterns, content patterns — that
+   match the domain.
+4. It proposes the closest precedent as the starting point, named
+   explicitly: *"This is most like the small-business-CRM Spinner.
+   We can specialize from there. Shall we?"*
+5. Specialization happens through parameter dialogue, not from-
+   scratch coding. The precedent is the skeleton; the Wizard's
+   answers fill in the parameters.
+
+**The Foundation library is the corpus that makes this work.** It
+must grow to hold patterns across the domains Webspinner serves —
+small business, professional services, education, non-profit, the
+arts, healthcare administration, etc. Each pattern is a Spool: a
+markdown file (or set of files) with the canonical structure,
+the canonical rules, the canonical UX, and the canonical
+parameters. Pablo's library was the first; many more follow.
+
+This is the architectural answer to the Wizard's *"the AI knows to
+create an integrated general ledger, accounts payable, accounts
+receivable..."*. The AI knows because the *library* knows. The
+authoring conversation queries the library.
+
+---
+
+## Review triggers
+
+These standards are reviewed when:
+
+- A new pillar from `VISION.md` lands and changes what a Spinner
+  must do.
+- A library on the open-source picks list is unmaintained for
+  >12 months.
+- A measurably better alternative emerges in the open-source
+  ecosystem (benchmarked on Cell workload; cited in
+  `DECISIONS.md`).
+- A schema-versioning incident proves the current scheme insufficient.
+- The first peer Wizard adopts a Cell — public-contract obligations
+  begin.
+
+---
+
+*Updated 2026-05-12. These standards bind every Spinner authored
+in this Cell and every Spinner the Foundation recognizes through
+the Skein. Updates are append-only; previous versions live in
+git.*

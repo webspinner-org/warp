@@ -185,16 +185,25 @@ appears in her Skein, runnable through the Weaver.
 
 ### 1.1 `webspinner` CLI — `init`, `build`, `sign`, `install`, `run`
 
-**Why.** The CLI is the canonical authoring surface. The in-Loom UI
-(1.2) wraps it.
+**Why.** The CLI is the canonical authoring surface for technical
+Wizards. The in-Loom UI (1.2) is the canonical authoring surface
+for non-technical Wizards. Both walk the same flow: a sentence, a
+precedent, a clarifying dialogue, an artifact.
 
 **Definition of done.**
 
-- `webspinner init <name>` scaffolds a Spinner bundle from a chosen
-  template (1.3). Interactive prompts for displayName, description,
-  declared model, declared capabilities.
+- `webspinner init` (default mode is **interactive precedent-
+  based authoring** — `VISION.md` §"The authoring conversation").
+  The Wizard speaks a sentence; the CLI searches the Skein and the
+  Foundation library for matching precedents; surfaces the closest
+  match; walks dynamic clarifying-question prompts; scaffolds the
+  specialized bundle. `--non-interactive` falls back to template-
+  only init (`webspinner init <name> --from <template>`).
 - `webspinner build [path]` validates manifest against the JSON
-  Schema; runs type-check on `src/index.ts`; emits computed digest.
+  Schema (via `ajv`); validates each capability's input/output
+  schema carries the canonical SemVer `$id`
+  (per `STANDARDS.md` §"Schema versioning"); runs type-check on
+  `src/index.ts`; emits computed digest.
 - `webspinner sign [path]` reads the Cell's identity-key from the
   vault (via the Loom's local socket or an env handoff); writes
   detached signature.
@@ -205,20 +214,23 @@ appears in her Skein, runnable through the Weaver.
   `tools/wj` and `tools/audit` patterns.
 - All subcommands honor `--json` for machine-readable output.
 
-**Best open source.** `commander` (simple, widely used) for the
-CLI shell; `prompts` or `enquirer` for the interactive `init` flow;
-no scaffolding-engine — direct string interpolation on template
-files. Avoid `yeoman` and `plop` — both heavier than the job.
+**Best open source.** Per `STANDARDS.md`: `commander` for the
+shell, `@inquirer/prompts` for the dialogue, `ajv` for schema
+validation, `@noble/curves` for signing. No scaffolding-engine —
+template specialization through declared parameters resolved
+against the precedent's JSON Schema.
 
-**Empirical study.** Look at how `npm init`, `cargo init`,
-`gh repo create`, and `wrangler init` shape their interactive
-prompts. Look at the npm CLI's subcommand structure for naming
-conventions. Cite the prior art.
+**Empirical study.** Look at how `npm init`, `cargo new`,
+`gh repo create`, and `wrangler init` shape their prompts.
+Look at how Salesforce's Flow Builder and Apex Builder surface
+precedent-based authoring through guided dialogue. Cite both.
 
 **Risk.** A CLI that depends on the Loom being up is fragile;
 design `webspinner build` to work offline, and `webspinner sign`
 to read the key via env-injection so it can run without the Loom
-process.
+process. The interactive mode requires the Cell's Quiet Loom +
+embeddings sidecar to be reachable; degrade gracefully to
+template-only when unavailable.
 
 ### 1.2 In-Loom Spinner authoring — `/admin/spinners/new`
 
@@ -255,33 +267,78 @@ five times during build.
 
 ### 1.3 Templates — the starting points
 
-**Why.** A blank Spinner bundle is too much. A template is a
-proven shape — manifest + mission-lock + how-it-works skeleton + a
-runnable capability that does *something* the Wizard can customize.
+**Why.** A Wizard's first Spinner specializes from a precedent.
+Templates are the proven shapes the authoring conversation draws
+from — each is a full I-P-O contract plus a reference Spinner
+bundle the Wizard parameterizes through dialogue.
 
-**Definition of done. Four templates land in `~/warp/templates/`:**
+The first three templates *are not the operator-internal categories
+I had earlier* (consult / audit / review / produce). Those remain
+available as patterns for Spinner authors who need them — they are
+abstractions of what Bootstrap and Pablo already do — but they are
+not the first templates. The first templates are the archetypes
+the Wizard named (`VISION.md` §"Three first authoring archetypes"):
 
-- **`consult`** — single capability, retrieval-augmented, returns
-  prose with citations. Derived from Bootstrap's `consult`.
-- **`audit`** — single capability, drift-check against declared
-  source, returns severity-tagged findings. Derived from
-  Bootstrap's `audit`.
-- **`review`** — single capability, design-quality review of a
-  rendered surface, returns severity-tagged findings. Derived from
-  Pablo's `review`.
-- **`produce`** — single capability, produces an artifact (text or
-  structured JSON) from a description, returns the artifact with
-  provenance. New shape; the patron-facing pattern.
+**Definition of done. Three archetype templates land in
+`~/warp/templates/`, each as a real working Spinner bundle:**
 
-**Best open source.** No external dep. Templates are in-tree
-directories with `{{placeholders}}` resolved by the CLI at `init`.
+- **`weave-website`** — *"I want a website for my bakery in
+  Asheville that sells sourdough and pies and lets people
+  preorder."*
+  Input: a one-sentence intent + clarifying answers via dynamic
+  forms. Process: retrieves a static-site precedent from the
+  Foundation library; specializes copy, navigation, brand; renders
+  Astro source. Output: deployable site bundle + a hosted-
+  microservice manifest for any forms it embeds.
 
-**Empirical study.** Look at the `create-svelte`, `create-next-app`,
-and `cargo new --bin` template defaults. Each is small, opinionated,
-and gets a runnable thing in one command. Cite.
+- **`weave-form`** — *"I need a contact form on my professional
+  services site that captures lead source and budget range."*
+  Input: a description of the form's purpose + field hints.
+  Process: generates the form's JSON Schema, a Svelte renderer,
+  and a microservice endpoint manifest with audit + Spool
+  binding. Output: embeddable snippet + Cell-side microservice
+  deployment ready to install.
 
-**Risk.** Template proliferation. Cap at four for v1; add only on
-demonstrated need.
+- **`weave-app-package`** — *"Create an integrated accounting
+  package for my small business."*
+  Input: a one-sentence application description. Process: searches
+  the Foundation library for industry-best-practice precedents
+  (for accounting: GL + AP + AR + invoicing + statements +
+  financial reports); composes a set of Spinners + Warp Threads +
+  Spools + Loom surfaces. Output: a complete application bundle
+  ready to install in the Cell.
+
+Each template's first instance is the demonstration. A Wizard
+speaks the sentence; the Cell produces the thing; the thing
+works. That is the demo we land Tier 1 against.
+
+The earlier operator-internal categories (`consult`, `audit`,
+`review`, `produce`) are *available* as second-tier templates
+when the corpus of patron-archetype templates is mature. They
+are not the priority.
+
+**Best open source.** Per `STANDARDS.md`: `ajv` for manifest +
+form-schema validation, `json-logic-js` for declarative business
+rules in produced applications, `marked` for prose emission,
+Astro programmatic API for `weave-website` site generation, Svelte
++ JSON-Schema renderer for `weave-form` field rendering. No
+scaffolding-engine.
+
+**Empirical study.** Look at `create-svelte`, `create-next-app`,
+Vercel's "deploy template" flow. Look at how Bubble, Glide, and
+Retool handle non-technical-user template specialization. Look
+at how Salesforce Flow Templates and Microsoft Power Platform's
+templates handle precedent-based composition. Cite the prior art.
+
+**Risk.** The archetype templates are far more ambitious than the
+operator-internal ones. The first version of `weave-website` is
+expected to produce a *working, branded, accessible, deployed* site
+from one sentence. The quality bar from `VISION.md` (works the
+first time, elegantly branded, delights and astounds) is the gate.
+Pablo + Bootstrap reviewers are not optional — they are part of the
+default pipeline. If Tier 1.3 ships a `weave-website` that needs
+a second pass to be acceptable, the standard is broken; fix the
+template, not the second pass.
 
 ### 1.4 Pablo learns to review *Spinners*, not just rendered HTML
 
