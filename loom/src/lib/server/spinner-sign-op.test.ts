@@ -59,6 +59,8 @@ interface PbState {
   vaultRows: { id: string; name: string; ciphertext: string; iv: string }[];
   operationsCollection: boolean;
   operationsRows: Record<string, unknown>[];
+  auditCollection: boolean;
+  auditRows: Record<string, unknown>[];
 }
 
 function pbMock(): { fetch: typeof fetch; state: PbState } {
@@ -68,6 +70,8 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
     vaultRows: [],
     operationsCollection: false,
     operationsRows: [],
+    auditCollection: false,
+    auditRows: [],
   };
   let nextId = 1;
   const ok = (body: unknown, status = 200) =>
@@ -90,10 +94,14 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
     if (path === '/api/collections/wp_operations' && method === 'GET') {
       return state.operationsCollection ? ok({ name: 'wp_operations' }) : notFound();
     }
+    if (path === '/api/collections/wp_audit' && method === 'GET') {
+      return state.auditCollection ? ok({ name: 'wp_audit' }) : notFound();
+    }
     if (path === '/api/collections' && method === 'POST') {
       const body = JSON.parse(init?.body as string) as { name: string };
       if (body.name === 'wp_cell_identity') state.identityCollection = true;
       if (body.name === 'wp_operations') state.operationsCollection = true;
+      if (body.name === 'wp_audit') state.auditCollection = true;
       return ok({ name: body.name });
     }
     if (path === '/api/collections/wp_cell_identity/records' && method === 'GET') {
@@ -137,6 +145,12 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
       state.operationsRows.push(row);
       return ok(row);
     }
+    if (path === '/api/collections/wp_audit/records' && method === 'POST') {
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      const row = { id: `id-${nextId++}`, ...body };
+      state.auditRows.push(row);
+      return ok(row);
+    }
     return notFound();
   }) as typeof fetch;
   return { fetch: fetchFn, state };
@@ -176,6 +190,22 @@ describe('signSpinnerBundle', async () => {
     expect(row['kind']).toBe('spinner.sign');
     expect(row['status']).toBe('ok');
     expect(row['actor_kind']).toBe('wizard');
+
+    // wp_audit row captured, correlated to op.
+    expect(pb.state.auditRows).toHaveLength(1);
+    const audit = pb.state.auditRows[0]!;
+    expect(audit['event_type']).toBe('wp.spinner.signed');
+    expect(audit['audit_result']).toBe('success');
+    expect(audit['correlation_id']).toBe(row['op_id']);
+    expect(audit['event_subject']).toBe('@webspinner-foundation/pablo');
+    expect(audit['actor_kind']).toBe('human');
+    expect(audit['ocsf_class']).toBe(6003);
+    const data = audit['data'] as Record<string, unknown>;
+    expect(data['digest']).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(data['signerFingerprint']).toMatch(/^[a-f0-9]{16}$/);
+    expect(data['signerLabel']).toBe('cell-identity-key');
+    expect(data['identityCreated']).toBe(true);
+    expect(audit['event_source']).toBe(`urn:webspinner:cell:${result.value.signerFingerprint}`);
   });
 
   it.skipIf(!hasPablo)(
@@ -224,6 +254,13 @@ describe('signSpinnerBundle', async () => {
     // Still logs an op row so the attempted access is recorded.
     expect(pb.state.operationsRows).toHaveLength(1);
     expect(pb.state.operationsRows[0]?.['status']).toBe('failed');
+    // Audit: denied (refused by sandbox policy).
+    expect(pb.state.auditRows).toHaveLength(1);
+    expect(pb.state.auditRows[0]?.['event_type']).toBe('wp.spinner.signed');
+    expect(pb.state.auditRows[0]?.['audit_result']).toBe('denied');
+    const data = pb.state.auditRows[0]?.['data'] as Record<string, unknown>;
+    expect(data['errorKind']).toBe('path-not-allowed');
+    expect(data['bundlePath']).toBe('/etc/passwd');
   });
 
   it.skipIf(!hasPablo)('rejects bundle-not-found inside the allowed sandbox', async () => {

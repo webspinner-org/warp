@@ -24,6 +24,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { AuditActor } from '@webspinner-foundation/sdk';
 
 const PB_URL = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
 const COLLECTION = 'wp_operations';
@@ -45,6 +46,33 @@ export interface OperationActor {
   readonly kind: 'wizard' | 'patron' | 'meta-runtime' | 'system';
   readonly id: string;
   readonly email?: string;
+}
+
+/**
+ * Map an OperationActor to an AuditActor. The audit chain uses the
+ * SDK's coarser actor taxonomy (`human | spinner | system`); the
+ * operation log uses our finer one (`wizard | patron | meta-runtime |
+ * system`). This is the single canonical mapping.
+ */
+export function operationActorToAuditActor(actor: OperationActor): AuditActor {
+  const kindMap = {
+    wizard: 'human',
+    patron: 'human',
+    'meta-runtime': 'spinner',
+    system: 'system',
+  } as const;
+  const authMethodMap = {
+    wizard: 'pb-superuser',
+    patron: 'pb-user',
+    'meta-runtime': 'cell-identity',
+    system: 'system',
+  } as const;
+  return {
+    kind: kindMap[actor.kind],
+    id: actor.id,
+    ...(actor.email !== undefined ? { displayName: actor.email } : {}),
+    authMethod: authMethodMap[actor.kind],
+  };
 }
 
 export interface OperationWriteRequest {

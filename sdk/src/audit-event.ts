@@ -1,5 +1,6 @@
 import type { VaultURI } from './vault-uri.js';
 import type { SpinnerManifest, SpinnerName } from './manifest.js';
+import type { SignerLabel } from './signing.js';
 
 export type AuditEventType =
   | 'wp.vault.read'
@@ -12,6 +13,8 @@ export type AuditEventType =
   | 'wp.spinner.invoke'
   | 'wp.spinner.uninstall'
   | 'wp.spinner.integrity.fail'
+  | 'wp.spinner.signed'
+  | 'wp.spinner.verified'
   | 'wp.thread.invoke';
 
 export type AuditResult = 'success' | 'denied' | 'error';
@@ -85,6 +88,42 @@ export interface AuditEventData {
     readonly recordedDigest: string;
     readonly observedDigest: string;
     readonly action: 'gated' | 'warned';
+  };
+  /**
+   * Emitted once per `signSpinnerBundle` call. Success cases populate
+   * every domain field; early failures (path-not-allowed, bundle-not-
+   * found, manifest-invalid) populate only what was known at the
+   * failure point and set `errorKind`.
+   */
+  'wp.spinner.signed': {
+    readonly bundlePath: string;
+    readonly spinnerName?: SpinnerName;
+    readonly digest?: string;
+    readonly signerFingerprint?: string;
+    readonly signerLabel?: SignerLabel;
+    readonly identityCreated?: boolean;
+    readonly errorKind?: string;
+  };
+  /**
+   * Emitted once per `verifySpinnerBundle` call. `unsigned`,
+   * `digestMatches`, `allValid` describe the verification verdict.
+   * Early failures (path-not-allowed, manifest-invalid) populate only
+   * `bundlePath` + `errorKind`.
+   */
+  'wp.spinner.verified': {
+    readonly bundlePath: string;
+    readonly spinnerName?: SpinnerName;
+    readonly digestMatches?: boolean;
+    readonly recordedDigest?: string;
+    readonly observedDigest?: string;
+    readonly signers?: readonly {
+      readonly fingerprint: string;
+      readonly valid: boolean;
+      readonly reason?: string;
+    }[];
+    readonly allValid?: boolean;
+    readonly unsigned?: boolean;
+    readonly errorKind?: string;
   };
   'wp.thread.invoke': {
     readonly threadId: string;

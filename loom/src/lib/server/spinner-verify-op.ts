@@ -27,10 +27,15 @@ import {
   computeBundleDigest,
   readProvenance,
   verifyBundleDigest,
+  type AuditEventData,
+  type AuditResult,
   type SpinnerManifest,
+  type SpinnerName,
 } from '@webspinner-foundation/sdk';
+import { getCellIdentity } from './identity.js';
 import { nodeProvenanceIO } from './provenance-node.js';
-import { writeOperation, type OperationActor } from './operations.js';
+import { ensureAuditCollection, writeAuditEvent } from './audit.js';
+import { writeOperation, operationActorToAuditActor, type OperationActor } from './operations.js';
 
 export interface VerifyOperationInput {
   readonly bundlePath: string;
@@ -93,12 +98,14 @@ export async function verifySpinnerBundle(
   input: VerifyOperationInput,
 ): Promise<VerifyOperationResult> {
   const startedAt = (input.now ?? (() => new Date()))().toISOString();
+  let spinnerName: SpinnerName | undefined;
 
   if (!isPathAllowed(input.bundlePath)) {
     return finish({
       input,
       startedAt,
       result: { ok: false, error: { kind: 'path-not-allowed', path: input.bundlePath } },
+      spinnerName,
     });
   }
 
@@ -107,6 +114,7 @@ export async function verifySpinnerBundle(
       input,
       startedAt,
       result: { ok: false, error: { kind: 'bundle-not-found', path: input.bundlePath } },
+      spinnerName,
     });
   }
 
@@ -114,6 +122,7 @@ export async function verifySpinnerBundle(
   try {
     const raw = await readFile(resolve(input.bundlePath, 'manifest.json'), 'utf8');
     manifest = JSON.parse(raw) as SpinnerManifest;
+    spinnerName = manifest.name;
   } catch (e) {
     return finish({
       input,
@@ -122,6 +131,7 @@ export async function verifySpinnerBundle(
         ok: false,
         error: { kind: 'manifest-invalid', detail: (e as Error).message },
       },
+      spinnerName,
     });
   }
 
@@ -135,6 +145,7 @@ export async function verifySpinnerBundle(
         ok: false,
         error: { kind: 'digest-failed', detail: digestResult.error.kind },
       },
+      spinnerName,
     });
   }
 
@@ -154,6 +165,7 @@ export async function verifySpinnerBundle(
           allValid: false,
         },
       },
+      spinnerName,
     });
   }
 
@@ -174,6 +186,7 @@ export async function verifySpinnerBundle(
           allValid: false,
         },
       },
+      spinnerName,
     });
   }
 
@@ -222,6 +235,7 @@ export async function verifySpinnerBundle(
         allValid,
       },
     },
+    spinnerName,
   });
 }
 
@@ -229,6 +243,7 @@ async function finish(args: {
   input: VerifyOperationInput;
   startedAt: string;
   result: VerifyOperationResult;
+  spinnerName?: SpinnerName;
 }): Promise<VerifyOperationResult> {
   const endedAt = (args.input.now ?? (() => new Date()))().toISOString();
 
@@ -269,9 +284,98 @@ async function finish(args: {
     );
     return args.result;
   }
+  const opId = write.row.opId;
+
+  try {
+    await emitVerifyAuditEvent({ ...args, opId });
+  } catch (err) {
+    console.error(`[spinner-verify-op] audit write failed: ${(err as Error).message}`);
+  }
 
   if (args.result.ok) {
-    return { ok: true, value: { ...args.result.value, opId: write.row.opId } };
+    return { ok: true, value: { ...args.result.value, opId } };
   }
-  return { ...args.result, opId: write.row.opId };
+  return { ...args.result, opId };
+}
+
+async function emitVerifyAuditEvent(args: {
+  input: VerifyOperationInput;
+  result: VerifyOperationResult;
+  spinnerName?: SpinnerName;
+  opId: string;
+}): Promise<void> {
+  const ensured = await ensureAuditCollection(args.input.fetch, args.input.pbToken);
+  if (!ensured.ok) {
+    throw new Error(`audit ensure failed: HTTP ${ensured.status} ${ensured.body}`);
+  }
+
+  // Look up the local Cell's identity (best-effort) for event_source.
+  // A fresh Cell without an identity yet falls back to 'unknown'.
+  let cellFingerprint = 'unknown';
+  try {
+    const id = await getCellIdentity(args.input.fetch, args.input.pbToken);
+    if (id) cellFingerprint = id.fingerprint;
+  } catch {
+    // ignore — best-effort lookup
+  }
+  const source = `urn:webspinner:cell:${cellFingerprint}`;
+
+  let auditResult: AuditResult;
+  let reason: string;
+  if (!args.result.ok) {
+    if (args.result.error.kind === 'path-not-allowed') {
+      auditResult = 'denied';
+      reason = `Bundle path refused by sandbox: ${args.result.error.path}`;
+    } else {
+      auditResult = 'error';
+      reason = `Verify failed: ${args.result.error.kind}`;
+    }
+  } else if (args.result.value.unsigned) {
+    auditResult = 'error';
+    reason = 'No provenance recorded for bundle';
+  } else if (!args.result.value.digestMatches) {
+    auditResult = 'error';
+    reason = `Digest mismatch — bundle has changed since signing`;
+  } else if (!args.result.value.allValid) {
+    auditResult = 'error';
+    reason = `One or more signatures failed verification`;
+  } else {
+    auditResult = 'success';
+    reason = `All signers valid for ${args.spinnerName ?? args.input.bundlePath}`;
+  }
+
+  const successFields: Partial<AuditEventData['wp.spinner.verified']> = args.result.ok
+    ? {
+        unsigned: args.result.value.unsigned,
+        digestMatches: args.result.value.digestMatches,
+        ...(args.result.value.recordedDigest !== undefined
+          ? { recordedDigest: args.result.value.recordedDigest }
+          : {}),
+        observedDigest: args.result.value.observedDigest,
+        signers: args.result.value.signers.map((s) => ({
+          fingerprint: s.fingerprint,
+          valid: s.valid,
+          ...(s.reason !== undefined ? { reason: s.reason } : {}),
+        })),
+        allValid: args.result.value.allValid,
+      }
+    : { errorKind: args.result.error.kind };
+
+  const data: AuditEventData['wp.spinner.verified'] = {
+    bundlePath: args.input.bundlePath,
+    ...(args.spinnerName !== undefined ? { spinnerName: args.spinnerName } : {}),
+    ...successFields,
+  };
+
+  await writeAuditEvent(args.input.fetch, args.input.pbToken, {
+    type: 'wp.spinner.verified',
+    source,
+    subject: args.spinnerName ?? args.input.bundlePath,
+    actor: operationActorToAuditActor(args.input.actor),
+    result: auditResult,
+    reason,
+    correlationId: args.opId,
+    ocsfClass: 6003,
+    data,
+  });
 }

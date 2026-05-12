@@ -26,12 +26,17 @@ import {
   computeBundleDigest,
   signBundleDigest,
   writeProvenance,
+  type AuditEventData,
+  type AuditResult,
+  type SignerLabel,
   type SpinnerManifest,
+  type SpinnerName,
   type SignersManifest,
 } from '@webspinner-foundation/sdk';
 import { ensureCellIdentity, loadCellKeypair, type CellIdentityPublic } from './identity.js';
 import { nodeProvenanceIO } from './provenance-node.js';
-import { writeOperation, type OperationActor } from './operations.js';
+import { ensureAuditCollection, writeAuditEvent } from './audit.js';
+import { writeOperation, operationActorToAuditActor, type OperationActor } from './operations.js';
 
 export interface SignOperationInput {
   readonly bundlePath: string;
@@ -88,6 +93,12 @@ async function bundleExists(bundlePath: string): Promise<boolean> {
 
 export async function signSpinnerBundle(input: SignOperationInput): Promise<SignOperationResult> {
   const startedAt = (input.now ?? (() => new Date()))().toISOString();
+  // Audit-context accumulators — populated as the pipeline progresses so
+  // finish() can write a maximally-informative audit event regardless of
+  // where we exit.
+  let spinnerName: SpinnerName | undefined;
+  // eslint-disable-next-line prefer-const -- reassigned after ensureCellIdentity succeeds; ESLint's flow analysis misses it
+  let cellFingerprint: string | undefined;
 
   // Step 1: path validation.
   if (!isPathAllowed(input.bundlePath)) {
@@ -95,6 +106,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
       input,
       startedAt,
       result: { ok: false, error: { kind: 'path-not-allowed', path: input.bundlePath } },
+      spinnerName,
+      cellFingerprint,
     });
   }
 
@@ -103,6 +116,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
       input,
       startedAt,
       result: { ok: false, error: { kind: 'bundle-not-found', path: input.bundlePath } },
+      spinnerName,
+      cellFingerprint,
     });
   }
 
@@ -111,6 +126,7 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
   try {
     const raw = await readFile(resolve(input.bundlePath, 'manifest.json'), 'utf8');
     manifest = JSON.parse(raw) as SpinnerManifest;
+    spinnerName = manifest.name;
   } catch (e) {
     return finish({
       input,
@@ -119,6 +135,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
         ok: false,
         error: { kind: 'manifest-invalid', detail: (e as Error).message },
       },
+      spinnerName,
+      cellFingerprint,
     });
   }
 
@@ -134,6 +152,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
         ok: false,
         error: { kind: 'digest-failed', detail: digestResult.error.kind },
       },
+      spinnerName,
+      cellFingerprint,
     });
   }
 
@@ -147,9 +167,12 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
         ok: false,
         error: { kind: 'identity-failed', detail: JSON.stringify(ensure.error) },
       },
+      spinnerName,
+      cellFingerprint,
     });
   }
   const identity: CellIdentityPublic = ensure.value.identity;
+  cellFingerprint = identity.fingerprint;
 
   const keypairResult = await loadCellKeypair(input.fetch, input.pbToken, input.masterKey);
   if (!keypairResult.ok || !keypairResult.value) {
@@ -165,6 +188,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
             : JSON.stringify(keypairResult.error),
         },
       },
+      spinnerName,
+      cellFingerprint,
     });
   }
   const keypair = keypairResult.value;
@@ -195,6 +220,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
         ok: false,
         error: { kind: 'provenance-failed', detail: JSON.stringify(wrote.error) },
       },
+      spinnerName,
+      cellFingerprint,
     });
   }
 
@@ -220,6 +247,8 @@ export async function signSpinnerBundle(input: SignOperationInput): Promise<Sign
         filesWritten,
       },
     },
+    spinnerName,
+    cellFingerprint,
   });
 }
 
@@ -227,6 +256,8 @@ async function finish(args: {
   input: SignOperationInput;
   startedAt: string;
   result: SignOperationResult;
+  spinnerName?: SpinnerName;
+  cellFingerprint?: string;
 }): Promise<SignOperationResult> {
   const endedAt = (args.input.now ?? (() => new Date()))().toISOString();
   const inputPayload = { bundlePath: args.input.bundlePath };
@@ -258,18 +289,81 @@ async function finish(args: {
   if (!write.ok) {
     // We logged nothing — return the original result but flag the
     // operations write failure on stderr so the operator sees it.
-
     console.error(
       `[spinner-sign-op] failed to write wp_operations row: HTTP ${write.status} ${write.body}`,
     );
     return args.result;
   }
+  const opId = write.row.opId;
+
+  // Audit event — one per call, correlated to the operation by opId.
+  // Failures here don't propagate; the operation already succeeded or
+  // failed independently of audit-write health.
+  try {
+    await emitSignAuditEvent({ ...args, opId });
+  } catch (err) {
+    console.error(`[spinner-sign-op] audit write failed: ${(err as Error).message}`);
+  }
 
   if (args.result.ok) {
-    return {
-      ok: true,
-      value: { ...args.result.value, opId: write.row.opId },
-    };
+    return { ok: true, value: { ...args.result.value, opId } };
   }
-  return { ...args.result, opId: write.row.opId };
+  return { ...args.result, opId };
+}
+
+async function emitSignAuditEvent(args: {
+  input: SignOperationInput;
+  result: SignOperationResult;
+  spinnerName?: SpinnerName;
+  cellFingerprint?: string;
+  opId: string;
+}): Promise<void> {
+  // Idempotently ensure the audit collection exists before writing.
+  // First-call cost is one GET; steady-state is one GET (cached at PB).
+  const ensured = await ensureAuditCollection(args.input.fetch, args.input.pbToken);
+  if (!ensured.ok) {
+    throw new Error(`audit ensure failed: HTTP ${ensured.status} ${ensured.body}`);
+  }
+
+  const source = `urn:webspinner:cell:${args.cellFingerprint ?? 'unknown'}`;
+
+  let auditResult: AuditResult;
+  let reason: string;
+  if (args.result.ok) {
+    auditResult = 'success';
+    reason = `Signed ${args.spinnerName ?? args.input.bundlePath} → ${args.result.value.digest}`;
+  } else if (args.result.error.kind === 'path-not-allowed') {
+    auditResult = 'denied';
+    reason = `Bundle path refused by sandbox: ${args.result.error.path}`;
+  } else {
+    auditResult = 'error';
+    reason = `Sign failed: ${args.result.error.kind}`;
+  }
+
+  const successFields: Partial<AuditEventData['wp.spinner.signed']> = args.result.ok
+    ? {
+        digest: args.result.value.digest,
+        signerFingerprint: args.result.value.signerFingerprint,
+        signerLabel: args.result.value.signerLabel satisfies SignerLabel,
+        identityCreated: args.result.value.identityCreated,
+      }
+    : { errorKind: args.result.error.kind };
+
+  const data: AuditEventData['wp.spinner.signed'] = {
+    bundlePath: args.input.bundlePath,
+    ...(args.spinnerName !== undefined ? { spinnerName: args.spinnerName } : {}),
+    ...successFields,
+  };
+
+  await writeAuditEvent(args.input.fetch, args.input.pbToken, {
+    type: 'wp.spinner.signed',
+    source,
+    subject: args.spinnerName ?? args.input.bundlePath,
+    actor: operationActorToAuditActor(args.input.actor),
+    result: auditResult,
+    reason,
+    correlationId: args.opId,
+    ocsfClass: 6003,
+    data,
+  });
 }

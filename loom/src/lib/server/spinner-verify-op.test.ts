@@ -54,6 +54,8 @@ interface PbState {
   vaultRows: { id: string; name: string; ciphertext: string; iv: string }[];
   operationsCollection: boolean;
   operationsRows: Record<string, unknown>[];
+  auditCollection: boolean;
+  auditRows: Record<string, unknown>[];
 }
 
 function pbMock(): { fetch: typeof fetch; state: PbState } {
@@ -63,6 +65,8 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
     vaultRows: [],
     operationsCollection: false,
     operationsRows: [],
+    auditCollection: false,
+    auditRows: [],
   };
   let nextId = 1;
   const ok = (body: unknown, status = 200) =>
@@ -84,10 +88,14 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
     if (path === '/api/collections/wp_operations' && method === 'GET') {
       return state.operationsCollection ? ok({ name: 'wp_operations' }) : notFound();
     }
+    if (path === '/api/collections/wp_audit' && method === 'GET') {
+      return state.auditCollection ? ok({ name: 'wp_audit' }) : notFound();
+    }
     if (path === '/api/collections' && method === 'POST') {
       const body = JSON.parse(init?.body as string) as { name: string };
       if (body.name === 'wp_cell_identity') state.identityCollection = true;
       if (body.name === 'wp_operations') state.operationsCollection = true;
+      if (body.name === 'wp_audit') state.auditCollection = true;
       return ok({ name: body.name });
     }
     if (path === '/api/collections/wp_cell_identity/records' && method === 'GET') {
@@ -131,6 +139,12 @@ function pbMock(): { fetch: typeof fetch; state: PbState } {
       state.operationsRows.push(row);
       return ok(row);
     }
+    if (path === '/api/collections/wp_audit/records' && method === 'POST') {
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      const row = { id: `id-${nextId++}`, ...body };
+      state.auditRows.push(row);
+      return ok(row);
+    }
     return notFound();
   }) as typeof fetch;
   return { fetch: fetchFn, state };
@@ -154,6 +168,15 @@ describe('verifySpinnerBundle', async () => {
     expect(result.value.unsigned).toBe(true);
     expect(result.value.allValid).toBe(false);
     expect(pb.state.operationsRows[0]?.['status']).toBe('partial');
+    // Audit: error, reason 'no provenance recorded'
+    expect(pb.state.auditRows).toHaveLength(1);
+    const audit = pb.state.auditRows[0]!;
+    expect(audit['event_type']).toBe('wp.spinner.verified');
+    expect(audit['audit_result']).toBe('error');
+    expect(audit['correlation_id']).toBe(pb.state.operationsRows[0]?.['op_id']);
+    const data = audit['data'] as Record<string, unknown>;
+    expect(data['unsigned']).toBe(true);
+    expect(data['allValid']).toBe(false);
   });
 
   it.skipIf(!hasPablo)('signed bundle verifies all signers as valid (status: ok)', async () => {
@@ -186,6 +209,13 @@ describe('verifySpinnerBundle', async () => {
     // operations rows: one sign + one verify (the verify is partial→ok)
     expect(pb.state.operationsRows.at(-1)?.['kind']).toBe('spinner.verify');
     expect(pb.state.operationsRows.at(-1)?.['status']).toBe('ok');
+    // Audit rows: one signed + one verified, both success
+    expect(pb.state.auditRows.at(-1)?.['event_type']).toBe('wp.spinner.verified');
+    expect(pb.state.auditRows.at(-1)?.['audit_result']).toBe('success');
+    expect(pb.state.auditRows.at(-1)?.['event_subject']).toBe('@webspinner-foundation/pablo');
+    const verifyData = pb.state.auditRows.at(-1)?.['data'] as Record<string, unknown>;
+    expect(verifyData['allValid']).toBe(true);
+    expect((verifyData['signers'] as unknown[]).length).toBe(1);
   });
 
   it.skipIf(!hasPablo)('digest-mismatch when a non-digest file changes after signing', async () => {
@@ -221,6 +251,11 @@ describe('verifySpinnerBundle', async () => {
     expect(result.value.observedDigest).not.toBe(result.value.recordedDigest);
     // status: partial because the op completed but the verification failed
     expect(pb.state.operationsRows.at(-1)?.['status']).toBe('partial');
+    // Audit: error, with digestMatches=false in data
+    const audit = pb.state.auditRows.at(-1)!;
+    expect(audit['event_type']).toBe('wp.spinner.verified');
+    expect(audit['audit_result']).toBe('error');
+    expect((audit['data'] as Record<string, unknown>)['digestMatches']).toBe(false);
   });
 
   it.skipIf(!hasPablo)('signature-invalid when a .sig is tampered (digest unchanged)', async () => {
@@ -257,6 +292,15 @@ describe('verifySpinnerBundle', async () => {
     expect(result.value.allValid).toBe(false);
     expect(result.value.signers[0]?.valid).toBe(false);
     expect(result.value.signers[0]?.reason).toBe('signature-invalid');
+    // Audit: error, signers[0].valid=false in data
+    const audit = pb.state.auditRows.at(-1)!;
+    expect(audit['audit_result']).toBe('error');
+    const signers = (audit['data'] as Record<string, unknown>)['signers'] as {
+      valid: boolean;
+      reason?: string;
+    }[];
+    expect(signers[0]?.valid).toBe(false);
+    expect(signers[0]?.reason).toBe('signature-invalid');
   });
 
   it('path outside the allowed sandboxes is rejected', async () => {
@@ -272,5 +316,12 @@ describe('verifySpinnerBundle', async () => {
     if (result.ok) return;
     expect(result.error.kind).toBe('path-not-allowed');
     expect(pb.state.operationsRows[0]?.['status']).toBe('failed');
+    // Audit: denied
+    expect(pb.state.auditRows).toHaveLength(1);
+    expect(pb.state.auditRows[0]?.['audit_result']).toBe('denied');
+    expect(pb.state.auditRows[0]?.['event_type']).toBe('wp.spinner.verified');
+    expect((pb.state.auditRows[0]?.['data'] as Record<string, unknown>)['errorKind']).toBe(
+      'path-not-allowed',
+    );
   });
 });
