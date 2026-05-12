@@ -36,6 +36,32 @@ export type {
 } from './integrity.js';
 export { parseSpinnerDigest, formatSpinnerDigest } from './integrity.js';
 
+export { canonicalizeJSON } from './canonical-json.js';
+
+export type {
+  BundleReader,
+  BundleDigestRecord,
+  DocumentationDigest,
+  DigestComputeError,
+  DigestComputeResult,
+} from './digest.js';
+export { computeBundleDigest } from './digest.js';
+
+export type {
+  Ed25519Keypair,
+  SignerLabel,
+  SignBundleDigestInput,
+  VerifyBundleDigestInput,
+  VerifyResult,
+} from './signing.js';
+export {
+  generateKeypair,
+  keypairFromPrivateHex,
+  fingerprintOf,
+  signBundleDigest,
+  verifyBundleDigest,
+} from './signing.js';
+
 export type {
   WarpThreadManifest,
   WarpThreadName,
@@ -46,8 +72,4 @@ export type {
 
 export type { SpoolManifest, SpoolName, SpoolRef, SpoolPassage } from './spool.js';
 
-export type {
-  SilkPatternEntry,
-  SilkPatternMetrics,
-  SilkPattern,
-} from './silk-pattern.js';
+export type { SilkPatternEntry, SilkPatternMetrics, SilkPattern } from './silk-pattern.js';
