@@ -134,13 +134,22 @@ records *about* the Spinner.
 Three storage tiers, each with a specific role. The boundaries are
 deliberate.
 
-### 2.1 Design-time: GitHub, one repository per Spinner
+### 2.1 Design-time: the `Cells` monorepo
 
-**Choice.** Every Spinner is one git repository, hosted under a
-Foundation-controlled GitHub organization (`github.com/webspinner-
-spinners/<name>` for Foundation-recognized; the operator's own
-GitHub for Cell-published). The repository holds every artifact
-from §1.1, §1.3, and §1.4.
+**Choice.** All Cell-authored Spinners live in one Foundation-
+controlled monorepo at
+[`github.com/webspinner-org/Cells`](https://github.com/webspinner-
+org/Cells). One subdirectory per Spinner under `spinners/<slug>/`,
+each holding the full bundle from §1.1, §1.3, and §1.4. Per-
+Spinner SemVer release rhythm via tag prefix:
+`<slug>-vMAJOR.MINOR.PATCH` — the Lerna / Nx / Bazel monorepo
+convention.
+
+The Genesis Spinners (`bootstrap`, `pablo`, `wizards-journal`,
+`genesis`) live in `~/warp/spinners/` and are released as part of
+the reference implementation, not in `Cells`. The split is
+deliberate: Genesis ships *with* the architecture; `Cells` holds
+what operators *produce* with it.
 
 **Why GitHub + git.**
 
@@ -155,57 +164,95 @@ from §1.1, §1.3, and §1.4.
     Skein. Issues for community feedback. Releases for SemVer
     publication.
   - **Operator-portable.** A Wizard who leaves the Foundation can
-    fork their Spinners; the Foundation has no ability to delete
-    their work.
+    fork the monorepo (or extract individual Spinner directories);
+    the Foundation has no ability to delete their work.
 
-**Repository structure** (canonical):
+**Why monorepo over polyrepo.**
+
+  - **One credential, one push, one PR-ingest path.** The Loom
+    holds a single GitHub credential and operates one remote. Each
+    additional repo would be one more credential boundary to
+    manage.
+  - **Cross-Spinner refactors are tractable.** When a shared
+    pattern emerges across three Spinners, the refactor happens
+    in one PR.
+  - **Per-Spinner release rhythm is preserved.** Tag prefixing
+    (`<slug>-v<version>`) gives each Spinner an independent
+    SemVer ladder inside one repo.
+  - **Cheap to migrate later** if scale warrants polyrepo. The
+    Spinner directories are self-contained; `git filter-repo`
+    extracts any one of them cleanly.
+
+**Repository structure**:
 
 ```
-<spinner-name>/
-├── manifest.json
-├── mission-lock.md
-├── how-it-works.md
+webspinner-org/Cells/
 ├── README.md
-├── thumbnail.svg
-├── changelog.md
-├── src/
-│   ├── index.ts
-│   └── *.test.ts
-├── e2e/                       (optional)
-│   └── *.spec.ts
-├── library/                   (optional)
-│   └── *.md
-├── assets/                    (optional)
-│   └── *
-├── provenance/
-│   ├── <digest>.json
-│   ├── <digest>.sig
-│   └── signers.json
-├── authoring/
-│   ├── initial-sentence.md
-│   ├── precedent.md
-│   ├── dialogue.jsonl
-│   └── review-notes.md
-├── package.json
-├── tsconfig.json
-├── .gitignore                 (excludes dist/, node_modules/)
-└── LICENSE                    (Apache-2.0 by default)
+├── CLAUDE.md
+├── LICENSE                          (Apache-2.0)
+├── TRADEMARK.md
+├── CONTRIBUTING.md
+├── SKEIN.json                       (top-level Spinner index)
+├── .gitignore
+└── spinners/
+    └── <spinner-slug>/              (one per Spinner)
+        ├── manifest.json
+        ├── mission-lock.md
+        ├── how-it-works.md
+        ├── README.md
+        ├── thumbnail.svg
+        ├── changelog.md
+        ├── src/
+        │   ├── index.ts
+        │   └── *.test.ts
+        ├── e2e/                     (optional)
+        ├── library/                 (optional)
+        ├── assets/                  (optional)
+        ├── provenance/
+        │   ├── <digest>.json
+        │   ├── <digest>.sig
+        │   └── signers.json
+        ├── authoring/               (unless authoring-private)
+        │   ├── initial-sentence.md
+        │   ├── precedent.md
+        │   ├── dialogue.jsonl
+        │   └── review-notes.md
+        ├── package.json
+        └── tsconfig.json
 ```
 
-**Authoring artifacts in the same repo, by default.** They are part
-of the Spinner's history. A Wizard who wants authoring privacy
-(e.g., a commercial Spinner whose dialogue logs are competitive
-information) can mark a Spinner as `authoring-private` in the
-manifest; the Loom keeps the dialogue in the Grimoire instead of
-the repo. Default: in-repo.
+**`SKEIN.json` at the repo root** is the registry surface for this
+repository — a top-level JSON index that lists every Spinner
+here, each version, each digest, each signature. Schema:
+`urn:webspinner:skein-index:v1.0.0`. The Loom updates it on every
+publish; the Foundation Skein at `skein.webspinner.org` ingests
+from it via PR.
 
-### 2.2 Runtime: Cell-local `~/warp/spinners/<name>/`
+**Authoring artifacts in the same Spinner directory, by default.**
+They are part of the Spinner's history. A Wizard who wants
+authoring privacy (e.g., a commercial Spinner whose dialogue logs
+are competitive information) can mark a Spinner as
+`authoring-private` in the manifest; the Loom keeps the dialogue
+in the Grimoire instead of the repo. Default: in-repo.
 
-**Choice.** Each Cell has a local cache of installed Spinners at
-`~/warp/spinners/<name>/`. Each is a clone of the Spinner's GitHub
-repo, checked out at a specific signed version.
+### 2.2 Runtime: Cell-local clones
 
-**Why a local clone, not a runtime registry pull.**
+**Choice.** Each Cell has two local Spinner trees:
+
+  - **`~/warp/spinners/<name>/`** — the **Genesis Spinners**
+    (`bootstrap`, `pablo`, `wizards-journal`, `genesis`).
+    Distributed as part of the reference implementation; checked
+    out at the warp repo's version.
+  - **`~/Cells/spinners/<name>/`** — every **Cell-authored
+    Spinner**. The local working tree of the `Cells` monorepo,
+    checked out at a specific signed Spinner tag
+    (`<slug>-v<version>`).
+
+The Weaver loads Spinners from both locations. The local Skein
+(PocketBase `wp_skein`) records each Spinner's source-tree path
+along with its name, version, digest, and signature status.
+
+**Why local clones, not runtime registry pulls.**
 
   - **Sovereignty.** A Cell does not need the Foundation registry
     online to run its installed Spinners. Once installed, the
@@ -214,9 +261,10 @@ repo, checked out at a specific signed version.
     bytes on disk on every load. A clone is the right unit — the
     bytes are there to hash.
   - **Easy iteration during authoring.** When a Wizard is authoring
-    a Spinner in the Loom, the working tree is the local clone.
-    Save iterations land in the working tree; pushes go to GitHub
-    when the Wizard says "publish."
+    a Spinner in the Loom, the working tree under
+    `~/Cells/spinners/<name>/` is the live workspace. Save
+    iterations land in the working tree; pushes go to the `Cells`
+    remote when the Wizard says "publish."
 
 ### 2.3 The Registry: the Foundation Skein
 
@@ -447,10 +495,11 @@ a willingness to revisit if empirical study shows we picked wrong.
 
 | Choice | Rationale | Revisit when |
 |---|---|---|
-| One git repo per Spinner | Mirrors npm + cargo + Go modules + Helm; free version control + social affordances; operator-portable | Spinner count > 1000 and registry-level introspection (capability search, dependency graph) becomes the bottleneck |
-| GitHub as the source host | Where most operators already are; rich API; PR-based ingest into the registry; free for public | Foundation operator demands self-hosted git (Gitea / Forgejo); easy migration since the protocol is git, not GitHub-API |
-| Authoring artifacts in-repo by default | Explainability; version-controlled history of design decisions | A Wizard demands authoring privacy → `authoring-private: true` flag in manifest moves dialogue to Grimoire |
-| Cell-local clone at `~/warp/spinners/<name>/` | Sovereignty (no runtime dependency on the registry); integrity-on-load (bytes are present to hash) | Multi-Cell installation across operator hosts — clone-per-Cell scales linearly, fine |
+| **`Cells` monorepo for Cell-authored Spinners** | One credential boundary, one PR-ingest path, cross-Spinner refactors tractable, per-Spinner SemVer preserved via tag prefix (Lerna/Nx/Bazel pattern). Genesis stays in `warp/`. | Monorepo grows past ~200 Spinners or any single Spinner's release cadence is throttled by monorepo-wide CI — extract via `git filter-repo` |
+| Per-Spinner tag prefix `<slug>-v<version>` | Independent SemVer ladders inside one repo; well-known monorepo convention | Polyrepo migration triggers (see above) |
+| GitHub as the source host | Where most operators already are; rich API; PR-based ingest into the registry | Foundation operator demands self-hosted git (Gitea / Forgejo); easy migration since the protocol is git, not GitHub-API |
+| Authoring artifacts in the Spinner subdirectory by default | Explainability; version-controlled history of design decisions | A Wizard demands authoring privacy → `authoring-private: true` flag in manifest moves dialogue to Grimoire |
+| Cell-local Spinner trees (Genesis in `~/warp/spinners/`; Cell-authored in `~/Cells/spinners/`) | Sovereignty (no runtime dependency on the registry); integrity-on-load (bytes are present to hash); preserves the Genesis-vs-Cell-authored architectural split | Multi-Cell installation across operator hosts — clone-per-Cell scales linearly, fine |
 | Static JSON Foundation Skein | Per `STANCE.md` — build the primitive that scales, don't build the scaling apparatus | Search-by-capability, dependency graph queries, or recognition revocation streaming become regular workflows |
 | PocketBase `wp_skein` for local index | Already running; flexible schema; no DBA | Postgres + Qdrant scale-out per canon |
 | `wp_operations` for meta-runtime tasks | Audit-by-default; resumable; cancellable | Workflow scale demands a dedicated executor (Temporal / Argo); STANCE.md says not now |
