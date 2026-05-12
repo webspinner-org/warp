@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+#
+# tools/webspinner — sign and verify Spinner bundles through the Loom.
+#
+# Two subcommands:
+#
+#   webspinner sign <bundle-path>     Sign a bundle with the Cell identity.
+#   webspinner verify <bundle-path>   Verify the recorded signatures.
+#
+# Bundle paths must live under ~/warp/spinners/ or ~/Cells/spinners/ — the
+# Loom enforces the same allowlist server-side. The bundle-path argument
+# may be relative or absolute; it is resolved to absolute before being
+# sent to the Loom.
+#
+# Auth: logs in as the PocketBase superuser via the Loom's /login form
+# action (reads creds from ~/.warp/bootstrap/pb-{email,password}), then
+# POSTs to the signing endpoints.
+#
+# Flags:
+#   --json    Emit raw JSON instead of the pretty-printed summary.
+#
+# Exit codes:
+#   0   success — sign wrote provenance / verify returned all-valid.
+#   1   operation-level failure (digest-mismatch, signature-invalid).
+#   2   setup error (missing creds, bad arguments).
+#   3   auth failed.
+#   4   server-side error.
+
+set -euo pipefail
+
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+# Try the canonical bootstrap dir; fall back to the legacy si-native
+# location during the rename window. Override with WARP_BOOTSTRAP_DIR.
+if [ -n "${WARP_BOOTSTRAP_DIR:-}" ]; then
+  BOOTSTRAP_DIR="$WARP_BOOTSTRAP_DIR"
+elif [ -r "$HOME/.warp/bootstrap/pb-email" ]; then
+  BOOTSTRAP_DIR="$HOME/.warp/bootstrap"
+elif [ -r "$HOME/.si-native/bootstrap/pb-email" ]; then
+  BOOTSTRAP_DIR="$HOME/.si-native/bootstrap"
+else
+  BOOTSTRAP_DIR="$HOME/.warp/bootstrap"  # error message points here
+fi
+COOKIE_JAR="$(mktemp -t webspinner-cookies-XXXXXX)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+subcommand=''
+bundle_path=''
+output='pretty'
+
+usage() {
+  sed -n '4,28p' "$0"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    sign|verify)
+      if [ -n "$subcommand" ]; then echo "error: two subcommands given" >&2; exit 2; fi
+      subcommand="$1"; shift;;
+    --json)
+      output='json'; shift;;
+    -h|--help)
+      usage; exit 0;;
+    -*)
+      echo "unknown flag: $1" >&2; exit 2;;
+    *)
+      if [ -z "$bundle_path" ]; then bundle_path="$1"; shift
+      else echo "error: extra argument: $1" >&2; exit 2; fi;;
+  esac
+done
+
+if [ -z "$subcommand" ]; then usage; exit 2; fi
+if [ -z "$bundle_path" ]; then echo "error: bundle-path required" >&2; exit 2; fi
+
+# Resolve to absolute path. Use `cd` + pwd so it works for relative paths
+# even when the bundle directory does not yet exist server-side (the Loom
+# will report bundle-not-found).
+case "$bundle_path" in
+  /*) ;;
+  *) bundle_path="$(cd "$(dirname "$bundle_path")" 2>/dev/null && pwd)/$(basename "$bundle_path")";;
+esac
+
+require_creds() {
+  if [ ! -r "$BOOTSTRAP_DIR/pb-email" ] || [ ! -r "$BOOTSTRAP_DIR/pb-password" ]; then
+    echo "error: missing $BOOTSTRAP_DIR/pb-email or pb-password" >&2
+    exit 2
+  fi
+}
+
+login() {
+  local email pass body status
+  email="$(cat "$BOOTSTRAP_DIR/pb-email")"
+  pass="$(cat "$BOOTSTRAP_DIR/pb-password")"
+  body=$(curl -sS -c "$COOKIE_JAR" -w "\n%{http_code}" \
+    -H "Origin: $LOOM_BASE" \
+    --data-urlencode "wizard_id=$email" \
+    --data-urlencode "passphrase=$pass" \
+    "$LOOM_BASE/login" 2>/dev/null || echo $'\n000')
+  status="${body##*$'\n'}"
+  body="${body%$'\n'*}"
+  if [ "$status" != "200" ]; then
+    echo "error: login failed (HTTP $status)" >&2
+    exit 3
+  fi
+  is_success=$(echo "$body" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+except Exception:
+  print('0:could-not-parse'); sys.exit(0)
+if d.get('type') == 'redirect' and '/admin' in d.get('location', ''):
+  print('1')
+  sys.exit(0)
+data = d.get('data', '')
+if isinstance(data, str):
+  # SvelteKit form-action failures pack the message as a JSON string
+  try:
+    parsed = json.loads(data)
+    if isinstance(parsed, list) and len(parsed) > 1:
+      print('0:' + str(parsed[1]))
+      sys.exit(0)
+  except Exception:
+    pass
+  print('0:' + data)
+elif isinstance(data, dict):
+  print('0:' + str(data.get('error', data)))
+else:
+  print('0:unknown-shape')
+" 2>/dev/null || echo '0:parse-failed')
+  if [ "${is_success%%:*}" != "1" ]; then
+    echo "error: login rejected — ${is_success#*:}" >&2
+    exit 3
+  fi
+}
+
+require_creds
+login
+
+endpoint="$LOOM_BASE/admin/signing/$subcommand"
+payload=$(python3 -c "
+import json, sys
+print(json.dumps({'bundlePath': sys.argv[1]}))
+" "$bundle_path")
+
+http_response=$(curl -sS -b "$COOKIE_JAR" -w "\n%{http_code}" -X POST \
+  -H "Content-Type: application/json" \
+  -H "Origin: $LOOM_BASE" \
+  -d "$payload" \
+  "$endpoint" 2>/dev/null || echo $'\n000')
+http_status="${http_response##*$'\n'}"
+response="${http_response%$'\n'*}"
+
+if [ "$http_status" != "200" ] && [ "$http_status" != "400" ]; then
+  echo "error: HTTP $http_status from Loom" >&2
+  echo "$response" >&2
+  exit 4
+fi
+
+if [ "$output" = 'json' ]; then
+  echo "$response" | python3 -m json.tool
+  if [ "$http_status" = "200" ]; then exit 0; else exit 1; fi
+fi
+
+# Pretty-print per subcommand. Read response shape: { ok: bool, value?: ..., error?: ... }
+echo "$response" | SUBCOMMAND="$subcommand" python3 -c "
+import json, sys, os
+sub = os.environ['SUBCOMMAND']
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  err = r.get('error', {})
+  print(f\"  ✗ {sub} failed: {err.get('kind', 'unknown')}\", file=sys.stderr)
+  detail = err.get('detail') or err.get('path')
+  if detail: print(f\"    detail: {detail}\", file=sys.stderr)
+  sys.exit(1)
+v = r.get('value', {})
+op_id = v.get('opId', '')
+
+if sub == 'sign':
+  digest = v.get('digest', '?')
+  fp = v.get('signerFingerprint', '?')
+  label = v.get('signerLabel', '?')
+  created = v.get('identityCreated', False)
+  files = v.get('filesWritten', [])
+  print(f\"  signed: {digest}\")
+  print(f\"  signer: {fp} ({label})\")
+  if created: print(f\"  (identity provisioned this run)\")
+  print(f\"  files written:\")
+  for f in files: print(f\"    {f}\")
+  print(f\"  opId: {op_id}\")
+  sys.exit(0)
+
+# verify
+if v.get('unsigned'):
+  print(f\"  unsigned: no provenance recorded for this bundle\")
+  print(f\"  observed digest: {v.get('observedDigest','?')}\")
+  print(f\"  opId: {op_id}\")
+  sys.exit(1)
+recorded = v.get('recordedDigest', '?')
+observed = v.get('observedDigest', '?')
+matches = v.get('digestMatches', False)
+print(f\"  recorded digest: {recorded}\")
+print(f\"  observed digest: {observed}\")
+print(f\"  digest matches:  {'yes' if matches else 'NO — bundle has changed since signing'}\")
+if not matches:
+  print(f\"  opId: {op_id}\")
+  sys.exit(1)
+signers = v.get('signers', [])
+print(f\"  signers ({len(signers)}):\")
+for s in signers:
+  mark = '✓' if s.get('valid') else '✗'
+  reason = '' if s.get('valid') else f\" — {s.get('reason','unknown')}\"
+  print(f\"    {mark} {s.get('fingerprint','?')} ({s.get('signer','?')}){reason}\")
+all_valid = v.get('allValid', False)
+print(f\"  opId: {op_id}\")
+sys.exit(0 if all_valid else 1)
+"
