@@ -548,3 +548,32 @@ changes"_ via subtle drift. Catching it here, before it propagates to
 the patron-author UI form, is exactly the discipline `tools/audit` is
 supposed to enforce. The retroactive `tools/audit` sweep on Kepler
 would have caught this; it's been in the reconcile queue.
+
+## 2026-05-12 — Weaver's Tension — the narrated scenario surface
+
+**Decision:** The narrated, gated, chat-enabled scenario walkthrough surface
+introduced as a foundational primitive for design iteration with patrons is
+named **Weaver's Tension**. Surface lives at `/admin/weavers-tension` and at
+`/admin/weavers-tension/<scenario>/<runId>` for an active run. Scenarios are
+JSON-declared data (`scenarios/<slug>.json`); the player consumes them and
+co-walks the patron through with pre-authored observations, typed questions,
+server-side verifiers, and free-form chat at every step. Every gate writes
+`wp.weavers-tension.{started, step-approved, step-flagged, message, completed,
+aborted}` audit events correlated to a `weavers-tension.run` meta-runtime op
+envelope. Runs persist to `wp_weavers_tension_runs` and are resumable.
+
+**Why:** Tension in weaving is the controlled pull on the warp threads — what
+makes the weave hold its pattern. Without it the threads slack and the pattern
+fails; with too much, they snap. The Weaver's Tension _is_ the just-right
+discipline that produces good work — the conversation between SI and patron
+held taut, productive. The name sits with Spinner / Skein / Spool / Loom in
+the canon's vocabulary without overloading any of them. Patron-intuitable
+once explained ("the design-review surface"); brand-distinct enough to mean
+something specific.
+
+The primitive matters because: (a) it converts the WEBSPINNER-AUTHOR-TESTPLAN
+and every future testplan from a markdown document no patron will read into a
+co-walked session with full visibility + gating + chat; (b) every future
+Spinner can ship a `demo.scenario.json` and get a patron-facing walkthrough
+for free; (c) it composes with the meta-runtime (each step = op envelope + audit
+events) so design feedback is structurally recoverable, not lost in chat.

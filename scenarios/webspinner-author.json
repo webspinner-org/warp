@@ -1,0 +1,229 @@
+{
+  "slug": "webspinner-author",
+  "title": "Authoring a Spinner",
+  "summary": "Walk a patron — Wizard today, Webspinner tomorrow — through producing a working Spinner end-to-end through the Loom's admin surface. The first scripted demonstration of the Warp architecture's claim: a patron arrives with intent, leaves with a runnable Spinner. Thirteen steps, gated, narrated, with the SI present at every gate to ask what was learned.",
+  "version": 1,
+  "steps": [
+    {
+      "key": "open-admin",
+      "title": "Open the Loom",
+      "observation": "The Loom — the Cell's authoring surface. Everything you do as a Webspinner happens here. The Cell's identity has already been minted; the Skein already lists the Genesis Spinners shipped with this Cell. Take a moment to confirm: the page renders, the navigation is on the left, the heading says where you are.",
+      "iframeRoute": "/admin",
+      "verifier": {
+        "kind": "route-status",
+        "path": "/admin",
+        "expectStatus": 200
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The Loom is open — continue"
+      }
+    },
+    {
+      "key": "open-operations",
+      "title": "Glance at recent operations",
+      "observation": "Every multi-step task the Loom performs lands here as an envelope — input, output, timing, the audit events it produced. Operations are the meta-runtime's memory. By the end of this walkthrough, two new envelopes will appear in this list — one for the install you're about to do, one for the invocation. The Loom never forgets what it did on your behalf.",
+      "iframeRoute": "/admin/operations",
+      "verifier": {
+        "kind": "route-status",
+        "path": "/admin/operations",
+        "expectStatus": 200
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The operations log loads — continue"
+      }
+    },
+    {
+      "key": "open-spinners",
+      "title": "The Skein",
+      "observation": "The Skein is the catalogue of every Spinner installed in this Cell. Each row carries its signers, its recorded digest, and an integrity status. Verified means: the bytes on disk still match what was signed. This is what makes a Spinner trustworthy at runtime — the Skein has the receipts.",
+      "iframeRoute": "/admin/spinners",
+      "verifier": {
+        "kind": "route-status",
+        "path": "/admin/spinners",
+        "expectStatus": 200,
+        "bodyContains": ["New Spinner"]
+      },
+      "question": {
+        "kind": "verify+comment",
+        "prompt": "Do you see at least one Spinner listed as 'verified'? If something looks off — bad badge, wrong source classification, missing row — describe it.",
+        "commentPlaceholder": "e.g. 'pablo shows unsigned but I expected verified'"
+      }
+    },
+    {
+      "key": "click-new-spinner",
+      "title": "Open the authoring form",
+      "observation": "The plus button in the upper-right of the Skein listing — that's the door. Click it. You'll land on a form. The iframe will follow you there.",
+      "iframeRoute": "/admin/spinners/new",
+      "verifier": {
+        "kind": "route-status",
+        "path": "/admin/spinners/new",
+        "expectStatus": 200,
+        "bodyContains": ["Author a new Spinner", "Template"]
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The form is open — continue"
+      }
+    },
+    {
+      "key": "pick-template",
+      "title": "Pick the hello-spinner template",
+      "observation": "Templates are the architecture's apprenticeship — every new Spinner inherits its bones from a precedent. Today there is one template: hello-spinner. A minimal Spinner with one capability — greet — that returns a greeting. The shape it gives you is the same shape every Spinner has: meta.json, manifest.json, mission-lock, README, source. The form will copy this into your Cell's spinners directory with your name and slug substituted in.",
+      "iframeRoute": "/admin/spinners/new",
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The hello-spinner template is selected — continue"
+      }
+    },
+    {
+      "key": "fill-form",
+      "title": "Name your Spinner",
+      "observation": "The slug is the URL-safe identifier — kebab-case, lowercase, no spaces. It becomes the directory name and the URL segment. It can't be changed later. The display name is what shows up in the Skein. The description is one paragraph about what this Spinner does.\n\nTake your time. The slug you pick is what the next steps will look for.",
+      "iframeRoute": "/admin/spinners/new",
+      "question": {
+        "kind": "prompt-input",
+        "prompt": "What slug, display name, and description are you using?",
+        "fields": [
+          {
+            "name": "slug",
+            "label": "Slug",
+            "placeholder": "tension-demo",
+            "required": true
+          },
+          {
+            "name": "displayName",
+            "label": "Display name",
+            "placeholder": "Tension Demo",
+            "required": true
+          },
+          {
+            "name": "description",
+            "label": "Description",
+            "placeholder": "First Spinner authored through Weaver's Tension.",
+            "required": true
+          }
+        ]
+      },
+      "answerKey": "newSpinner"
+    },
+    {
+      "key": "save-and-install",
+      "title": "Save — the install runs",
+      "observation": "Click Save. The Loom: scaffolds the bundle from the template into ~/Cells/spinners/<slug>, lints it, signs it with this Cell's identity key, records the digest, and writes a row to the Skein with status 'verified'. About five seconds, all in.\n\nThe install op envelope and the wp.spinner.install audit event are both written before the page redirects. The verifier on this step will check both — once you've clicked Save and landed on the detail page, gate this step.",
+      "iframeRoute": "/admin/spinners/new",
+      "verifier": {
+        "kind": "pb-row-exists",
+        "collection": "wp_skein",
+        "filter": "slug = \"{{answer.newSpinner.slug}}\"",
+        "assertFields": {
+          "integrity_status": "verified"
+        }
+      },
+      "question": {
+        "kind": "verify+comment",
+        "prompt": "Did the install complete cleanly and redirect you to the detail page? Anything surprising about the timing, the redirect, or what landed in the Skein?",
+        "commentPlaceholder": "e.g. 'took longer than expected', 'redirect went to wrong page'"
+      }
+    },
+    {
+      "key": "land-on-detail",
+      "title": "The detail page",
+      "observation": "This is the Spinner's home in the Cell — its manifest at the top, its capabilities listed below, its signers and digest recorded. The Refresh integrity button is always live — click it any time and the Loom rereads the bundle from disk and recomputes the digest. Tamper with the source on disk, click refresh, and the badge flips to digest-mismatch. The trust isn't on faith; it's on a fresh check every time you ask.",
+      "iframeRoute": "/admin/spinners/{{answer.newSpinner.slug}}",
+      "verifier": {
+        "kind": "route-status",
+        "path": "/admin/spinners/{{answer.newSpinner.slug}}",
+        "expectStatus": 200,
+        "bodyContains": ["greet"]
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The detail page loads with the greet capability listed — continue"
+      }
+    },
+    {
+      "key": "invoke-capability",
+      "title": "Invoke the greet capability",
+      "observation": "On the detail page, find the greet capability. Type a name in the input and submit. The Loom resolves the Spinner's entrypoint, loads it through the Weaver's dispatch layer, calls greet with your input, captures the output, and writes a wp.spinner.invoke audit event.\n\nThis is the first time a Spinner you authored runs in your Cell. The greeting you get back is real output from a real Spinner — small, modest, but architecturally significant: you spoke intent and the system produced behaviour.",
+      "iframeRoute": "/admin/spinners/{{answer.newSpinner.slug}}",
+      "verifier": {
+        "kind": "audit-event",
+        "eventType": "wp.spinner.invoke",
+        "windowSec": 300
+      },
+      "question": {
+        "kind": "verify+comment",
+        "prompt": "Did the greet capability return a greeting? Was the output what you expected?",
+        "commentPlaceholder": "e.g. 'returned Hello, World — looks right'"
+      }
+    },
+    {
+      "key": "back-to-skein",
+      "title": "Return to the Skein — verify the new row",
+      "observation": "Back at the Skein listing, scroll to find your new Spinner. The badge should be 'verified'. The invocation count, if surfaced, should be at least 1. The Spinner has joined the catalogue.",
+      "iframeRoute": "/admin/spinners",
+      "verifier": {
+        "kind": "pb-row-exists",
+        "collection": "wp_skein",
+        "filter": "slug = \"{{answer.newSpinner.slug}}\"",
+        "assertFields": {
+          "integrity_status": "verified"
+        }
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The new Spinner shows in the Skein as verified — continue"
+      }
+    },
+    {
+      "key": "operations-linked",
+      "title": "Operations log — install + invoke linked",
+      "observation": "Two new envelopes since the start: one spinner.install (~5s ago), one runner.dispatch or spinner.invoke (~30s ago). Each envelope's detail view shows its input, output, and the audit events that correlated to it. The Skein row from earlier was written inside the install envelope; the greeting from earlier was returned inside the invoke envelope. The meta-runtime kept the receipts.",
+      "iframeRoute": "/admin/operations",
+      "verifier": {
+        "kind": "op-envelope",
+        "opKind": "spinner.install",
+        "status": "ok",
+        "windowSec": 600
+      },
+      "question": {
+        "kind": "verify+comment",
+        "prompt": "Are the install and invoke envelopes both visible and linked to their audit events?",
+        "commentPlaceholder": "e.g. 'install envelope shows but invoke is missing'"
+      }
+    },
+    {
+      "key": "audit-event",
+      "title": "Audit log — the install event",
+      "observation": "Filter by event type wp.spinner.install. The event row carries the manifest, the digest, the signers, the actor — everything an auditor needs to reconstruct what happened without any prior trust. This is the Foundation Pledge in concrete form: every action the Loom takes on your behalf is observable forever.",
+      "iframeRoute": "/admin/audit",
+      "verifier": {
+        "kind": "audit-event",
+        "eventType": "wp.spinner.install",
+        "windowSec": 600
+      },
+      "question": {
+        "kind": "confirm",
+        "approveLabel": "The wp.spinner.install event is present — continue"
+      }
+    },
+    {
+      "key": "refresh-integrity",
+      "title": "One more thing — Refresh integrity",
+      "observation": "Back on the Spinner's detail page, click Refresh integrity. The Loom rereads the bundle, recomputes the digest, compares it to what was recorded at install. The badge should stay 'verified' (you haven't tampered with anything). A wp.spinner.integrity-checked audit event lands.\n\nThis is the trust loop closed: trust verified at install, trust re-verifiable on demand forever. Walk away from this scenario knowing — concretely, not in a slide — what trust without a vendor's word looks like.",
+      "iframeRoute": "/admin/spinners/{{answer.newSpinner.slug}}",
+      "verifier": {
+        "kind": "audit-event",
+        "eventType": "wp.spinner.integrity-checked",
+        "windowSec": 300
+      },
+      "question": {
+        "kind": "verify+comment",
+        "prompt": "Final thoughts — what felt right? What felt rough? What's missing before a non-technical patron could do this on their own?",
+        "commentPlaceholder": "Be honest. This is the design feedback the next iteration will use."
+      }
+    }
+  ]
+}

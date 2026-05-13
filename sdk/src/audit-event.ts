@@ -17,7 +17,14 @@ export type AuditEventType =
   | 'wp.spinner.verified'
   | 'wp.spinner.linted'
   | 'wp.spinner.integrity-checked'
-  | 'wp.thread.invoke';
+  | 'wp.thread.invoke'
+  | 'wp.weavers-tension.started'
+  | 'wp.weavers-tension.step-approved'
+  | 'wp.weavers-tension.step-flagged'
+  | 'wp.weavers-tension.step-skipped'
+  | 'wp.weavers-tension.message'
+  | 'wp.weavers-tension.completed'
+  | 'wp.weavers-tension.aborted';
 
 export type AuditResult = 'success' | 'denied' | 'error';
 
@@ -162,6 +169,61 @@ export interface AuditEventData {
     readonly threadId: string;
     readonly stepCount: number;
     readonly durationMs: number;
+  };
+  /**
+   * Weaver's Tension — the narrated, gated scenario surface. Each run
+   * fires a `started` event on creation, a `completed` or `aborted`
+   * event on termination, and one `step-{approved,flagged,skipped}`
+   * event per gate plus one `message` event per chat message.
+   */
+  'wp.weavers-tension.started': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepCount: number;
+  };
+  'wp.weavers-tension.step-approved': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly observation?: string;
+    readonly verifierEvidence?: Record<string, unknown>;
+  };
+  'wp.weavers-tension.step-flagged': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly reason: string;
+    readonly verifierEvidence?: Record<string, unknown>;
+  };
+  'wp.weavers-tension.step-skipped': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly reason?: string;
+  };
+  'wp.weavers-tension.message': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly authorKind: 'wizard' | 'webspinner' | 'si' | 'system';
+    readonly body: string;
+  };
+  'wp.weavers-tension.completed': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly approvedCount: number;
+    readonly flaggedCount: number;
+    readonly skippedCount: number;
+    readonly durationMs: number;
+  };
+  'wp.weavers-tension.aborted': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly atStepIndex: number;
+    readonly reason: string;
   };
 }
 

@@ -39,7 +39,8 @@ export type OperationKind =
   | 'spinner.install'
   | 'spinner.update'
   | 'spinner.uninstall'
-  | 'runner.dispatch';
+  | 'runner.dispatch'
+  | 'weavers-tension.run';
 
 export type OperationStatus = 'ok' | 'failed' | 'partial';
 

@@ -34,6 +34,7 @@
     {
       title: 'Wizard',
       items: [
+        { href: '/admin/weavers-tension', label: "Weaver's Tension" },
         { href: '/admin/journal', label: "Wizard's Journal" },
         { href: '/admin/profile', label: 'Profile' },
       ],
