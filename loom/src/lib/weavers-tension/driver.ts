@@ -62,9 +62,24 @@ export class IframeDriver {
     this.signals.stopGuard();
     const timeoutMs = opts.timeoutMs ?? 8000;
     const target = path;
+
+    // Same-URL fast path: setting location.href to the current URL
+    // doesn't always fire a fresh load event (Safari, in particular,
+    // may skip the navigation entirely). Avoid the load-listener
+    // hazard by short-circuiting when we're already at the target.
+    let currentPath: string | null;
+    try {
+      currentPath = this.iframe.contentWindow?.location.pathname ?? null;
+    } catch {
+      currentPath = null;
+    }
+    const targetPath = target.split('?')[0]?.split('#')[0] ?? target;
+    if (currentPath !== null && currentPath === targetPath) {
+      // Already here. waitForRoute (if specified) is a no-op too.
+      return;
+    }
+
     await this.loadAndWait(() => {
-      // contentWindow.location.href triggers a real navigation that
-      // emits a load event on the iframe, so awaiting `load` works.
       this.win.location.href = target;
     }, timeoutMs);
     if (opts.waitForRoute) {

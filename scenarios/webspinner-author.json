@@ -197,7 +197,7 @@
         { "kind": "click", "selector": "section.invoke button[type='submit']" },
         {
           "kind": "wait-for-selector",
-          "selector": "section.invoke .result-success, section.invoke .result-error",
+          "selector": "section.invoke .entry-result, section.invoke .prose-result, section.invoke .result-error",
           "timeoutMs": 12000
         },
         { "kind": "sleep", "ms": 600 }
