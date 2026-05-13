@@ -10,8 +10,14 @@ import { error } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session.js';
 import { loomPbToken } from '$lib/server/pocketbase.js';
 import { listScenarios } from '$lib/server/weavers-tension/loader.js';
-import { ensureRunsCollection, listRuns } from '$lib/server/weavers-tension/runs.js';
+import {
+  ensureRunsCollection,
+  listRuns,
+  patchRunStatus,
+} from '$lib/server/weavers-tension/runs.js';
 import type { PageServerLoad } from './$types.js';
+
+const STALE_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export const load: PageServerLoad = async ({ parent, fetch, cookies }) => {
   const session = getSession(cookies);
@@ -25,6 +31,28 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies }) => {
   if (pbToken) {
     await ensureRunsCollection(fetch, pbToken);
     runs = await listRuns(fetch, pbToken, { limit: 20 });
+
+    // Reap any stale in-progress / paused runs whose last update is
+    // older than the staleness window. These are runs whose tab
+    // closed without firing the beforeunload beacon (crash, kill,
+    // network drop). We mark them aborted so the recent-runs list
+    // doesn't accumulate phantom "in-progress" rows the patron
+    // can't actually resume.
+    if (runs.ok) {
+      const now = Date.now();
+      const stale = runs.runs.filter(
+        (r) =>
+          (r.status === 'in-progress' || r.status === 'paused') &&
+          now - new Date(r.updatedAt).getTime() > STALE_RUN_TIMEOUT_MS,
+      );
+      for (const r of stale) {
+        await patchRunStatus(fetch, pbToken, r, 'aborted');
+      }
+      // Re-fetch so the listing reflects the reaping.
+      if (stale.length > 0) {
+        runs = await listRuns(fetch, pbToken, { limit: 20 });
+      }
+    }
   } else {
     runs = { ok: false, status: 500, body: 'no-pb-token' };
   }

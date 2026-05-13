@@ -201,9 +201,20 @@
         runStatus = 'aborted';
         return;
       }
-      // Unexpected — log and pause for patron decision.
-      await serverPostMessage('system', 'pre-start', `Run loop crashed: ${String(err)}`);
+      // Always reflect the crash in the UI even if subsequent
+      // server calls also fail. The local-state update is the
+      // priority; the server log is best-effort.
       runStatus = 'failed';
+      escalation = {
+        stepKey: data.scenario.steps[currentStepIndex]?.key ?? 'pre-start',
+        reason: `The run loop crashed: ${String(err)}`,
+        evidence: { error: String(err) },
+      };
+      try {
+        await serverPostMessage('system', 'pre-start', `Run loop crashed: ${String(err)}`);
+      } catch (logErr) {
+        console.error('failed to log crash to server', logErr);
+      }
     }
   }
 
@@ -246,7 +257,24 @@
   }
 
   onMount(() => {
-    // Reserved for future cleanup hooks (e.g., abort in-flight fetch).
+    // Best-effort cleanup if the patron closes the tab mid-run.
+    // sendBeacon is the only fetch primitive guaranteed to survive
+    // unload. It posts a form-encoded body to the abort action,
+    // which patches run.status to 'aborted' on the server side.
+    const handler = () => {
+      if (runStatus === 'running' || runStatus === 'paused') {
+        try {
+          const fd = new FormData();
+          fd.set('reason', 'patron-closed-tab');
+          navigator.sendBeacon('?/abort', fd);
+        } catch {
+          // Best-effort; if the browser blocks the beacon we
+          // fall back to the stale-run reaper.
+        }
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
   });
 </script>
 
