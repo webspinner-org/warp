@@ -1,0 +1,65 @@
+{
+  "manifestVersion": "1.0",
+  "name": "{{name}}",
+  "displayName": "{{displayName}}",
+  "version": "0.1.0",
+  "description": "{{description}}",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "vault": [],
+  "spools": [],
+  "env": [],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "greet",
+      "displayName": "Greet",
+      "description": "Return a greeting for the named recipient. Optionally accepts a salutation override; defaults to 'Hello'.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:{{name}}:greet:v1.0.0",
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Who to greet."
+          },
+          "salutation": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Override the default greeting verb (e.g., 'Howdy', 'Bonjour')."
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:{{name}}:greet:output:v1.0.0",
+        "type": "object",
+        "required": ["greeting", "greetedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "greeting": {
+            "type": "string",
+            "description": "The composed greeting."
+          },
+          "greetedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the greeting was issued."
+          }
+        }
+      }
+    }
+  ],
+  "documentation": {
+    "howItWorks": "how-it-works.md",
+    "readme": "README.md"
+  },
+  "thumbnail": "thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "urn:webspinner:cell:{{cellFingerprint}}:{{slug}}"
+  }
+}

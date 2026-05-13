@@ -1,0 +1,6 @@
+{
+  "name": "hello-spinner",
+  "displayName": "Hello Spinner",
+  "description": "A minimal Spinner that greets a Webspinner by name. The simplest place to start authoring — one capability, no Spools, no vault, no model. Read the source in fifteen minutes; ship a customized version in twenty.",
+  "version": "1.0.0"
+}
