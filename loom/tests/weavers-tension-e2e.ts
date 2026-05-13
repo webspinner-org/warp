@@ -16,7 +16,7 @@
  * under tests/, not src/**.test.ts).
  */
 
-import { chromium, type Page } from 'playwright';
+import { chromium, type BrowserContext, type Page, type Response } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -38,7 +38,7 @@ function log(level: 'info' | 'ok' | 'fail' | 'step', msg: string): void {
   process.stdout.write(`${marker} ${msg}\n`);
 }
 
-async function loginViaCookie(ctx: import('playwright').BrowserContext): Promise<void> {
+async function loginViaCookie(ctx: BrowserContext): Promise<void> {
   // Bypass the login UI entirely. Authenticate directly with
   // PocketBase, get the superuser token, and install it as the
   // session cookie that the Loom's getSession() reads.
@@ -78,7 +78,7 @@ async function openWeaversTensionIndex(page: Page): Promise<void> {
 async function startRun(page: Page): Promise<string> {
   log('step', `start a run of "${SCENARIO_SLUG}"`);
   // Capture every response to the ?/start endpoint for diagnostics.
-  page.on('response', (resp) => {
+  page.on('response', (resp: Response) => {
     if (
       resp.request().method() === 'POST' &&
       resp.url().includes(`/admin/weavers-tension/${SCENARIO_SLUG}`)
@@ -117,11 +117,11 @@ interface RibbonStatus {
 }
 
 async function readRibbon(page: Page): Promise<readonly RibbonStatus[]> {
-  return page.$$eval('.ribbon .ribbon-step', (els) =>
+  return page.$$eval('.ribbon .ribbon-step', (els: Element[]) =>
     els.map((el) => {
       const title = el.querySelector('.r-title')?.textContent?.trim() ?? '';
       const status = Array.from(el.classList)
-        .find((c) => c.startsWith('status-'))
+        .find((c: string) => c.startsWith('status-'))
         ?.replace('status-', '');
       return { key: title, status: status ?? 'unknown' };
     }),
@@ -194,10 +194,10 @@ async function main(): Promise<void> {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
 
-  page.on('console', (m) => {
+  page.on('console', (m: import('playwright').ConsoleMessage) => {
     if (m.type() === 'error') log('info', `[console.${m.type()}] ${m.text()}`);
   });
-  page.on('pageerror', (e) => log('info', `[pageerror] ${e.message}`));
+  page.on('pageerror', (e: Error) => log('info', `[pageerror] ${e.message}`));
 
   try {
     await loginViaCookie(ctx);

@@ -8,17 +8,24 @@
 
 import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type {
-  IntegrityStatus,
-  SpinnerDigest,
-  SpinnerManifest,
-} from '@webspinner-foundation/sdk';
+import type { IntegrityStatus, SpinnerDigest, SpinnerManifest } from '@webspinner-foundation/sdk';
 import { formatSpinnerDigest } from '@webspinner-foundation/sdk';
 
+// Primary search path — the Genesis Spinners that ship with the Cell.
 const SPINNERS_DIR = resolve(
   process.env['WARP_SPINNERS_DIR'] ?? join(process.cwd(), '..', 'spinners'),
 );
+
+// Cell-authored Spinners live alongside, under `~/Cells/spinners/`.
+// Both paths are searched: Genesis first, then Cell-authored. Override
+// with WARP_CELL_SPINNERS_DIR (parity with WARP_SPINNERS_DIR).
+const CELL_SPINNERS_DIR = resolve(
+  process.env['WARP_CELL_SPINNERS_DIR'] ?? join(homedir(), 'Cells', 'spinners'),
+);
+
+const SEARCH_DIRS = [SPINNERS_DIR, CELL_SPINNERS_DIR];
 
 export interface LoadedSpinner {
   /** Slug name of the spinner directory under WARP_SPINNERS_DIR. */
@@ -69,10 +76,7 @@ async function hashFile(absPath: string): Promise<string> {
  * module's compiled bytes are NOT yet included — that lands when the
  * build pipeline does (open work).
  */
-async function computeDigest(
-  bundleDir: string,
-  manifest: SpinnerManifest,
-): Promise<SpinnerDigest> {
+async function computeDigest(bundleDir: string, manifest: SpinnerManifest): Promise<SpinnerDigest> {
   const sha = createHash('sha256');
   sha.update(canonicalJson(manifest));
 
@@ -141,14 +145,24 @@ function validateManifest(raw: unknown): SpinnerManifest | { error: string } {
 }
 
 async function loadOne(slug: string): Promise<LoadResult<LoadedSpinner>> {
-  const bundleDir = join(SPINNERS_DIR, slug);
-  let info;
-  try {
-    info = await stat(bundleDir);
-  } catch {
+  // Resolve the bundle by trying each search dir in order. Genesis
+  // first, then Cell-authored. First hit wins.
+  let bundleDir: string | null = null;
+  for (const dir of SEARCH_DIRS) {
+    const candidate = join(dir, slug);
+    try {
+      const info = await stat(candidate);
+      if (info.isDirectory()) {
+        bundleDir = candidate;
+        break;
+      }
+    } catch {
+      // try next
+    }
+  }
+  if (bundleDir === null) {
     return { ok: false, error: { kind: 'not-found', slug } };
   }
-  if (!info.isDirectory()) return { ok: false, error: { kind: 'not-found', slug } };
 
   const manifestPath = join(bundleDir, 'manifest.json');
   let raw: unknown;
@@ -170,17 +184,24 @@ async function loadOne(slug: string): Promise<LoadResult<LoadedSpinner>> {
 }
 
 export async function listSpinners(): Promise<readonly LoadedSpinner[]> {
-  let entries: readonly string[];
-  try {
-    entries = await readdir(SPINNERS_DIR);
-  } catch {
-    return [];
-  }
+  const seen = new Set<string>();
   const out: LoadedSpinner[] = [];
-  for (const slug of entries) {
-    if (slug.startsWith('.')) continue;
-    const r = await loadOne(slug);
-    if (r.ok) out.push(r.value);
+  for (const dir of SEARCH_DIRS) {
+    let entries: readonly string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const slug of entries) {
+      if (slug.startsWith('.')) continue;
+      if (seen.has(slug)) continue; // Genesis wins over Cell-authored on slug collision
+      const r = await loadOne(slug);
+      if (r.ok) {
+        seen.add(slug);
+        out.push(r.value);
+      }
+    }
   }
   out.sort((a, b) => a.manifest.displayName.localeCompare(b.manifest.displayName));
   return out;

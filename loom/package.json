@@ -27,6 +27,7 @@
     "@sveltejs/kit": "2.59.1",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@types/node": "24.12.3",
+    "playwright": "^1.60.0",
     "svelte": "5.55.5",
     "svelte-check": "4.4.8",
     "vite": "8.0.11",
