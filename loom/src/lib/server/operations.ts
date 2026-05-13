@@ -146,6 +146,148 @@ export async function ensureOperationsCollection(
   return { ok: true };
 }
 
+export interface OperationDetail {
+  readonly id: string;
+  readonly opId: string;
+  readonly kind: OperationKind;
+  readonly status: OperationStatus;
+  readonly startedAt: string;
+  readonly endedAt: string;
+  readonly actor: OperationActor;
+  readonly input: Record<string, unknown>;
+  readonly output: Record<string, unknown> | null;
+  readonly error: { readonly kind: string; readonly message: string } | null;
+  readonly parentOpId: string | null;
+}
+
+export interface ListOperationsRequest {
+  readonly kinds?: readonly OperationKind[];
+  readonly statuses?: readonly OperationStatus[];
+  readonly actorKinds?: readonly OperationActor['kind'][];
+  readonly since?: string;
+  readonly limit?: number;
+  /** Started_at ISO of the last row from the prior page (cursor pagination). */
+  readonly cursor?: string;
+}
+
+interface PBOperationRow {
+  readonly id: string;
+  readonly op_id: string;
+  readonly kind: string;
+  readonly status: string;
+  readonly started_at: string;
+  readonly ended_at: string;
+  readonly actor_kind: string;
+  readonly actor_id: string;
+  readonly actor_email?: string;
+  readonly input?: Record<string, unknown>;
+  readonly output?: Record<string, unknown> | null;
+  readonly error_kind?: string;
+  readonly error_message?: string;
+  readonly parent_op_id?: string;
+}
+
+function parseOperationRow(row: PBOperationRow): OperationDetail {
+  const actor: OperationActor = {
+    kind: row.actor_kind as OperationActor['kind'],
+    id: row.actor_id,
+    ...(row.actor_email && row.actor_email.length > 0 ? { email: row.actor_email } : {}),
+  };
+  return {
+    id: row.id,
+    opId: row.op_id,
+    kind: row.kind as OperationKind,
+    status: row.status as OperationStatus,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    actor,
+    input: row.input ?? {},
+    output: row.output ?? null,
+    error:
+      row.error_kind && row.error_message
+        ? { kind: row.error_kind, message: row.error_message }
+        : null,
+    parentOpId: row.parent_op_id && row.parent_op_id.length > 0 ? row.parent_op_id : null,
+  };
+}
+
+/**
+ * List operations with filters. Cursor pagination keyed on `started_at`
+ * (descending). Returns the rows + a `nextCursor` (the started_at of the
+ * last row, suitable to pass back in the next `cursor` arg) or null when
+ * the page is complete.
+ */
+export async function listOperations(
+  fetchFn: typeof fetch,
+  token: string,
+  req: ListOperationsRequest = {},
+): Promise<
+  | { ok: true; rows: readonly OperationDetail[]; nextCursor: string | null }
+  | { ok: false; status: number; body: string }
+> {
+  const filters: string[] = [];
+  if (req.kinds && req.kinds.length > 0) {
+    filters.push(`(${req.kinds.map((k) => `kind = ${JSON.stringify(k)}`).join(' || ')})`);
+  }
+  if (req.statuses && req.statuses.length > 0) {
+    filters.push(`(${req.statuses.map((s) => `status = ${JSON.stringify(s)}`).join(' || ')})`);
+  }
+  if (req.actorKinds && req.actorKinds.length > 0) {
+    filters.push(
+      `(${req.actorKinds.map((a) => `actor_kind = ${JSON.stringify(a)}`).join(' || ')})`,
+    );
+  }
+  if (req.since) {
+    filters.push(`started_at >= ${JSON.stringify(req.since)}`);
+  }
+  if (req.cursor) {
+    filters.push(`started_at < ${JSON.stringify(req.cursor)}`);
+  }
+
+  const limit = Math.max(1, Math.min(200, req.limit ?? 50));
+  const params = new URLSearchParams();
+  params.set('perPage', String(limit));
+  params.set('sort', '-started_at');
+  if (filters.length > 0) params.set('filter', filters.join(' && '));
+
+  const res = await fetchFn(
+    `${PB_URL}/api/collections/${COLLECTION}/records?${params.toString()}`,
+    { headers: authHeaders(token) },
+  );
+  if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
+  const body = (await res.json()) as { items: readonly PBOperationRow[] };
+  const rows = body.items.map(parseOperationRow);
+  const nextCursor = rows.length === limit ? (rows[rows.length - 1]?.startedAt ?? null) : null;
+  return { ok: true, rows, nextCursor };
+}
+
+/**
+ * Fetch a single operation by op_id (the UUID written at the time of the
+ * operation, suitable for use as correlation_id on linked audit events).
+ * Returns null when not found.
+ */
+export async function getOperation(
+  fetchFn: typeof fetch,
+  token: string,
+  opId: string,
+): Promise<
+  { ok: true; row: OperationDetail | null } | { ok: false; status: number; body: string }
+> {
+  const filter = `op_id = ${JSON.stringify(opId)}`;
+  const params = new URLSearchParams();
+  params.set('perPage', '1');
+  params.set('filter', filter);
+  const res = await fetchFn(
+    `${PB_URL}/api/collections/${COLLECTION}/records?${params.toString()}`,
+    { headers: authHeaders(token) },
+  );
+  if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
+  const body = (await res.json()) as { items: readonly PBOperationRow[] };
+  const row = body.items[0];
+  if (!row) return { ok: true, row: null };
+  return { ok: true, row: parseOperationRow(row) };
+}
+
 /**
  * Write one operation row. Returns the assigned `op_id` (a UUID, suitable
  * for `correlation_id` on linked audit events). Idempotently ensures the

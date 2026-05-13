@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { writeOperation, ensureOperationsCollection } from './operations.js';
+import {
+  writeOperation,
+  ensureOperationsCollection,
+  listOperations,
+  getOperation,
+} from './operations.js';
 
 function pbMock(): {
   fetch: typeof fetch;
@@ -38,6 +43,31 @@ function pbMock(): {
       const row = { id: `id-${nextId++}`, ...body };
       state.rows.push(row);
       return ok(row);
+    }
+    if (path === '/api/collections/wp_operations/records' && method === 'GET') {
+      // Minimal PB-filter parsing: support op_id equality + sort by
+      // started_at descending. This is just enough for the tests below.
+      const u = new URL(url);
+      const filter = u.searchParams.get('filter') ?? '';
+      let rows = [...state.rows];
+      const opIdMatch = /op_id = "([^"]+)"/.exec(filter);
+      if (opIdMatch) {
+        rows = rows.filter((r) => r['op_id'] === opIdMatch[1]);
+      }
+      const kindMatch = filter.match(/kind = "([^"]+)"/g);
+      if (kindMatch) {
+        const kinds = kindMatch.map((m) => /kind = "([^"]+)"/.exec(m)?.[1] ?? '');
+        rows = rows.filter((r) => kinds.includes(r['kind'] as string));
+      }
+      const statusMatch = filter.match(/status = "([^"]+)"/g);
+      if (statusMatch) {
+        const statuses = statusMatch.map((m) => /status = "([^"]+)"/.exec(m)?.[1] ?? '');
+        rows = rows.filter((r) => statuses.includes(r['status'] as string));
+      }
+      // Sort by started_at descending.
+      rows.sort((a, b) => String(b['started_at']).localeCompare(String(a['started_at'])));
+      const perPage = Math.min(200, Number(u.searchParams.get('perPage') ?? 50));
+      return ok({ items: rows.slice(0, perPage) });
     }
     return notFound();
   }) as typeof fetch;
@@ -129,5 +159,97 @@ describe('operations log', () => {
     });
     expect(a.ok && b.ok).toBe(true);
     if (a.ok && b.ok) expect(a.row.opId).not.toBe(b.row.opId);
+  });
+});
+
+describe('listOperations + getOperation', () => {
+  async function seedRows(): Promise<{ pb: ReturnType<typeof pbMock>; opIds: string[] }> {
+    const pb = pbMock();
+    const opIds: string[] = [];
+    const fixtures = [
+      { kind: 'spinner.sign' as const, status: 'ok' as const, started: '2026-05-12T17:00:00.000Z' },
+      {
+        kind: 'spinner.verify' as const,
+        status: 'partial' as const,
+        started: '2026-05-12T17:05:00.000Z',
+      },
+      {
+        kind: 'spinner.sign' as const,
+        status: 'failed' as const,
+        started: '2026-05-12T17:10:00.000Z',
+      },
+    ];
+    for (const f of fixtures) {
+      const r = await writeOperation(pb.fetch, 'tok', {
+        kind: f.kind,
+        status: f.status,
+        startedAt: f.started,
+        endedAt: f.started,
+        actor: { kind: 'wizard', id: 'op-1', email: 'wiz@test' },
+        input: { bundlePath: '~/warp/spinners/x' },
+      });
+      if (r.ok) opIds.push(r.row.opId);
+    }
+    return { pb, opIds };
+  }
+
+  it('returns all rows sorted by started_at descending when no filters', async () => {
+    const { pb } = await seedRows();
+    const r = await listOperations(pb.fetch, 'tok', {});
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(3);
+    // Most recent first.
+    expect(r.rows[0]?.startedAt).toBe('2026-05-12T17:10:00.000Z');
+    expect(r.rows[2]?.startedAt).toBe('2026-05-12T17:00:00.000Z');
+  });
+
+  it('filters by kind', async () => {
+    const { pb } = await seedRows();
+    const r = await listOperations(pb.fetch, 'tok', { kinds: ['spinner.sign'] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(2);
+    for (const row of r.rows) expect(row.kind).toBe('spinner.sign');
+  });
+
+  it('filters by status', async () => {
+    const { pb } = await seedRows();
+    const r = await listOperations(pb.fetch, 'tok', { statuses: ['failed'] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]?.status).toBe('failed');
+  });
+
+  it('parses input/output/error/actor.email into typed shape', async () => {
+    const { pb } = await seedRows();
+    const r = await listOperations(pb.fetch, 'tok', {});
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const row = r.rows[0]!;
+    expect(row.actor.email).toBe('wiz@test');
+    expect(row.input).toEqual({ bundlePath: '~/warp/spinners/x' });
+    expect(row.error).toBeNull(); // none of the seed rows have errors
+  });
+
+  it('getOperation returns the row for a known op_id', async () => {
+    const { pb, opIds } = await seedRows();
+    const target = opIds[1]!;
+    const r = await getOperation(pb.fetch, 'tok', target);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.row).not.toBeNull();
+    expect(r.row?.opId).toBe(target);
+    expect(r.row?.kind).toBe('spinner.verify');
+    expect(r.row?.status).toBe('partial');
+  });
+
+  it('getOperation returns row:null for an unknown op_id', async () => {
+    const { pb } = await seedRows();
+    const r = await getOperation(pb.fetch, 'tok', 'not-a-real-uuid');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.row).toBeNull();
   });
 });

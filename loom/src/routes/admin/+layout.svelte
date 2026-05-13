@@ -18,6 +18,7 @@
       items: [
         { href: '/admin', label: 'Status' },
         { href: '/admin/vault', label: 'Vault' },
+        { href: '/admin/operations', label: 'Operations' },
         { href: '/admin/audit', label: 'Audit log' },
       ],
     },
@@ -52,6 +53,7 @@
 
   let pabloOpen = $state(false);
   let pabloInvoking = $state(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pabloResult = $state<any>(null);
   let pabloError = $state<string | null>(null);
   let pabloElapsed = $state(0);
@@ -93,10 +95,11 @@
     }
     stopPabloTimer();
     pabloInvoking = false;
-    pabloError = 'Cancelled. Quiet Loom may still be generating in the background; future invocations will reuse its warmed prompt cache.';
+    pabloError =
+      'Cancelled. Quiet Loom may still be generating in the background; future invocations will reuse its warmed prompt cache.';
   }
 
-  function captureComputedStyles(): Array<Record<string, string>> {
+  function captureComputedStyles(): Record<string, string>[] {
     // Walk visible elements that carry text or visual weight, capture
     // their resolved computed styles. Sent to Pablo alongside the HTML
     // so he stops hallucinating CSS variable values.
@@ -106,7 +109,7 @@
       '.kind, .sev-pill, .tag-chip, .entry-title, .verdict-text, .pablo-voice, ' +
       '.finding-body, .fix';
     const elements = Array.from(document.querySelectorAll(selector));
-    const snapshot: Array<Record<string, string>> = [];
+    const snapshot: Record<string, string>[] = [];
     let counter = 0;
     for (const el of elements) {
       if (counter >= 120) break; // cap snapshot size
@@ -229,6 +232,7 @@
 
 <div class="shell">
   <header class="ribbon">
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
     <a class="ribbon-brand" href="/admin" aria-label="Warp — Webspinner Foundation Cell">
       <img class="wordmark" src="/brand/warp-wordmark.svg" alt="WARP" />
       <span class="sub">Webspinner Foundation Cell</span>
@@ -242,10 +246,19 @@
         title="Have Pablo review this page"
         aria-label="Have Pablo review this page"
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
         </svg>
         <span class="pablo-label">{pabloInvoking ? 'Pablo is looking…' : 'Review this page'}</span>
         <kbd>⌘⇧P</kbd>
@@ -262,7 +275,9 @@
       <header>
         <h2 id="pablo-panel-title">Pablo's read</h2>
         <span class="panel-route"><code>{page.url.pathname}</code></span>
-        <button type="button" class="close" onclick={closePablo} aria-label="Close Pablo panel">✕</button>
+        <button type="button" class="close" onclick={closePablo} aria-label="Close Pablo panel"
+          >✕</button
+        >
       </header>
 
       {#if pabloInvoking}
@@ -298,16 +313,22 @@
           {/if}
           {#if Array.isArray(out.findings) && out.findings.length > 0}
             <ol class="findings">
-              {#each out.findings as f}
+              {#each out.findings as f, idx (idx)}
                 <li class={`finding sev-${f.severity ?? 'medium'}`}>
                   <header>
-                    <span class={`sev-pill sev-${f.severity ?? 'medium'}`}>{f.severity ?? 'medium'}</span>
+                    <span class={`sev-pill sev-${f.severity ?? 'medium'}`}
+                      >{f.severity ?? 'medium'}</span
+                    >
                     <span class="category">{f.category ?? 'other'}</span>
                     <span class="source"><code>{f.source ?? 'pablos-eye'}</code></span>
                   </header>
                   <p class="finding-body">{f.finding ?? ''}</p>
                   {#if f.evidence}
-                    <pre class="evidence"><code>{f.evidence.length > 240 ? f.evidence.slice(0, 240) + '…' : f.evidence}</code></pre>
+                    <pre class="evidence"><code
+                        >{f.evidence.length > 240
+                          ? f.evidence.slice(0, 240) + '…'
+                          : f.evidence}</code
+                      ></pre>
                   {/if}
                   {#if f.fix}
                     <p class="fix"><strong>Fix:</strong> {f.fix}</p>
@@ -331,6 +352,7 @@
           <ul>
             {#each g.items as item (item.href)}
               <li>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
                 <a href={item.href} class:active={isActive(item.href)}>{item.label}</a>
               </li>
             {/each}
@@ -529,7 +551,10 @@
     font-size: 0.82rem;
     letter-spacing: 0.02em;
     font-weight: 500;
-    transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      transform 0.12s ease;
   }
 
   .pablo-trigger:hover:not(:disabled) {
@@ -577,8 +602,14 @@
   }
 
   @keyframes pablo-slide {
-    from { transform: translateX(40px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from {
+      transform: translateX(40px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
 
   .pablo-panel > header {
@@ -696,7 +727,9 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .pablo-panel .verdict-row {
@@ -779,9 +812,15 @@
     background: var(--bg-1, #111);
   }
 
-  .pablo-panel .finding.sev-high { border-left-color: #f88; }
-  .pablo-panel .finding.sev-medium { border-left-color: var(--gold); }
-  .pablo-panel .finding.sev-low { border-left-color: var(--cyan-dim, #4ba9b8); }
+  .pablo-panel .finding.sev-high {
+    border-left-color: #f88;
+  }
+  .pablo-panel .finding.sev-medium {
+    border-left-color: var(--gold);
+  }
+  .pablo-panel .finding.sev-low {
+    border-left-color: var(--cyan-dim, #4ba9b8);
+  }
 
   .pablo-panel .finding > header {
     display: flex;
@@ -801,9 +840,18 @@
     border: 1px solid currentColor;
   }
 
-  .pablo-panel .sev-pill.sev-high { color: #f88; background: #2a0808; }
-  .pablo-panel .sev-pill.sev-medium { color: var(--gold); background: #1a160a; }
-  .pablo-panel .sev-pill.sev-low { color: var(--cyan-dim, #4ba9b8); background: rgba(95, 207, 224, 0.06); }
+  .pablo-panel .sev-pill.sev-high {
+    color: #f88;
+    background: #2a0808;
+  }
+  .pablo-panel .sev-pill.sev-medium {
+    color: var(--gold);
+    background: #1a160a;
+  }
+  .pablo-panel .sev-pill.sev-low {
+    color: var(--cyan-dim, #4ba9b8);
+    background: rgba(95, 207, 224, 0.06);
+  }
 
   .pablo-panel .finding .category {
     color: var(--text-dim);

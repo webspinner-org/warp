@@ -103,27 +103,36 @@ export interface ListAuditRequest {
   readonly eventType?: string;
   readonly result?: string;
   readonly actorId?: string;
+  /** Filter to events whose correlation_id matches (e.g., an operation's op_id). */
+  readonly correlationId?: string;
 }
 
 export async function listAuditEvents(
   fetchFn: typeof fetch,
   token: string,
   req: ListAuditRequest = {},
-): Promise<{ ok: true; events: readonly AuditRow[]; total: number } | { ok: false; status: number; body: string }> {
+): Promise<
+  | { ok: true; events: readonly AuditRow[]; total: number }
+  | { ok: false; status: number; body: string }
+> {
   const filters: string[] = [];
   if (req.since) filters.push(`event_time >= ${JSON.stringify(req.since)}`);
   if (req.eventType) filters.push(`event_type = ${JSON.stringify(req.eventType)}`);
   if (req.result) filters.push(`audit_result = ${JSON.stringify(req.result)}`);
   if (req.actorId) filters.push(`actor_id = ${JSON.stringify(req.actorId)}`);
+  if (req.correlationId) filters.push(`correlation_id = ${JSON.stringify(req.correlationId)}`);
 
   const params = new URLSearchParams();
   params.set('perPage', String(Math.max(1, Math.min(200, req.limit ?? 50))));
   params.set('sort', '-event_time');
   if (filters.length > 0) params.set('filter', filters.join(' && '));
 
-  const res = await fetchFn(`${PB_URL}/api/collections/${COLLECTION}/records?${params.toString()}`, {
-    headers: authHeaders(token),
-  });
+  const res = await fetchFn(
+    `${PB_URL}/api/collections/${COLLECTION}/records?${params.toString()}`,
+    {
+      headers: authHeaders(token),
+    },
+  );
   if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
   const body = (await res.json()) as { items: readonly AuditRow[]; totalItems: number };
   return { ok: true, events: body.items, total: body.totalItems };
