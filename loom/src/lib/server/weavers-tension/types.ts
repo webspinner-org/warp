@@ -1,192 +1,209 @@
 /**
- * Weaver's Tension — types.
+ * Weaver's Tension — types (v2).
  *
- * A *scenario* is a JSON file at `scenarios/<slug>.json`. The player
- * consumes it and walks the patron through a gated, narrated sequence
- * of steps. Each step pairs a pre-authored observation with a question
- * (for the patron to answer) and, optionally, a server-side verifier
- * (to confirm the artifact actually exists on the Loom).
+ * v2 mental model: the SI is the operator, the patron is the audience.
+ * The player executes each step's scripted actions in the iframe (the
+ * patron watches), then runs server-side verifications. On failure,
+ * an onError remediation block runs; if remediation fails too, the
+ * patron is paused at the failure for a manual decision.
  *
- * A *run* is one walkthrough of a scenario by a specific actor. Runs
- * persist to `wp_weavers_tension_runs`; the player resumes from the
- * stored state. The op envelope (kind `weavers-tension.run`) is the
- * audit anchor — every gate and every chat message correlates to the
- * run's `opId`.
+ * The patron's global controls are Pause / Resume / Stop. No per-step
+ * gates. At the end of the run, the patron records an overall verdict.
  *
- * The name is canonical (`DECISIONS.md` 2026-05-12). Tension is the
- * controlled pull on the warp threads — what makes the weave hold its
- * pattern. The Weaver's Tension is the just-right discipline of the
- * conversation between SI and patron.
+ * Scenarios live at `scenarios/<slug>.json`. Each scenario carries a
+ * fixture block (slug, displayName, description, etc.) the SI uses for
+ * test inputs — the patron doesn't pick test data; the test data is
+ * part of the demonstration.
  */
 
 import type { OperationActor } from '../operations.js';
 
-/**
- * A single step in a scenario. The shape is the same for every step;
- * what differs is the `question` and `verifier` blocks the scenario
- * author declares.
- */
+export interface Scenario {
+  readonly slug: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly version: 2;
+  /**
+   * Scenario-level constants substitutable as `{{fixture.<key>}}` in
+   * actions, verifiers, and narration. Lets the scenario declare its
+   * test inputs once.
+   */
+  readonly fixtures: Readonly<Record<string, string>>;
+  readonly steps: readonly ScenarioStep[];
+}
+
 export interface ScenarioStep {
-  /** Stable identifier within the scenario (e.g. "open-admin"). */
   readonly key: string;
-  /** Display title in the right column. */
   readonly title: string;
   /**
-   * The SI's pre-authored observation prose. Manuscript voice — em
-   * dashes welcome. Rendered in serif. Visible the moment the step
-   * becomes active.
+   * The SI's narration — what it's about to do. Manuscript voice.
+   * Surfaces in the active-step panel AND as an auto-posted SI
+   * chat message at the moment the step becomes active.
    */
-  readonly observation: string;
+  readonly narration: string;
   /**
-   * If present, the iframe will navigate here at the start of the
-   * step. Relative to the Loom origin (e.g. `/admin/spinners`).
-   * Absent on steps that don't have a single canonical anchor route.
+   * Executable action program. The player runs these sequentially.
+   * Between actions the player checks pause/stop flags.
    */
-  readonly iframeRoute?: string;
+  readonly actions: readonly Action[];
   /**
-   * Optional server-side check the player runs when entering the step.
-   * The verifier returns `{ ok, observation, evidence }` and the
-   * evidence is rendered alongside the SI's observation as JSON.
+   * Post-action verifications. Advisory in v1 — gating in v2:
+   * if any verification fails AND onError isn't declared, the run
+   * pauses at this step for the patron's decision.
    */
-  readonly verifier?: StepVerifier;
+  readonly verifications?: readonly StepVerifier[];
   /**
-   * What the patron is asked. Determines the controls in the right
-   * column. Every step has a question — even if it's just `confirm`
-   * (a single Approve button).
+   * Optional remediation. When verifications fail, the player runs
+   * onError.actions, then re-verifies. Up to maxRetries cycles.
    */
-  readonly question: StepQuestion;
-  /**
-   * If declared, the run state records the patron's answer under this
-   * key, available to later steps' verifiers and observations.
-   * Example: a slug typed in step 6 is used by step 7's verifier to
-   * confirm the skein row got written for that slug.
-   */
-  readonly answerKey?: string;
+  readonly onError?: OnErrorBlock;
 }
+
+export interface OnErrorBlock {
+  /** SI narration when entering remediation. */
+  readonly narration: string;
+  /** Remediation actions. */
+  readonly actions: readonly Action[];
+  /** Number of (remediation → reverify) cycles before escalating. */
+  readonly maxRetries?: number;
+}
+
+// ── Actions ──────────────────────────────────────────────────────
+
+export type Action =
+  | NavigateIframeAction
+  | WaitForRouteAction
+  | WaitForSelectorAction
+  | FillAction
+  | ClickAction
+  | SubmitAction
+  | SleepAction
+  | NarrateAction;
+
+export interface NavigateIframeAction {
+  readonly kind: 'navigate-iframe';
+  /** Path relative to the Loom origin. Supports placeholders. */
+  readonly path: string;
+  /** Optional: wait for the resolved URL to match this exact route after load. */
+  readonly waitForRoute?: string;
+  /** Timeout for the navigation in ms (default 8000). */
+  readonly timeoutMs?: number;
+}
+
+export interface WaitForRouteAction {
+  readonly kind: 'wait-for-route';
+  readonly path: string;
+  readonly timeoutMs?: number;
+}
+
+export interface WaitForSelectorAction {
+  readonly kind: 'wait-for-selector';
+  readonly selector: string;
+  readonly timeoutMs?: number;
+}
+
+export interface FillAction {
+  readonly kind: 'fill';
+  readonly selector: string;
+  readonly value: string;
+}
+
+export interface ClickAction {
+  readonly kind: 'click';
+  readonly selector: string;
+  /** Optional: wait for the resolved URL to match this route post-click. */
+  readonly waitForRoute?: string;
+  readonly timeoutMs?: number;
+}
+
+export interface SubmitAction {
+  readonly kind: 'submit';
+  /** A form selector. The submit button inside is clicked. */
+  readonly formSelector: string;
+  /** Optional: wait for navigation to this path after submit. */
+  readonly waitForRoute?: string;
+  readonly timeoutMs?: number;
+}
+
+export interface SleepAction {
+  readonly kind: 'sleep';
+  /** Pause for this many ms — pure visual rhythm. */
+  readonly ms: number;
+}
+
+export interface NarrateAction {
+  readonly kind: 'narrate';
+  /** Post a chat message from the SI inline mid-step. */
+  readonly message: string;
+}
+
+// ── Verifiers ────────────────────────────────────────────────────
 
 export type StepVerifier =
   | RouteStatusVerifier
   | PbRowExistsVerifier
   | AuditEventVerifier
-  | OpEnvelopeVerifier;
+  | OpEnvelopeVerifier
+  | IframeElementVerifier;
 
 export interface RouteStatusVerifier {
   readonly kind: 'route-status';
-  /** Path relative to the Loom origin (e.g. `/admin/spinners`). */
   readonly path: string;
-  /** Expected HTTP status (default 200). */
   readonly expectStatus?: number;
-  /**
-   * Optional substring assertions against the response body. All must
-   * appear or the verifier fails.
-   */
   readonly bodyContains?: readonly string[];
 }
 
 export interface PbRowExistsVerifier {
   readonly kind: 'pb-row-exists';
   readonly collection: string;
-  /**
-   * PocketBase filter expression. Placeholders `{{answer.<key>}}` are
-   * substituted with the patron's prior answers.
-   */
   readonly filter: string;
-  /**
-   * Optional field assertions: each entry must match exactly against
-   * the row's field value. Placeholders supported.
-   */
-  readonly assertFields?: Record<string, string>;
+  readonly assertFields?: Readonly<Record<string, string>>;
 }
 
 export interface AuditEventVerifier {
   readonly kind: 'audit-event';
   readonly eventType: string;
-  /** Look back this many seconds for a matching event (default 600). */
   readonly windowSec?: number;
-  /** Optional subject substring filter. */
   readonly subjectContains?: string;
 }
 
 export interface OpEnvelopeVerifier {
   readonly kind: 'op-envelope';
-  /** Required op kind (e.g. `spinner.install`). */
   readonly opKind: string;
-  /** Required final status (default `ok`). */
   readonly status?: 'ok' | 'failed' | 'partial';
-  /** Look back this many seconds (default 600). */
   readonly windowSec?: number;
 }
 
-export type StepQuestion =
-  | ConfirmQuestion
-  | ChoiceQuestion
-  | ProseQuestion
-  | VerifyAndCommentQuestion
-  | PromptInputQuestion;
-
-export interface ConfirmQuestion {
-  readonly kind: 'confirm';
-  /** Button label override (default "Approve"). */
-  readonly approveLabel?: string;
-}
-
-export interface ChoiceQuestion {
-  readonly kind: 'choice';
-  readonly prompt: string;
-  readonly options: readonly { readonly value: string; readonly label: string }[];
-  /** If true, multiple options can be selected (checkboxes vs radios). */
-  readonly multi?: boolean;
-}
-
-export interface ProseQuestion {
-  readonly kind: 'prose';
-  readonly prompt: string;
-  readonly placeholder?: string;
-}
-
-export interface VerifyAndCommentQuestion {
-  readonly kind: 'verify+comment';
-  readonly prompt: string;
-  readonly commentPlaceholder?: string;
-}
-
-export interface PromptInputQuestion {
-  readonly kind: 'prompt-input';
-  readonly prompt: string;
-  readonly fields: readonly {
-    readonly name: string;
-    readonly label: string;
-    readonly placeholder?: string;
-    readonly required?: boolean;
-  }[];
-}
-
-export interface Scenario {
-  /** Slug — filename without `.json`. */
-  readonly slug: string;
-  /** Human-readable title for the index. */
-  readonly title: string;
-  /** One-paragraph summary for the index. */
-  readonly summary: string;
-  /** Schema version (1 = bootstrap). */
-  readonly version: 1;
-  readonly steps: readonly ScenarioStep[];
+/**
+ * Client-side verifier — runs against the iframe DOM rather than
+ * PB / route. Used to confirm form fields are populated, headings
+ * say what we expect, etc. Executed by the driver, not the server.
+ */
+export interface IframeElementVerifier {
+  readonly kind: 'iframe-element';
+  readonly selector: string;
+  /** What to read: 'textContent', 'value', or an attribute name. */
+  readonly read: 'textContent' | 'value' | string;
+  /** Expected value (placeholder-substituted). */
+  readonly equals?: string;
+  /** Expected substring (placeholder-substituted). */
+  readonly contains?: string;
+  readonly timeoutMs?: number;
 }
 
 // ── Run state ────────────────────────────────────────────────────
 
-export type RunStatus = 'in-progress' | 'completed' | 'aborted';
+export type RunStatus = 'in-progress' | 'paused' | 'completed' | 'aborted' | 'failed';
 
-export type StepStatus = 'pending' | 'active' | 'approved' | 'flagged' | 'skipped';
+export type StepStatus = 'pending' | 'active' | 'completed' | 'failed' | 'remediated' | 'escalated';
 
 export interface StepResult {
   readonly stepKey: string;
   readonly status: StepStatus;
-  readonly verifierEvidence?: Record<string, unknown>;
+  /** Last verifier evidence the player captured for this step. */
+  readonly verifierEvidence?: Readonly<Record<string, unknown>>;
   readonly verifierObservation?: string;
-  readonly answer?: Record<string, unknown>;
-  readonly comment?: string;
-  readonly reason?: string;
+  readonly attempts?: number;
   readonly recordedAt: string;
 }
 
@@ -196,7 +213,6 @@ export interface RunMessage {
   readonly authorKind: 'wizard' | 'webspinner' | 'si' | 'system';
   readonly authorId: string;
   readonly authorLabel?: string;
-  /** Step key the message was authored under (or 'pre-start'/'post-end'). */
   readonly stepRef: string;
   readonly body: string;
 }
@@ -211,8 +227,7 @@ export interface Run {
   readonly actor: OperationActor;
   readonly stepResults: readonly StepResult[];
   readonly messages: readonly RunMessage[];
-  /** Patron-supplied data accumulated across steps, keyed by ScenarioStep.answerKey. */
-  readonly answers: Record<string, Record<string, unknown>>;
+  readonly answers: Readonly<Record<string, Record<string, unknown>>>;
   readonly startedAt: string;
   readonly endedAt?: string;
   readonly updatedAt: string;
@@ -222,8 +237,6 @@ export interface Run {
 
 export interface VerifierResult {
   readonly ok: boolean;
-  /** One-line summary suitable for the right column. */
   readonly observation: string;
-  /** Raw evidence for the JSON panel under the observation. */
-  readonly evidence: Record<string, unknown>;
+  readonly evidence: Readonly<Record<string, unknown>>;
 }

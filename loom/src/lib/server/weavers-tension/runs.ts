@@ -245,6 +245,15 @@ export async function appendMessage(
   return patchRun(fetchFn, token, run.id, { messages });
 }
 
+export async function patchRunStatus(
+  fetchFn: typeof fetch,
+  token: string,
+  run: Run,
+  status: RunStatus,
+): Promise<{ ok: true; run: Run } | { ok: false; status: number; body: string }> {
+  return patchRun(fetchFn, token, run.id, { status });
+}
+
 export async function completeRun(
   fetchFn: typeof fetch,
   token: string,

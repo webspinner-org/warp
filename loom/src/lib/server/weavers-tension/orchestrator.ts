@@ -1,22 +1,13 @@
 /**
- * Orchestrator — ties together runs persistence, audit emission, and
- * (at end-of-run) op envelope finalization.
+ * Orchestrator (v2) — server-side helpers the player route uses to
+ * mutate run state + emit audit events. The patron-facing actor is
+ * either a Wizard (superuser) or a Webspinner (user); audit events
+ * always carry the actor's identity.
  *
- * Every Weaver's Tension run gets one op envelope of kind
- * `weavers-tension.run`. The envelope is written at end-of-run (the
- * existing `writeOperation` is one-shot); during the run, the opId is
- * generated up-front and used as `correlation_id` on every audit
- * event so the event chain is recoverable even before the envelope
+ * One op envelope (kind `weavers-tension.run`) is written at end of
+ * run. Audit events during the run carry the WT runId's opId as
+ * correlation_id so the chain is recoverable even before the envelope
  * lands.
- *
- * Audit events form a family of seven:
- *   wp.weavers-tension.started      — emitted at start
- *   wp.weavers-tension.step-approved   per Approve gate
- *   wp.weavers-tension.step-flagged    per Flag gate
- *   wp.weavers-tension.step-skipped    per Skip gate
- *   wp.weavers-tension.message         per chat message
- *   wp.weavers-tension.completed       at clean end
- *   wp.weavers-tension.aborted         at abort
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,6 +20,7 @@ import {
   ensureRunsCollection,
   abortRun as persistAbortRun,
   makeMessageId,
+  patchRunStatus,
   recordStepResult,
 } from './runs.js';
 import type { Run, RunMessage, Scenario, ScenarioStep, StepResult } from './types.js';
@@ -44,15 +36,11 @@ export interface OrchestratorContext {
 
 // ── Start ────────────────────────────────────────────────────────
 
-export interface StartRunOutput {
-  readonly run: Run;
-}
-
 export async function startRun(
   ctx: OrchestratorContext,
   scenario: Scenario,
 ): Promise<
-  { ok: true; value: StartRunOutput } | { ok: false; error: { kind: string; detail: string } }
+  { ok: true; value: { run: Run } } | { ok: false; error: { kind: string; detail: string } }
 > {
   const ensureRuns = await ensureRunsCollection(ctx.fetch, ctx.pbToken);
   if (!ensureRuns.ok) {
@@ -92,43 +80,39 @@ export async function startRun(
   return { ok: true, value: { run: created.run } };
 }
 
-// ── Gates ────────────────────────────────────────────────────────
+// ── Step result ─────────────────────────────────────────────────
 
-export interface GateInput {
+export interface StepResultInput {
   readonly run: Run;
   readonly scenario: Scenario;
   readonly step: ScenarioStep;
   readonly stepIndex: number;
-  readonly verdict: 'approved' | 'flagged' | 'skipped';
-  readonly comment?: string;
-  readonly reason?: string;
-  readonly verifierEvidence?: Record<string, unknown>;
-  readonly verifierObservation?: string;
-  readonly newAnswers?: Record<string, Record<string, unknown>>;
+  readonly status: 'completed' | 'failed' | 'remediated' | 'escalated';
+  readonly evidence?: Record<string, unknown>;
+  readonly observation?: string;
+  readonly attempts?: number;
 }
 
-export async function gateStep(
+export async function recordStep(
   ctx: OrchestratorContext,
-  input: GateInput,
+  input: StepResultInput,
 ): Promise<{ ok: true; run: Run } | { ok: false; error: { kind: string; detail: string } }> {
   const result: StepResult = {
     stepKey: input.step.key,
-    status: input.verdict,
-    ...(input.verifierEvidence !== undefined ? { verifierEvidence: input.verifierEvidence } : {}),
-    ...(input.verifierObservation !== undefined
-      ? { verifierObservation: input.verifierObservation }
-      : {}),
-    ...(input.comment !== undefined && input.comment.length > 0 ? { comment: input.comment } : {}),
-    ...(input.reason !== undefined && input.reason.length > 0 ? { reason: input.reason } : {}),
+    status: input.status,
+    ...(input.evidence !== undefined ? { verifierEvidence: input.evidence } : {}),
+    ...(input.observation !== undefined ? { verifierObservation: input.observation } : {}),
+    ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
     recordedAt: new Date().toISOString(),
   };
+  const advance = input.status === 'completed' || input.status === 'remediated';
   const updated = await recordStepResult(
     ctx.fetch,
     ctx.pbToken,
     input.run,
     result,
-    input.newAnswers,
-    /* advance */ true,
+    undefined,
+    advance,
   );
   if (!updated.ok) {
     return {
@@ -137,38 +121,34 @@ export async function gateStep(
     };
   }
   const eventType =
-    input.verdict === 'approved'
-      ? ('wp.weavers-tension.step-approved' as const)
-      : input.verdict === 'flagged'
-        ? ('wp.weavers-tension.step-flagged' as const)
-        : ('wp.weavers-tension.step-skipped' as const);
-  const baseData = {
-    scenarioSlug: input.run.scenarioSlug,
+    input.status === 'completed'
+      ? ('wp.weavers-tension.step-completed' as const)
+      : input.status === 'remediated'
+        ? ('wp.weavers-tension.step-remediated' as const)
+        : ('wp.weavers-tension.step-failed' as const);
+  const data: Record<string, unknown> = {
+    scenarioSlug: input.scenario.slug,
     runId: input.run.runId,
     stepIndex: input.stepIndex,
     stepKey: input.step.key,
   };
-  const eventData: Record<string, unknown> = { ...baseData };
-  if (input.verdict === 'approved') {
-    if (input.verifierObservation) eventData['observation'] = input.verifierObservation;
-    if (input.verifierEvidence) eventData['verifierEvidence'] = input.verifierEvidence;
-  } else if (input.verdict === 'flagged') {
-    eventData['reason'] = input.reason ?? input.comment ?? 'flagged without reason';
-    if (input.verifierEvidence) eventData['verifierEvidence'] = input.verifierEvidence;
-  } else {
-    if (input.reason) eventData['reason'] = input.reason;
-  }
+  if (input.evidence) data['evidence'] = input.evidence;
+  if (input.status === 'failed' || input.status === 'escalated')
+    data['reason'] = input.observation ?? 'step did not pass verification';
+  if (input.status === 'remediated' && input.attempts !== undefined)
+    data['attempts'] = input.attempts;
+
   await safeWriteAudit(ctx, {
     type: eventType,
     correlationId: input.run.opId,
     subject: input.step.key,
-    reason: input.comment ?? input.reason ?? `Step ${input.step.key} ${input.verdict}.`,
-    data: eventData,
+    reason: input.observation ?? `Step ${input.step.key} ${input.status}.`,
+    data,
   });
   return { ok: true, run: updated.run };
 }
 
-// ── Messages ─────────────────────────────────────────────────────
+// ── Messages ────────────────────────────────────────────────────
 
 export interface PostMessageInput {
   readonly run: Run;
@@ -200,7 +180,10 @@ export async function postMessage(
   if (!updated.ok) {
     return {
       ok: false,
-      error: { kind: 'persist-message-failed', detail: `HTTP ${updated.status}: ${updated.body}` },
+      error: {
+        kind: 'persist-message-failed',
+        detail: `HTTP ${updated.status}: ${updated.body}`,
+      },
     };
   }
   await safeWriteAudit(ctx, {
@@ -219,7 +202,59 @@ export async function postMessage(
   return { ok: true, run: updated.run, message };
 }
 
-// ── End ──────────────────────────────────────────────────────────
+// ── Pause / Resume ──────────────────────────────────────────────
+
+export async function pauseRun(
+  ctx: OrchestratorContext,
+  run: Run,
+  scenario: Scenario,
+): Promise<{ ok: true; run: Run } | { ok: false; error: { kind: string; detail: string } }> {
+  const updated = await patchRunStatus(ctx.fetch, ctx.pbToken, run, 'paused');
+  if (!updated.ok)
+    return {
+      ok: false,
+      error: { kind: 'pause-failed', detail: `HTTP ${updated.status}: ${updated.body}` },
+    };
+  await safeWriteAudit(ctx, {
+    type: 'wp.weavers-tension.paused',
+    correlationId: run.opId,
+    subject: scenario.slug,
+    reason: `Run paused at step ${run.currentStepIndex}.`,
+    data: {
+      scenarioSlug: scenario.slug,
+      runId: run.runId,
+      atStepIndex: run.currentStepIndex,
+    },
+  });
+  return { ok: true, run: updated.run };
+}
+
+export async function resumeRun(
+  ctx: OrchestratorContext,
+  run: Run,
+  scenario: Scenario,
+): Promise<{ ok: true; run: Run } | { ok: false; error: { kind: string; detail: string } }> {
+  const updated = await patchRunStatus(ctx.fetch, ctx.pbToken, run, 'in-progress');
+  if (!updated.ok)
+    return {
+      ok: false,
+      error: { kind: 'resume-failed', detail: `HTTP ${updated.status}: ${updated.body}` },
+    };
+  await safeWriteAudit(ctx, {
+    type: 'wp.weavers-tension.resumed',
+    correlationId: run.opId,
+    subject: scenario.slug,
+    reason: `Run resumed at step ${run.currentStepIndex}.`,
+    data: {
+      scenarioSlug: scenario.slug,
+      runId: run.runId,
+      atStepIndex: run.currentStepIndex,
+    },
+  });
+  return { ok: true, run: updated.run };
+}
+
+// ── End ─────────────────────────────────────────────────────────
 
 export async function finishRun(
   ctx: OrchestratorContext,
@@ -230,12 +265,19 @@ export async function finishRun(
   if (!completed.ok) {
     return {
       ok: false,
-      error: { kind: 'complete-run-failed', detail: `HTTP ${completed.status}: ${completed.body}` },
+      error: {
+        kind: 'complete-run-failed',
+        detail: `HTTP ${completed.status}: ${completed.body}`,
+      },
     };
   }
-  const approvedCount = completed.run.stepResults.filter((r) => r.status === 'approved').length;
-  const flaggedCount = completed.run.stepResults.filter((r) => r.status === 'flagged').length;
-  const skippedCount = completed.run.stepResults.filter((r) => r.status === 'skipped').length;
+  const passed = completed.run.stepResults.filter(
+    (r) => r.status === 'completed' || r.status === 'remediated',
+  ).length;
+  const failed = completed.run.stepResults.filter(
+    (r) => r.status === 'failed' || r.status === 'escalated',
+  ).length;
+  const skipped = 0; // v2: no skip status
   const durationMs =
     new Date(completed.run.endedAt ?? new Date().toISOString()).getTime() -
     new Date(completed.run.startedAt).getTime();
@@ -244,13 +286,13 @@ export async function finishRun(
     type: 'wp.weavers-tension.completed',
     correlationId: run.opId,
     subject: scenario.slug,
-    reason: `Weaver's Tension run completed: ${approvedCount} approved, ${flaggedCount} flagged, ${skippedCount} skipped.`,
+    reason: `Weaver's Tension run completed: ${passed} passed, ${failed} failed, ${skipped} skipped.`,
     data: {
       scenarioSlug: scenario.slug,
       runId: run.runId,
-      approvedCount,
-      flaggedCount,
-      skippedCount,
+      approvedCount: passed,
+      flaggedCount: failed,
+      skippedCount: skipped,
       durationMs,
     },
   });
@@ -258,11 +300,11 @@ export async function finishRun(
   await safeWriteOpEnvelope(ctx, {
     opId: run.opId,
     kind: 'weavers-tension.run',
-    status: flaggedCount > 0 ? 'partial' : 'ok',
+    status: failed > 0 ? 'partial' : 'ok',
     startedAt: run.startedAt,
     endedAt: completed.run.endedAt ?? new Date().toISOString(),
     input: { scenarioSlug: scenario.slug, runId: run.runId },
-    output: { approvedCount, flaggedCount, skippedCount, durationMs },
+    output: { passed, failed, skipped, durationMs },
   });
 
   return { ok: true, run: completed.run };
@@ -283,7 +325,10 @@ export async function abortRun(
   if (!aborted.ok) {
     return {
       ok: false,
-      error: { kind: 'abort-run-failed', detail: `HTTP ${aborted.status}: ${aborted.body}` },
+      error: {
+        kind: 'abort-run-failed',
+        detail: `HTTP ${aborted.status}: ${aborted.body}`,
+      },
     };
   }
   await safeWriteAudit(ctx, {
@@ -354,12 +399,6 @@ async function safeWriteOpEnvelope(
   shape: OpEnvelopeShape,
 ): Promise<void> {
   try {
-    // Note: writeOperation generates its own opId; the Weaver's Tension
-    // opId we used as correlation_id won't match the envelope's op_id.
-    // This is a known v1 limitation — the correlation works at the
-    // audit-event level (events carry the WT opId), but the envelope
-    // has its own. We deliberately don't extend writeOperation here;
-    // the audit chain is the source of truth and is intact.
     await writeOperation(ctx.fetch, ctx.pbToken, {
       kind: shape.kind,
       status: shape.status,

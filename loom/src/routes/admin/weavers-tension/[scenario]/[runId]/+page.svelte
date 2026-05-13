@@ -1,69 +1,268 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { onMount } from 'svelte';
   import { invalidateAll } from '$app/navigation';
+  import { IframeDriver } from '$lib/weavers-tension/driver.js';
+  import { executeRun } from '$lib/weavers-tension/executor.js';
+  import type {
+    Scenario,
+    ScenarioStep,
+    StepResult,
+    StepVerifier,
+    VerifierResult,
+  } from '$lib/server/weavers-tension/types.js';
 
-  // Form-shape is a union across the page's actions; svelte-check
-  // doesn't narrow on the literal-key access we want here, so we
-  // pull out the one error shape we render with a helper that
-  // accepts the union conservatively.
-  let { data, form }: { data: import('./$types').PageData; form?: Record<string, unknown> | null } =
-    $props();
+  let { data }: { data: import('./$types').PageData } = $props();
 
-  function topLevelError(f: typeof form): { kind: string; detail?: string } | null {
-    if (!f) return null;
-    const v = f['topLevelError'];
-    if (typeof v === 'object' && v !== null && 'kind' in (v as Record<string, unknown>)) {
-      return v as { kind: string; detail?: string };
+  // ── reactive state ─────────────────────────────────────────────
+  let runStatus = $state<'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'aborted'>(
+    data.run.status === 'in-progress' ? 'idle' : (data.run.status as 'completed' | 'aborted'),
+  );
+  let currentStepIndex = $state(data.run.currentStepIndex);
+  let liveActionLabel = $state('');
+  let stepStatuses = $state<Record<string, StepResult['status'] | 'pending' | 'active'>>(
+    Object.fromEntries(
+      data.scenario.steps.map((s) => {
+        const result = data.run.stepResults.find((r) => r.stepKey === s.key);
+        return [s.key, result?.status ?? 'pending'];
+      }),
+    ),
+  );
+  let messages = $state([...data.run.messages]);
+  let verifierResults = $state<VerifierResult[]>([]);
+  let escalation = $state<{
+    stepKey: string;
+    reason: string;
+    evidence: Record<string, unknown>;
+  } | null>(null);
+  let iframeKey = $state(0);
+
+  // Iframe element ref
+  let iframeEl: HTMLIFrameElement | null = $state(null);
+
+  // Pause / stop flags
+  let pauseFlag = false;
+  let stopFlag = false;
+  let pauseResolvers: (() => void)[] = [];
+  function paused(): Promise<void> {
+    if (!pauseFlag) return Promise.resolve();
+    return new Promise((resolve) => pauseResolvers.push(resolve));
+  }
+  function stopGuard(): void {
+    if (stopFlag) throw new Error('stopped');
+  }
+  function stopRequested(): boolean {
+    return stopFlag;
+  }
+
+  function iframeStartingSrc(): string {
+    // For an in-progress run, prime the iframe at /admin so it's not
+    // blank when the patron lands here. The first step's navigate-iframe
+    // action will re-navigate properly once execution starts.
+    return '/admin';
+  }
+
+  // ── server-action helpers ──────────────────────────────────────
+  async function callAction(name: string, fd: FormData): Promise<unknown> {
+    const res = await fetch(`?/${name}`, { method: 'POST', body: fd });
+    const body = (await res.json()) as { type?: string; data?: string };
+    if (typeof body.data === 'string') {
+      try {
+        return JSON.parse(body.data);
+      } catch {
+        return null;
+      }
     }
     return null;
   }
 
-  let chatInput = $state('');
-  let submitting = $state(false);
-  let iframeKey = $state(0);
+  async function serverRecordStep(
+    step: ScenarioStep,
+    index: number,
+    status: StepResult['status'],
+    evidence?: Record<string, unknown>,
+  ): Promise<void> {
+    const fd = new FormData();
+    fd.set('stepIndex', String(index));
+    fd.set('status', status);
+    if (evidence) fd.set('evidence', JSON.stringify(evidence));
+    await callAction('recordStep', fd);
+  }
 
-  const activeStepIndex = $derived(data.run.currentStepIndex);
-  const totalSteps = $derived(data.steps.length);
+  async function serverPostMessage(
+    authorKind: 'si' | 'system' | 'wizard' | 'webspinner',
+    stepKey: string,
+    body: string,
+  ): Promise<void> {
+    const fd = new FormData();
+    fd.set('authorKind', authorKind);
+    fd.set('stepKey', stepKey);
+    fd.set('body', body);
+    await callAction('message', fd);
+    // Optimistic: append locally too so the UI updates without re-fetch.
+    messages = [
+      ...messages,
+      {
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        authorKind,
+        authorId: authorKind === 'si' ? 'si:weavers-tension' : 'self',
+        authorLabel: authorKind === 'si' ? 'The Loom' : (data.user?.email ?? 'patron'),
+        stepRef: stepKey,
+        body,
+      },
+    ];
+  }
 
-  // Bump the iframe key whenever the active step changes — forces the
-  // iframe to remount with the new route. (Just changing src works too,
-  // but remounting also resets scroll position, which the patron usually
-  // wants on a step transition.)
-  let lastSeenStepIndex = $state(-1);
-  $effect(() => {
-    if (activeStepIndex !== lastSeenStepIndex) {
-      lastSeenStepIndex = activeStepIndex;
-      iframeKey += 1;
+  async function serverRunVerifier(verifier: StepVerifier): Promise<VerifierResult> {
+    const fd = new FormData();
+    fd.set('verifier', JSON.stringify(verifier));
+    const r = (await callAction('runVerifications', fd)) as {
+      ok: boolean;
+      result?: VerifierResult;
+    } | null;
+    if (r && r.ok && r.result) return r.result;
+    return {
+      ok: false,
+      observation: 'Server verifier call failed.',
+      evidence: { reason: 'server-call-failed' },
+    };
+  }
+
+  async function serverPause(): Promise<void> {
+    await callAction('pause', new FormData());
+  }
+  async function serverResume(): Promise<void> {
+    await callAction('resume', new FormData());
+  }
+  async function serverFinish(): Promise<void> {
+    await callAction('finish', new FormData());
+  }
+
+  // ── lifecycle ──────────────────────────────────────────────────
+  async function startRun() {
+    if (!iframeEl) return;
+    if (runStatus === 'running') return;
+    runStatus = 'running';
+    stopFlag = false;
+    pauseFlag = false;
+    const driver = new IframeDriver(iframeEl, {
+      paused,
+      stopGuard,
+    });
+    const scenario: Scenario = data.scenario as Scenario;
+    try {
+      await executeRun({
+        driver,
+        scenario,
+        startIndex: currentStepIndex,
+        answers: data.run.answers,
+        signals: { paused, stopGuard, stopRequested },
+        hooks: {
+          onStepStart: async (step, index) => {
+            currentStepIndex = index;
+            stepStatuses = { ...stepStatuses, [step.key]: 'active' };
+            verifierResults = [];
+            liveActionLabel = `Starting: ${step.title}`;
+          },
+          onAction: (_action, _step, label) => {
+            liveActionLabel = label;
+          },
+          onVerifierResult: (_step, result) => {
+            verifierResults = [...verifierResults, result];
+          },
+          onStepDone: async (step, status, evidence) => {
+            stepStatuses = { ...stepStatuses, [step.key]: status };
+            await serverRecordStep(
+              step,
+              data.scenario.steps.findIndex((s) => s.key === step.key),
+              status,
+              evidence,
+            );
+          },
+          postMessage: async (authorKind, step, body) => {
+            await serverPostMessage(authorKind, step?.key ?? 'pre-start', body);
+          },
+          runServerVerifier: async (_step, verifier) => {
+            return await serverRunVerifier(verifier);
+          },
+          onEscalate: async (step, reason, evidence) => {
+            escalation = { stepKey: step.key, reason, evidence };
+            runStatus = 'failed';
+          },
+          onFinish: async () => {
+            runStatus = 'completed';
+            await serverFinish();
+            await invalidateAll();
+          },
+        },
+      });
+    } catch (err) {
+      if (String(err).includes('stopped')) {
+        runStatus = 'aborted';
+        return;
+      }
+      // Unexpected — log and pause for patron decision.
+      await serverPostMessage('system', 'pre-start', `Run loop crashed: ${String(err)}`);
+      runStatus = 'failed';
     }
+  }
+
+  async function pauseRun() {
+    pauseFlag = true;
+    runStatus = 'paused';
+    await serverPause();
+  }
+
+  async function resumeRun() {
+    pauseFlag = false;
+    pauseResolvers.forEach((r) => r());
+    pauseResolvers = [];
+    runStatus = 'running';
+    await serverResume();
+  }
+
+  async function stopRun() {
+    stopFlag = true;
+    pauseFlag = false;
+    pauseResolvers.forEach((r) => r());
+    pauseResolvers = [];
+    runStatus = 'aborted';
+    const fd = new FormData();
+    fd.set('reason', 'patron stopped the run');
+    await fetch('?/abort', { method: 'POST', body: fd });
+    window.location.href = '/admin/weavers-tension';
+  }
+
+  let chatInput = $state('');
+  async function sendChat() {
+    const body = chatInput.trim();
+    if (body.length === 0) return;
+    chatInput = '';
+    const currentStep = data.scenario.steps[currentStepIndex];
+    // The server will reconcile the actual author kind based on
+    // the session (wizard for _superusers, webspinner for users);
+    // we just request 'wizard' here as the patron-side label.
+    await serverPostMessage('wizard', currentStep?.key ?? 'pre-start', body);
+  }
+
+  onMount(() => {
+    // Reserved for future cleanup hooks (e.g., abort in-flight fetch).
   });
-
-  function iframeSrc(): string {
-    const route = data.activeStep?.iframeRoute;
-    if (!route) return '/admin';
-    // If the route still has unresolved placeholders, fall back.
-    if (route.includes('{{answer.')) return '/admin';
-    return route;
-  }
-
-  async function refreshIframe() {
-    iframeKey += 1;
-  }
 </script>
 
 <div class="player">
-  <!-- LEFT: live Loom view -->
+  <!-- LEFT: live stage -->
   <section class="stage">
     <header class="stage-head">
-      <span class="iframe-route">{iframeSrc()}</span>
-      <button type="button" class="refresh-btn" onclick={refreshIframe} title="Reload iframe">
-        ↻
-      </button>
+      <span class="iframe-label">The Loom (live)</span>
+      <span class="live-action">{liveActionLabel || 'idle'}</span>
     </header>
     <div class="iframe-wrap">
       {#key iframeKey}
         <iframe
-          src={iframeSrc()}
-          title="Loom stage for {data.scenarioTitle}"
+          bind:this={iframeEl}
+          src={iframeStartingSrc()}
+          title="Loom stage for {data.scenario.title}"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
           referrerpolicy="same-origin"
         ></iframe>
@@ -71,216 +270,103 @@
     </div>
   </section>
 
-  <!-- RIGHT: scenario control surface -->
+  <!-- RIGHT: panel -->
   <aside class="panel">
-    <!-- Scenario header -->
     <header class="panel-head">
       <p class="back">
         <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-        <a href={`/admin/weavers-tension/${data.scenarioSlug}`}>← {data.scenarioTitle}</a>
+        <a href={`/admin/weavers-tension/${data.scenario.slug}`}>← {data.scenario.title}</a>
       </p>
-      <p class="run-status status-{data.run.status}">
-        {data.run.status} · step {Math.min(activeStepIndex + 1, totalSteps)} of {totalSteps}
+      <p class="run-status status-{runStatus}">
+        {runStatus}
+        {#if runStatus === 'running' || runStatus === 'paused'}
+          · step {Math.min(currentStepIndex + 1, data.scenario.steps.length)} of {data.scenario
+            .steps.length}
+        {/if}
       </p>
     </header>
 
+    <!-- Run controls -->
+    <div class="controls">
+      {#if runStatus === 'idle'}
+        <button class="primary big" onclick={startRun}>▶ Start</button>
+        <span class="hint">{data.scenario.steps.length} steps — fully driven by the Loom.</span>
+      {:else if runStatus === 'running'}
+        <button class="secondary" onclick={pauseRun}>❚❚ Pause</button>
+        <button class="warn" onclick={stopRun}>■ Stop</button>
+      {:else if runStatus === 'paused'}
+        <button class="primary" onclick={resumeRun}>▶ Resume</button>
+        <button class="warn" onclick={stopRun}>■ Stop</button>
+      {:else if runStatus === 'failed' && escalation}
+        <button
+          class="primary"
+          onclick={() => {
+            escalation = null;
+            startRun();
+          }}>↻ Retry from here</button
+        >
+        <button
+          class="secondary"
+          onclick={() => {
+            escalation = null;
+            currentStepIndex++;
+            startRun();
+          }}>Skip step</button
+        >
+        <button class="warn" onclick={stopRun}>■ Stop</button>
+      {:else if runStatus === 'completed' || runStatus === 'aborted'}
+        <span class="done">Run {runStatus}.</span>
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+        <a class="secondary" href="/admin/weavers-tension">Back to index</a>
+      {/if}
+    </div>
+
     <!-- Step ribbon -->
     <ol class="ribbon">
-      {#each data.steps as s, i (s.key)}
-        <li class="ribbon-step status-{s.status}" title={s.title}>
+      {#each data.scenario.steps as s, i (s.key)}
+        <li class="ribbon-step status-{stepStatuses[s.key]}" title={s.title}>
           <span class="r-num">{i + 1}</span>
           <span class="r-title">{s.title}</span>
         </li>
       {/each}
     </ol>
 
-    {#if topLevelError(form)}
-      {@const err = topLevelError(form)}
-      {#if err}
-        <div class="banner error" role="alert">
-          <strong>{err.kind}</strong>
-          {#if err.detail}
-            <p>{err.detail}</p>
-          {/if}
-        </div>
-      {/if}
-    {/if}
-
-    {#if data.isFinished}
-      <!-- Finished state -->
-      <section class="active-step done">
-        <h2>Run {data.run.status}</h2>
-        <p class="observation">
-          {#if data.run.status === 'completed'}
-            The run is complete. The transcript and audit trail are persistent — refer back any
-            time.
-          {:else}
-            This run was aborted. The transcript captures what happened before the abort.
-          {/if}
-        </p>
-        <div class="counts">
-          <span class="count approved"
-            >{data.run.stepResults.filter((r) => r.status === 'approved').length} approved</span
-          >
-          <span class="count flagged"
-            >{data.run.stepResults.filter((r) => r.status === 'flagged').length} flagged</span
-          >
-          <span class="count skipped"
-            >{data.run.stepResults.filter((r) => r.status === 'skipped').length} skipped</span
-          >
-        </div>
-      </section>
-    {:else if data.activeStep}
-      <!-- Active step -->
+    <!-- Active step narration -->
+    {#if data.scenario.steps[currentStepIndex]}
+      {@const step = data.scenario.steps[currentStepIndex]}
       <section class="active-step">
-        <h2>{data.activeStep.title}</h2>
-        <p class="observation">{data.activeStep.observation}</p>
+        <h2>{step.title}</h2>
+        <p class="narration">{step.narration}</p>
 
-        {#if data.verifier}
-          <div class="verifier verifier-{data.verifier.ok ? 'ok' : 'fail'}">
-            <header>
-              <span class="v-icon">{data.verifier.ok ? '✓' : '⚠'}</span>
-              <span class="v-text">{data.verifier.observation}</span>
-            </header>
-            <details>
-              <summary>Evidence</summary>
-              <pre>{JSON.stringify(data.verifier.evidence, null, 2)}</pre>
-            </details>
+        {#if verifierResults.length > 0}
+          <div class="verifiers">
+            {#each verifierResults as v, i (i)}
+              <div class="verifier verifier-{v.ok ? 'ok' : 'fail'}">
+                <header>
+                  <span class="v-icon">{v.ok ? '✓' : '⚠'}</span>
+                  <span class="v-text">{v.observation}</span>
+                </header>
+                <details>
+                  <summary>Evidence</summary>
+                  <pre>{JSON.stringify(v.evidence, null, 2)}</pre>
+                </details>
+              </div>
+            {/each}
           </div>
         {/if}
 
-        <!-- Question + gating form -->
-        <form
-          method="POST"
-          class="gate-form"
-          use:enhance={({ formElement, action }) => {
-            submitting = true;
-            // Which action was used (?/approve | ?/flag | ?/skip)
-            const verdict = action.search.replace(/^\?\//, '');
-            return async ({ update }) => {
-              submitting = false;
-              await update();
-              await invalidateAll();
-              // Force the iframe to reload on step advance.
-              if (verdict === 'approve' || verdict === 'skip') {
-                iframeKey += 1;
-              }
-              formElement.reset();
-            };
-          }}
-        >
-          {#if data.activeStep.question.kind === 'confirm'}
-            <p class="q-prompt">Ready when you are.</p>
-            <div class="gate-row">
-              <button type="submit" formaction="?/approve" class="primary" disabled={submitting}>
-                {data.activeStep.question.approveLabel ?? 'Approve & continue'}
-              </button>
-              <button type="submit" formaction="?/skip" class="ghost" disabled={submitting}>
-                Skip
-              </button>
-              <button type="submit" formaction="?/flag" class="warn" disabled={submitting}>
-                Flag
-              </button>
-            </div>
-          {:else if data.activeStep.question.kind === 'verify+comment'}
-            <p class="q-prompt">{data.activeStep.question.prompt}</p>
-            <textarea
-              name="comment"
-              rows="2"
-              placeholder={data.activeStep.question.commentPlaceholder ?? ''}
-              maxlength="2000"
-            ></textarea>
-            <div class="gate-row">
-              <button type="submit" formaction="?/approve" class="primary" disabled={submitting}>
-                Approve & continue
-              </button>
-              <button type="submit" formaction="?/flag" class="warn" disabled={submitting}>
-                Flag with comment
-              </button>
-              <button type="submit" formaction="?/skip" class="ghost" disabled={submitting}>
-                Skip
-              </button>
-            </div>
-          {:else if data.activeStep.question.kind === 'prose'}
-            <p class="q-prompt">{data.activeStep.question.prompt}</p>
-            <textarea
-              name="comment"
-              rows="3"
-              placeholder={data.activeStep.question.placeholder ?? ''}
-              maxlength="2000"
-              required
-            ></textarea>
-            <div class="gate-row">
-              <button type="submit" formaction="?/approve" class="primary" disabled={submitting}>
-                Record answer & continue
-              </button>
-              <button type="submit" formaction="?/skip" class="ghost" disabled={submitting}>
-                Skip
-              </button>
-            </div>
-          {:else if data.activeStep.question.kind === 'prompt-input'}
-            <p class="q-prompt">{data.activeStep.question.prompt}</p>
-            {#each data.activeStep.question.fields as field (field.name)}
-              <label class="field">
-                <span class="field-label">{field.label}</span>
-                <input
-                  type="text"
-                  name={`answer.${field.name}`}
-                  placeholder={field.placeholder ?? ''}
-                  required={field.required ?? false}
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-            {/each}
-            <div class="gate-row">
-              <button type="submit" formaction="?/approve" class="primary" disabled={submitting}>
-                Save & continue
-              </button>
-              <button type="submit" formaction="?/flag" class="warn" disabled={submitting}>
-                Flag
-              </button>
-            </div>
-          {:else if data.activeStep.question.kind === 'choice'}
-            <p class="q-prompt">{data.activeStep.question.prompt}</p>
-            <fieldset class="choices">
-              {#each data.activeStep.question.options as opt (opt.value)}
-                <label class="choice">
-                  <input
-                    type={data.activeStep.question.multi ? 'checkbox' : 'radio'}
-                    name="answer.choice"
-                    value={opt.value}
-                  />
-                  <span>{opt.label}</span>
-                </label>
-              {/each}
-            </fieldset>
-            <div class="gate-row">
-              <button type="submit" formaction="?/approve" class="primary" disabled={submitting}>
-                Record & continue
-              </button>
-              <button type="submit" formaction="?/flag" class="warn" disabled={submitting}>
-                Flag
-              </button>
-            </div>
-          {/if}
-        </form>
-
-        {#if data.isLastStep}
-          <form
-            method="POST"
-            action="?/finish"
-            class="finish-form"
-            use:enhance={() => {
-              return async ({ update }) => {
-                await update();
-                await invalidateAll();
-              };
-            }}
-          >
-            <button type="submit" class="primary finish">Mark run complete</button>
-            <p class="hint">Visible after the last step's gate is recorded.</p>
-          </form>
+        {#if escalation}
+          <div class="escalation">
+            <h3>The Loom paused at this step.</h3>
+            <p class="escalation-reason">{escalation.reason}</p>
+            <details>
+              <summary>What I tried</summary>
+              <pre>{JSON.stringify(escalation.evidence, null, 2)}</pre>
+            </details>
+            <p class="hint">
+              Pick a control above — retry from here, skip the step, or stop the run.
+            </p>
+          </div>
         {/if}
       </section>
     {/if}
@@ -289,7 +375,7 @@
     <section class="chat">
       <h3>Transcript</h3>
       <ol class="messages">
-        {#each data.run.messages as m (m.id)}
+        {#each messages as m (m.id)}
           <li class="msg author-{m.authorKind}">
             <header>
               <span class="m-author">{m.authorLabel ?? m.authorId}</span>
@@ -299,33 +385,24 @@
             <p>{m.body}</p>
           </li>
         {/each}
-        {#if data.run.messages.length === 0}
-          <li class="msg empty">
-            No messages yet. The transcript captures every note made during this run.
-          </li>
+        {#if messages.length === 0}
+          <li class="msg empty">The Loom will narrate here as it runs.</li>
         {/if}
       </ol>
 
-      {#if !data.isFinished}
+      {#if runStatus !== 'completed' && runStatus !== 'aborted'}
         <form
-          method="POST"
-          action="?/message"
           class="chat-form"
-          use:enhance={() => {
-            return async ({ update }) => {
-              await update();
-              chatInput = '';
-              await invalidateAll();
-            };
+          onsubmit={(e) => {
+            e.preventDefault();
+            sendChat();
           }}
         >
           <textarea
-            name="body"
             bind:value={chatInput}
-            placeholder="Note about this step — what worked, what didn't, what surprised you…"
+            placeholder="A note for the design backlog — what felt right or wrong about this step…"
             rows="2"
             maxlength="4000"
-            required
           ></textarea>
           <button type="submit" class="ghost-send" disabled={chatInput.trim().length === 0}>
             Send
@@ -333,13 +410,6 @@
         </form>
       {/if}
     </section>
-
-    {#if !data.isFinished}
-      <form method="POST" action="?/abort" class="abort-form">
-        <input type="hidden" name="reason" value="patron aborted from player" />
-        <button type="submit" class="abort">Abort run</button>
-      </form>
-    {/if}
   </aside>
 </div>
 
@@ -354,12 +424,11 @@
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: 1fr 28rem;
-    gap: 0;
+    grid-template-columns: 1fr 32rem;
     background: #0a0a0a;
   }
 
-  /* ── LEFT pane ──────────────────────────────────────────────── */
+  /* LEFT */
   .stage {
     display: flex;
     flex-direction: column;
@@ -374,26 +443,21 @@
     padding: 0.5rem 1rem;
     background: #161616;
     border-bottom: 1px solid #2a2a2a;
-  }
-  .iframe-route {
-    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
     font-size: 0.85rem;
+  }
+  .iframe-label {
+    color: #f7e2a8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+  }
+  .live-action {
     color: #8a8a8a;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .refresh-btn {
-    background: transparent;
-    color: #8a8a8a;
-    border: 1px solid #2a2a2a;
-    padding: 0.2rem 0.6rem;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .refresh-btn:hover {
-    border-color: #f7e2a8;
-    color: #f7e2a8;
+    max-width: 60%;
   }
   .iframe-wrap {
     flex: 1;
@@ -407,14 +471,14 @@
     background: #fff;
   }
 
-  /* ── RIGHT pane ─────────────────────────────────────────────── */
+  /* RIGHT */
   .panel {
     background: #0e0e0e;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: 1rem;
-    gap: 1.2rem;
+    gap: 1rem;
   }
   .panel-head {
     display: flex;
@@ -423,13 +487,10 @@
     border-bottom: 1px solid #2a2a2a;
     padding-bottom: 0.6rem;
   }
-  .back {
-    margin: 0;
-    font-size: 0.85rem;
-  }
   .back a {
     color: #8a8a8a;
     text-decoration: none;
+    font-size: 0.85rem;
   }
   .back a:hover {
     color: #f7e2a8;
@@ -439,15 +500,78 @@
     color: #8a8a8a;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    margin: 0;
   }
-  .status-in-progress {
+  .status-running,
+  .status-paused {
     color: #f7e2a8;
   }
   .status-completed {
     color: #88c878;
   }
+  .status-failed,
   .status-aborted {
     color: #d97870;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px dashed #2a2a2a;
+    flex-wrap: wrap;
+  }
+  .primary {
+    background: #2a2a1a;
+    color: #f7e2a8;
+    border: 1px solid #f7e2a8;
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+  }
+  .primary.big {
+    padding: 0.7rem 1.6rem;
+    font-size: 1.05rem;
+  }
+  .primary:hover {
+    background: #3a3a1a;
+  }
+  .secondary {
+    background: transparent;
+    color: #8a8a8a;
+    border: 1px solid #2a2a2a;
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+  }
+  .secondary:hover {
+    border-color: #888;
+    color: #cfcdc4;
+  }
+  .warn {
+    background: transparent;
+    color: #d97870;
+    border: 1px solid #d97870;
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+  }
+  .warn:hover {
+    background: #2a1a1a;
+  }
+  .done {
+    color: #cfcdc4;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+  }
+  .hint {
+    color: #8a8a8a;
+    font-size: 0.85rem;
   }
 
   /* Ribbon */
@@ -457,9 +581,9 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    border-left: 1px solid #2a2a2a;
-    padding-left: 0.6rem;
+    gap: 0.2rem;
+    max-height: 14rem;
+    overflow-y: auto;
   }
   .ribbon-step {
     display: grid;
@@ -494,18 +618,17 @@
   .ribbon-step.status-active .r-title {
     color: #f7e2a8;
   }
-  .ribbon-step.status-approved .r-num,
-  .ribbon-step.status-approved .r-title {
+  .ribbon-step.status-completed .r-num,
+  .ribbon-step.status-completed .r-title,
+  .ribbon-step.status-remediated .r-num,
+  .ribbon-step.status-remediated .r-title {
     color: #88c878;
   }
-  .ribbon-step.status-flagged .r-num,
-  .ribbon-step.status-flagged .r-title {
+  .ribbon-step.status-failed .r-num,
+  .ribbon-step.status-failed .r-title,
+  .ribbon-step.status-escalated .r-num,
+  .ribbon-step.status-escalated .r-title {
     color: #d97870;
-  }
-  .ribbon-step.status-skipped .r-num,
-  .ribbon-step.status-skipped .r-title {
-    color: #888;
-    text-decoration: line-through;
   }
   @keyframes activePulse {
     0%,
@@ -515,52 +638,54 @@
     50% {
       box-shadow:
         0 0 0 1px #f7e2a8 inset,
-        0 0 12px rgba(247, 226, 168, 0.25);
+        0 0 14px rgba(247, 226, 168, 0.3);
     }
   }
 
   /* Active step */
   .active-step {
     border-top: 1px solid #2a2a2a;
-    padding-top: 1rem;
+    padding-top: 0.8rem;
   }
   .active-step h2 {
     font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
-    font-size: 1.3rem;
+    font-size: 1.25rem;
     font-weight: 400;
     color: #f7e2a8;
-    margin: 0 0 0.6rem;
+    margin: 0 0 0.5rem;
   }
-  .observation {
+  .narration {
     font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
-    font-size: 1rem;
-    line-height: 1.55;
+    font-size: 0.95rem;
+    line-height: 1.5;
     color: #cfcdc4;
-    margin: 0 0 1rem;
+    margin: 0 0 0.8rem;
     white-space: pre-line;
+  }
+  .verifiers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
   }
   .verifier {
     border: 1px solid;
     border-radius: 4px;
-    padding: 0.6rem 0.8rem;
-    font-size: 0.9rem;
-    margin: 0 0 1rem;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
   }
-  .verifier.verifier-ok {
+  .verifier-ok {
     border-color: #88c878;
     background: #0e1a0e;
   }
-  .verifier.verifier-fail {
+  .verifier-fail {
     border-color: #d97870;
     background: #1a0e0e;
   }
   .verifier header {
     display: flex;
-    gap: 0.6rem;
+    gap: 0.5rem;
     align-items: center;
-  }
-  .verifier .v-icon {
-    font-size: 1rem;
   }
   .verifier-ok .v-icon {
     color: #88c878;
@@ -568,144 +693,52 @@
   .verifier-fail .v-icon {
     color: #d97870;
   }
-  .verifier .v-text {
+  .v-text {
     color: #cfcdc4;
   }
   .verifier details {
-    margin-top: 0.5rem;
+    margin-top: 0.4rem;
   }
   .verifier summary {
     cursor: pointer;
     color: #8a8a8a;
-    font-size: 0.85rem;
+    font-size: 0.78rem;
   }
   .verifier pre {
     font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: #b5b3aa;
     background: #161616;
-    padding: 0.6rem;
+    padding: 0.5rem;
     border-radius: 3px;
     overflow-x: auto;
-    margin: 0.4rem 0 0;
+    margin: 0.3rem 0 0;
   }
-  .q-prompt {
-    color: #cfcdc4;
-    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
-    margin: 0 0 0.6rem;
-  }
-  .gate-form textarea,
-  .chat-form textarea,
-  .field input {
-    width: 100%;
-    box-sizing: border-box;
-    background: #161616;
-    border: 1px solid #2a2a2a;
-    color: #cfcdc4;
-    border-radius: 3px;
-    padding: 0.5rem 0.7rem;
-    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
-    font-size: 0.95rem;
-  }
-  .gate-form textarea:focus,
-  .chat-form textarea:focus,
-  .field input:focus {
-    outline: none;
-    border-color: #f7e2a8;
-  }
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin: 0 0 0.7rem;
-  }
-  .field-label {
-    color: #8a8a8a;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .gate-row {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .primary {
-    background: #2a2a1a;
-    color: #f7e2a8;
-    border: 1px solid #f7e2a8;
-    padding: 0.5rem 1rem;
-    border-radius: 3px;
-    cursor: pointer;
-    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
-  }
-  .primary:hover {
-    background: #3a3a1a;
-  }
-  .primary:disabled {
-    opacity: 0.5;
-    cursor: wait;
-  }
-  .ghost {
-    background: transparent;
-    color: #8a8a8a;
-    border: 1px solid #2a2a2a;
-    padding: 0.5rem 1rem;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .ghost:hover {
-    border-color: #888;
-    color: #cfcdc4;
-  }
-  .warn {
-    background: transparent;
-    color: #d97870;
+  .escalation {
     border: 1px solid #d97870;
-    padding: 0.5rem 1rem;
-    border-radius: 3px;
-    cursor: pointer;
+    background: #1a0e0e;
+    border-radius: 4px;
+    padding: 0.8rem;
+    margin: 0.5rem 0;
   }
-  .warn:hover {
-    background: #2a1a1a;
+  .escalation h3 {
+    margin: 0 0 0.4rem;
+    color: #d97870;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+    font-size: 1rem;
+    font-weight: 400;
   }
-  .choices {
-    border: 0;
-    padding: 0;
-    margin: 0 0 0.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-  .choice {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
+  .escalation-reason {
     color: #cfcdc4;
-    cursor: pointer;
-  }
-
-  .finish-form {
-    margin-top: 1rem;
-    border-top: 1px dashed #2a2a2a;
-    padding-top: 0.8rem;
-  }
-  .primary.finish {
-    background: #1a2a1a;
-    color: #88c878;
-    border-color: #88c878;
-  }
-  .hint {
-    color: #8a8a8a;
-    font-size: 0.8rem;
-    margin: 0.4rem 0 0;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+    margin: 0 0 0.4rem;
   }
 
   /* Chat */
   .chat {
     border-top: 1px solid #2a2a2a;
-    padding-top: 1rem;
+    padding-top: 0.8rem;
+    margin-top: auto;
   }
   .chat h3 {
     font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
@@ -717,11 +750,11 @@
   .messages {
     list-style: none;
     padding: 0;
-    margin: 0 0 0.8rem;
+    margin: 0 0 0.7rem;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    max-height: 24rem;
+    gap: 0.5rem;
+    max-height: 18rem;
     overflow-y: auto;
   }
   .msg {
@@ -737,6 +770,9 @@
   .msg.author-webspinner {
     border-left-color: #88c878;
   }
+  .msg.author-system {
+    border-left-color: #8a8a8a;
+  }
   .msg.empty {
     color: #888;
     font-style: italic;
@@ -745,10 +781,10 @@
   }
   .msg header {
     display: flex;
-    gap: 0.6rem;
-    font-size: 0.75rem;
+    gap: 0.5rem;
+    font-size: 0.7rem;
     color: #8a8a8a;
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.25rem;
   }
   .m-author {
     color: #cfcdc4;
@@ -757,8 +793,8 @@
     color: #cfcdc4;
     font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
     margin: 0;
-    font-size: 0.95rem;
-    line-height: 1.5;
+    font-size: 0.9rem;
+    line-height: 1.45;
     white-space: pre-line;
   }
   .chat-form {
@@ -766,6 +802,20 @@
     grid-template-columns: 1fr auto;
     gap: 0.5rem;
     align-items: end;
+  }
+  .chat-form textarea {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    color: #cfcdc4;
+    border-radius: 3px;
+    padding: 0.5rem 0.7rem;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+    font-size: 0.9rem;
+    resize: vertical;
+  }
+  .chat-form textarea:focus {
+    outline: none;
+    border-color: #f7e2a8;
   }
   .ghost-send {
     background: #2a2a1a;
@@ -783,68 +833,9 @@
     cursor: not-allowed;
   }
 
-  /* Abort */
-  .abort-form {
-    margin-top: auto;
-    padding-top: 1rem;
-    border-top: 1px dashed #2a2a2a;
-  }
-  .abort {
-    background: transparent;
-    color: #8a8a8a;
-    border: 1px solid #2a2a2a;
-    padding: 0.4rem 0.8rem;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-  .abort:hover {
-    color: #d97870;
-    border-color: #d97870;
-  }
-
-  /* Done state */
-  .active-step.done {
-    text-align: left;
-  }
-  .counts {
-    display: flex;
-    gap: 1rem;
-    margin-top: 1rem;
-    font-size: 0.9rem;
-  }
-  .count.approved {
-    color: #88c878;
-  }
-  .count.flagged {
-    color: #d97870;
-  }
-  .count.skipped {
-    color: #888;
-  }
-
-  /* Banner */
-  .banner.error {
-    background: #2a1a1a;
-    border: 1px solid #d97870;
-    color: #d97870;
-    padding: 0.7rem;
-    border-radius: 3px;
-    font-size: 0.85rem;
-  }
-  .banner.error strong {
-    display: block;
-    font-size: 0.8rem;
-    margin-bottom: 0.3rem;
-  }
-  .banner.error p {
-    margin: 0;
-    font-size: 0.85rem;
-  }
-
   @media (max-width: 1100px) {
     .player {
-      grid-template-columns: 1fr 26rem;
+      grid-template-columns: 1fr 28rem;
     }
   }
   @media (max-width: 900px) {

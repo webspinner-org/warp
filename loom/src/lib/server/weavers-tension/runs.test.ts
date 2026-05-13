@@ -129,7 +129,7 @@ describe('weavers-tension runs', () => {
 
     const result: StepResult = {
       stepKey: 'one',
-      status: 'approved',
+      status: 'completed',
       recordedAt: '2026-05-12T00:00:01Z',
     };
     const advanced = await recordStepResult(
@@ -158,7 +158,7 @@ describe('weavers-tension runs', () => {
       pb.fetch,
       'tok',
       created.run,
-      { stepKey: 'fill', status: 'approved', recordedAt: '2026-05-12T00:00:00Z' },
+      { stepKey: 'fill', status: 'completed', recordedAt: '2026-05-12T00:00:00Z' },
       { newSpinner: { slug: 'tension-demo', displayName: 'Tension Demo' } },
     );
     expect(advanced.ok).toBe(true);

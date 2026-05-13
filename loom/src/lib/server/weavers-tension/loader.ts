@@ -1,20 +1,33 @@
 /**
- * Scenario loader — reads JSON files from `<repoRoot>/scenarios/<slug>.json`,
- * validates them against the Scenario schema, returns typed objects.
+ * Scenario loader (v2) — reads `<repoRoot>/scenarios/<slug>.json`,
+ * validates against the v2 schema, returns typed objects.
  *
- * Validation is structural — every field on Scenario / ScenarioStep is
- * required to be present and the correct primitive type. We do not run
- * a full JSON Schema validator; the discriminator-keyed unions make
- * structural checks straightforward and the failure messages tighter.
+ * v2 model: scenarios declare narration + scripted actions per step
+ * + verifications + optional onError remediation. Fixtures are
+ * scenario-level constants substitutable into actions/verifiers.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
-import type { Scenario, ScenarioStep, StepQuestion, StepVerifier } from './types.js';
+import type {
+  Action,
+  ClickAction,
+  FillAction,
+  IframeElementVerifier,
+  NarrateAction,
+  NavigateIframeAction,
+  OnErrorBlock,
+  Scenario,
+  ScenarioStep,
+  SleepAction,
+  StepVerifier,
+  SubmitAction,
+  WaitForRouteAction,
+  WaitForSelectorAction,
+} from './types.js';
 
 function scenariosDir(): string {
-  // Read lazily so test setups that mutate the env between calls work.
   const override = process.env['WARP_SCENARIOS_DIR'];
   if (override) return override;
   return resolve(homedir(), 'warp/scenarios');
@@ -72,8 +85,8 @@ export async function getScenario(slug: string): Promise<LoadResult<Scenario>> {
   try {
     raw = await readFile(path, 'utf8');
   } catch (err) {
-    const msg = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'not-found' : 'read-failed';
-    if (msg === 'not-found') return { ok: false, error: { kind: 'not-found', slug } };
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT')
+      return { ok: false, error: { kind: 'not-found', slug } };
     return { ok: false, error: { kind: 'read-failed', slug, detail: String(err) } };
   }
   let parsed: unknown;
@@ -82,47 +95,32 @@ export async function getScenario(slug: string): Promise<LoadResult<Scenario>> {
   } catch (err) {
     return { ok: false, error: { kind: 'parse-failed', slug, detail: String(err) } };
   }
-  const validated = validateScenario(slug, parsed);
-  if (!validated.ok) return validated;
-  return { ok: true, value: validated.value };
+  return validateScenario(slug, parsed);
+}
+
+function fail(slug: string, detail: string): LoadResult<never> {
+  return { ok: false, error: { kind: 'schema-invalid', slug, detail } };
 }
 
 function validateScenario(slug: string, raw: unknown): LoadResult<Scenario> {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ok: false, error: { kind: 'schema-invalid', slug, detail: 'root must be an object' } };
-  }
+  if (typeof raw !== 'object' || raw === null) return fail(slug, 'root must be an object');
   const o = raw as Record<string, unknown>;
-  if (o['slug'] !== slug) {
-    return {
-      ok: false,
-      error: {
-        kind: 'schema-invalid',
-        slug,
-        detail: `slug field "${String(o['slug'])}" does not match filename "${slug}"`,
-      },
-    };
-  }
-  if (typeof o['title'] !== 'string' || (o['title'] as string).length === 0) {
-    return { ok: false, error: { kind: 'schema-invalid', slug, detail: 'title is required' } };
-  }
-  if (typeof o['summary'] !== 'string') {
-    return { ok: false, error: { kind: 'schema-invalid', slug, detail: 'summary is required' } };
-  }
-  if (o['version'] !== 1) {
-    return {
-      ok: false,
-      error: {
-        kind: 'schema-invalid',
-        slug,
-        detail: `version must be 1 (got ${String(o['version'])})`,
-      },
-    };
+  if (o['slug'] !== slug) return fail(slug, `slug "${String(o['slug'])}" does not match filename`);
+  if (typeof o['title'] !== 'string' || (o['title'] as string).length === 0)
+    return fail(slug, 'title is required');
+  if (typeof o['summary'] !== 'string') return fail(slug, 'summary is required');
+  if (o['version'] !== 2) return fail(slug, `version must be 2 (got ${String(o['version'])})`);
+  const fixtures = o['fixtures'];
+  if (
+    typeof fixtures !== 'object' ||
+    fixtures === null ||
+    Array.isArray(fixtures) ||
+    !Object.values(fixtures).every((v) => typeof v === 'string')
+  ) {
+    return fail(slug, 'fixtures must be an object of string→string entries');
   }
   if (!Array.isArray(o['steps']) || (o['steps'] as unknown[]).length === 0) {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: 'steps must be a non-empty array' },
-    };
+    return fail(slug, 'steps must be a non-empty array');
   }
   const steps: ScenarioStep[] = [];
   const seenKeys = new Set<string>();
@@ -130,16 +128,8 @@ function validateScenario(slug: string, raw: unknown): LoadResult<Scenario> {
     const stepRaw = (o['steps'] as unknown[])[i];
     const stepResult = validateStep(slug, stepRaw, i);
     if (!stepResult.ok) return stepResult;
-    if (seenKeys.has(stepResult.value.key)) {
-      return {
-        ok: false,
-        error: {
-          kind: 'schema-invalid',
-          slug,
-          detail: `duplicate step key "${stepResult.value.key}" at index ${i}`,
-        },
-      };
-    }
+    if (seenKeys.has(stepResult.value.key))
+      return fail(slug, `duplicate step key "${stepResult.value.key}" at index ${i}`);
     seenKeys.add(stepResult.value.key);
     steps.push(stepResult.value);
   }
@@ -149,213 +139,162 @@ function validateScenario(slug: string, raw: unknown): LoadResult<Scenario> {
       slug,
       title: o['title'] as string,
       summary: o['summary'] as string,
-      version: 1,
+      version: 2,
+      fixtures: fixtures as Record<string, string>,
       steps,
     },
   };
 }
 
 function validateStep(slug: string, raw: unknown, idx: number): LoadResult<ScenarioStep> {
-  if (typeof raw !== 'object' || raw === null) {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} must be an object` },
-    };
-  }
+  if (typeof raw !== 'object' || raw === null) return fail(slug, `step ${idx} must be an object`);
   const o = raw as Record<string, unknown>;
-  if (typeof o['key'] !== 'string' || (o['key'] as string).length === 0) {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} missing key` },
-    };
+  if (typeof o['key'] !== 'string' || (o['key'] as string).length === 0)
+    return fail(slug, `step ${idx} missing key`);
+  if (typeof o['title'] !== 'string') return fail(slug, `step ${idx} missing title`);
+  if (typeof o['narration'] !== 'string') return fail(slug, `step ${idx} missing narration`);
+  if (!Array.isArray(o['actions'])) return fail(slug, `step ${idx} missing actions array`);
+  const actions: Action[] = [];
+  for (let i = 0; i < (o['actions'] as unknown[]).length; i++) {
+    const ar = validateAction(slug, (o['actions'] as unknown[])[i], `step ${idx} action ${i}`);
+    if (!ar.ok) return ar;
+    actions.push(ar.value);
   }
-  if (typeof o['title'] !== 'string') {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} missing title` },
-    };
+  let verifications: StepVerifier[] | undefined;
+  if (o['verifications'] !== undefined) {
+    if (!Array.isArray(o['verifications']))
+      return fail(slug, `step ${idx} verifications must be array`);
+    verifications = [];
+    for (let i = 0; i < (o['verifications'] as unknown[]).length; i++) {
+      const vr = validateVerifier(
+        slug,
+        (o['verifications'] as unknown[])[i],
+        `step ${idx} verification ${i}`,
+      );
+      if (!vr.ok) return vr;
+      verifications.push(vr.value);
+    }
   }
-  if (typeof o['observation'] !== 'string') {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} missing observation` },
-    };
+  let onError: OnErrorBlock | undefined;
+  if (o['onError'] !== undefined) {
+    const eb = validateOnError(slug, o['onError'], `step ${idx} onError`);
+    if (!eb.ok) return eb;
+    onError = eb.value;
   }
-  if (o['iframeRoute'] !== undefined && typeof o['iframeRoute'] !== 'string') {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} iframeRoute must be string` },
-    };
-  }
-  const questionResult = validateQuestion(slug, o['question'], idx);
-  if (!questionResult.ok) return questionResult;
-  let verifier: StepVerifier | undefined;
-  if (o['verifier'] !== undefined) {
-    const verifierResult = validateVerifier(slug, o['verifier'], idx);
-    if (!verifierResult.ok) return verifierResult;
-    verifier = verifierResult.value;
-  }
-  const step: ScenarioStep = {
-    key: o['key'] as string,
-    title: o['title'] as string,
-    observation: o['observation'] as string,
-    ...(o['iframeRoute'] !== undefined ? { iframeRoute: o['iframeRoute'] as string } : {}),
-    ...(verifier !== undefined ? { verifier } : {}),
-    question: questionResult.value,
-    ...(typeof o['answerKey'] === 'string' ? { answerKey: o['answerKey'] as string } : {}),
+  return {
+    ok: true,
+    value: {
+      key: o['key'] as string,
+      title: o['title'] as string,
+      narration: o['narration'] as string,
+      actions,
+      ...(verifications !== undefined ? { verifications } : {}),
+      ...(onError !== undefined ? { onError } : {}),
+    },
   };
-  return { ok: true, value: step };
 }
 
-function validateQuestion(slug: string, raw: unknown, idx: number): LoadResult<StepQuestion> {
-  if (typeof raw !== 'object' || raw === null) {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} missing question` },
-    };
-  }
+function validateAction(slug: string, raw: unknown, ctx: string): LoadResult<Action> {
+  if (typeof raw !== 'object' || raw === null) return fail(slug, `${ctx} must be object`);
   const o = raw as Record<string, unknown>;
   const kind = o['kind'];
   switch (kind) {
-    case 'confirm':
+    case 'navigate-iframe':
+      if (typeof o['path'] !== 'string') return fail(slug, `${ctx} navigate-iframe missing path`);
       return {
         ok: true,
         value: {
-          kind: 'confirm',
-          ...(typeof o['approveLabel'] === 'string'
-            ? { approveLabel: o['approveLabel'] as string }
+          kind: 'navigate-iframe',
+          path: o['path'] as string,
+          ...(typeof o['waitForRoute'] === 'string'
+            ? { waitForRoute: o['waitForRoute'] as string }
             : {}),
-        },
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
+        } satisfies NavigateIframeAction,
       };
-    case 'choice':
-      if (typeof o['prompt'] !== 'string' || !Array.isArray(o['options'])) {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} choice question missing prompt/options`,
-          },
-        };
-      }
+    case 'wait-for-route':
+      if (typeof o['path'] !== 'string') return fail(slug, `${ctx} wait-for-route missing path`);
       return {
         ok: true,
         value: {
-          kind: 'choice',
-          prompt: o['prompt'] as string,
-          options: (o['options'] as { value: string; label: string }[]).map((opt) => ({
-            value: opt.value,
-            label: opt.label,
-          })),
-          ...(typeof o['multi'] === 'boolean' ? { multi: o['multi'] as boolean } : {}),
-        },
+          kind: 'wait-for-route',
+          path: o['path'] as string,
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
+        } satisfies WaitForRouteAction,
       };
-    case 'prose':
-      if (typeof o['prompt'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} prose question missing prompt`,
-          },
-        };
-      }
+    case 'wait-for-selector':
+      if (typeof o['selector'] !== 'string')
+        return fail(slug, `${ctx} wait-for-selector missing selector`);
       return {
         ok: true,
         value: {
-          kind: 'prose',
-          prompt: o['prompt'] as string,
-          ...(typeof o['placeholder'] === 'string'
-            ? { placeholder: o['placeholder'] as string }
+          kind: 'wait-for-selector',
+          selector: o['selector'] as string,
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
+        } satisfies WaitForSelectorAction,
+      };
+    case 'fill':
+      if (typeof o['selector'] !== 'string' || typeof o['value'] !== 'string')
+        return fail(slug, `${ctx} fill missing selector/value`);
+      return {
+        ok: true,
+        value: {
+          kind: 'fill',
+          selector: o['selector'] as string,
+          value: o['value'] as string,
+        } satisfies FillAction,
+      };
+    case 'click':
+      if (typeof o['selector'] !== 'string') return fail(slug, `${ctx} click missing selector`);
+      return {
+        ok: true,
+        value: {
+          kind: 'click',
+          selector: o['selector'] as string,
+          ...(typeof o['waitForRoute'] === 'string'
+            ? { waitForRoute: o['waitForRoute'] as string }
             : {}),
-        },
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
+        } satisfies ClickAction,
       };
-    case 'verify+comment':
-      if (typeof o['prompt'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} verify+comment question missing prompt`,
-          },
-        };
-      }
+    case 'submit':
+      if (typeof o['formSelector'] !== 'string')
+        return fail(slug, `${ctx} submit missing formSelector`);
       return {
         ok: true,
         value: {
-          kind: 'verify+comment',
-          prompt: o['prompt'] as string,
-          ...(typeof o['commentPlaceholder'] === 'string'
-            ? { commentPlaceholder: o['commentPlaceholder'] as string }
+          kind: 'submit',
+          formSelector: o['formSelector'] as string,
+          ...(typeof o['waitForRoute'] === 'string'
+            ? { waitForRoute: o['waitForRoute'] as string }
             : {}),
-        },
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
+        } satisfies SubmitAction,
       };
-    case 'prompt-input':
-      if (typeof o['prompt'] !== 'string' || !Array.isArray(o['fields'])) {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} prompt-input question missing prompt/fields`,
-          },
-        };
-      }
+    case 'sleep':
+      if (typeof o['ms'] !== 'number') return fail(slug, `${ctx} sleep missing ms`);
       return {
         ok: true,
-        value: {
-          kind: 'prompt-input',
-          prompt: o['prompt'] as string,
-          fields: (
-            o['fields'] as {
-              name: string;
-              label: string;
-              placeholder?: string;
-              required?: boolean;
-            }[]
-          ).map((f) => ({
-            name: f.name,
-            label: f.label,
-            ...(typeof f.placeholder === 'string' ? { placeholder: f.placeholder } : {}),
-            ...(typeof f.required === 'boolean' ? { required: f.required } : {}),
-          })),
-        },
+        value: { kind: 'sleep', ms: o['ms'] as number } satisfies SleepAction,
+      };
+    case 'narrate':
+      if (typeof o['message'] !== 'string') return fail(slug, `${ctx} narrate missing message`);
+      return {
+        ok: true,
+        value: { kind: 'narrate', message: o['message'] as string } satisfies NarrateAction,
       };
     default:
-      return {
-        ok: false,
-        error: {
-          kind: 'schema-invalid',
-          slug,
-          detail: `step ${idx} unknown question kind "${String(kind)}"`,
-        },
-      };
+      return fail(slug, `${ctx} unknown action kind "${String(kind)}"`);
   }
 }
 
-function validateVerifier(slug: string, raw: unknown, idx: number): LoadResult<StepVerifier> {
-  if (typeof raw !== 'object' || raw === null) {
-    return {
-      ok: false,
-      error: { kind: 'schema-invalid', slug, detail: `step ${idx} verifier must be object` },
-    };
-  }
+function validateVerifier(slug: string, raw: unknown, ctx: string): LoadResult<StepVerifier> {
+  if (typeof raw !== 'object' || raw === null) return fail(slug, `${ctx} must be object`);
   const o = raw as Record<string, unknown>;
   const kind = o['kind'];
   switch (kind) {
     case 'route-status':
-      if (typeof o['path'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} route-status verifier missing path`,
-          },
-        };
-      }
+      if (typeof o['path'] !== 'string') return fail(slug, `${ctx} route-status missing path`);
       return {
         ok: true,
         value: {
@@ -365,21 +304,17 @@ function validateVerifier(slug: string, raw: unknown, idx: number): LoadResult<S
             ? { expectStatus: o['expectStatus'] as number }
             : {}),
           ...(Array.isArray(o['bodyContains'])
-            ? { bodyContains: (o['bodyContains'] as string[]).filter((s) => typeof s === 'string') }
+            ? {
+                bodyContains: (o['bodyContains'] as unknown[]).filter(
+                  (s): s is string => typeof s === 'string',
+                ),
+              }
             : {}),
         },
       };
     case 'pb-row-exists':
-      if (typeof o['collection'] !== 'string' || typeof o['filter'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} pb-row-exists verifier missing collection/filter`,
-          },
-        };
-      }
+      if (typeof o['collection'] !== 'string' || typeof o['filter'] !== 'string')
+        return fail(slug, `${ctx} pb-row-exists missing collection/filter`);
       return {
         ok: true,
         value: {
@@ -392,16 +327,8 @@ function validateVerifier(slug: string, raw: unknown, idx: number): LoadResult<S
         },
       };
     case 'audit-event':
-      if (typeof o['eventType'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} audit-event verifier missing eventType`,
-          },
-        };
-      }
+      if (typeof o['eventType'] !== 'string')
+        return fail(slug, `${ctx} audit-event missing eventType`);
       return {
         ok: true,
         value: {
@@ -414,16 +341,7 @@ function validateVerifier(slug: string, raw: unknown, idx: number): LoadResult<S
         },
       };
     case 'op-envelope':
-      if (typeof o['opKind'] !== 'string') {
-        return {
-          ok: false,
-          error: {
-            kind: 'schema-invalid',
-            slug,
-            detail: `step ${idx} op-envelope verifier missing opKind`,
-          },
-        };
-      }
+      if (typeof o['opKind'] !== 'string') return fail(slug, `${ctx} op-envelope missing opKind`);
       return {
         ok: true,
         value: {
@@ -435,37 +353,69 @@ function validateVerifier(slug: string, raw: unknown, idx: number): LoadResult<S
           ...(typeof o['windowSec'] === 'number' ? { windowSec: o['windowSec'] as number } : {}),
         },
       };
-    default:
+    case 'iframe-element':
+      if (typeof o['selector'] !== 'string' || typeof o['read'] !== 'string')
+        return fail(slug, `${ctx} iframe-element missing selector/read`);
+      if (typeof o['equals'] !== 'string' && typeof o['contains'] !== 'string')
+        return fail(slug, `${ctx} iframe-element needs equals or contains`);
       return {
-        ok: false,
-        error: {
-          kind: 'schema-invalid',
-          slug,
-          detail: `step ${idx} unknown verifier kind "${String(kind)}"`,
+        ok: true,
+        value: {
+          kind: 'iframe-element',
+          selector: o['selector'] as string,
+          read: o['read'] as IframeElementVerifier['read'],
+          ...(typeof o['equals'] === 'string' ? { equals: o['equals'] as string } : {}),
+          ...(typeof o['contains'] === 'string' ? { contains: o['contains'] as string } : {}),
+          ...(typeof o['timeoutMs'] === 'number' ? { timeoutMs: o['timeoutMs'] as number } : {}),
         },
       };
+    default:
+      return fail(slug, `${ctx} unknown verifier kind "${String(kind)}"`);
   }
 }
 
+function validateOnError(slug: string, raw: unknown, ctx: string): LoadResult<OnErrorBlock> {
+  if (typeof raw !== 'object' || raw === null) return fail(slug, `${ctx} must be object`);
+  const o = raw as Record<string, unknown>;
+  if (typeof o['narration'] !== 'string') return fail(slug, `${ctx} missing narration`);
+  if (!Array.isArray(o['actions'])) return fail(slug, `${ctx} missing actions`);
+  const actions: Action[] = [];
+  for (let i = 0; i < (o['actions'] as unknown[]).length; i++) {
+    const ar = validateAction(slug, (o['actions'] as unknown[])[i], `${ctx} action ${i}`);
+    if (!ar.ok) return ar;
+    actions.push(ar.value);
+  }
+  return {
+    ok: true,
+    value: {
+      narration: o['narration'] as string,
+      actions,
+      ...(typeof o['maxRetries'] === 'number' ? { maxRetries: o['maxRetries'] as number } : {}),
+    },
+  };
+}
+
 /**
- * Substitute `{{answer.<key>.<field>}}` placeholders in a string with
- * values from the run's accumulated answers. Unresolved placeholders
- * are left in-place (useful for steps that run before the answer was
- * captured — the verifier will then fail recognizably rather than
- * silently match the wrong row).
+ * Substitute `{{fixture.<key>}}` and `{{answer.<key>.<field>}}`
+ * placeholders. Unresolved placeholders are preserved verbatim so
+ * downstream errors are recognizable rather than silently matching
+ * wrong values.
  */
 export function substitutePlaceholders(
   template: string,
-  answers: Record<string, Record<string, unknown>>,
+  fixtures: Readonly<Record<string, string>>,
+  answers: Readonly<Record<string, Record<string, unknown>>> = {},
 ): string {
-  return template.replace(
-    /\{\{answer\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\}\}/g,
-    (_match, key, field) => {
+  return template
+    .replace(/\{\{fixture\.([a-zA-Z0-9_-]+)\}\}/g, (_m, key) => {
+      const v = fixtures[key];
+      return typeof v === 'string' ? v : `{{fixture.${key}}}`;
+    })
+    .replace(/\{\{answer\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\}\}/g, (_m, key, field) => {
       const bag = answers[key];
       if (bag === undefined) return `{{answer.${key}.${field}}}`;
-      const value = bag[field];
-      if (value === undefined || value === null) return `{{answer.${key}.${field}}}`;
-      return String(value);
-    },
-  );
+      const v = bag[field];
+      if (v === undefined || v === null) return `{{answer.${key}.${field}}}`;
+      return String(v);
+    });
 }

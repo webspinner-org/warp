@@ -59,6 +59,15 @@ export async function runVerifier(input: RunVerifierInput): Promise<VerifierResu
         return await verifyAuditEvent(input, input.verifier);
       case 'op-envelope':
         return await verifyOpEnvelope(input, input.verifier);
+      case 'iframe-element':
+        // iframe-element verifiers run client-side in the driver;
+        // the server can't read iframe DOM. Surface a clear error
+        // if a caller routes one here by mistake.
+        return {
+          ok: false,
+          observation: 'iframe-element verifiers run client-side, not server-side',
+          evidence: { kind: 'iframe-element', routedToServer: true },
+        };
     }
   } catch (err) {
     return {
@@ -73,7 +82,7 @@ async function verifyRouteStatus(
   input: RunVerifierInput,
   v: RouteStatusVerifier,
 ): Promise<VerifierResult> {
-  const path = substitutePlaceholders(v.path, input.answers);
+  const path = substitutePlaceholders(v.path, {}, input.answers);
   const base = input.loomBaseOverride ?? LOOM_BASE;
   const url = `${base}${path}`;
   const expectStatus = v.expectStatus ?? 200;
@@ -107,7 +116,7 @@ async function verifyPbRowExists(
   input: RunVerifierInput,
   v: PbRowExistsVerifier,
 ): Promise<VerifierResult> {
-  const filter = substitutePlaceholders(v.filter, input.answers);
+  const filter = substitutePlaceholders(v.filter, {}, input.answers);
   if (filter.includes('{{answer.')) {
     return {
       ok: false,
@@ -139,7 +148,7 @@ async function verifyPbRowExists(
   const asserts = v.assertFields ?? {};
   const mismatches: { field: string; expected: string; actual: unknown }[] = [];
   for (const [field, expectedRaw] of Object.entries(asserts)) {
-    const expected = substitutePlaceholders(expectedRaw, input.answers);
+    const expected = substitutePlaceholders(expectedRaw, {}, input.answers);
     if (String(row[field]) !== expected) {
       mismatches.push({ field, expected, actual: row[field] });
     }

@@ -22,7 +22,12 @@ export type AuditEventType =
   | 'wp.weavers-tension.step-approved'
   | 'wp.weavers-tension.step-flagged'
   | 'wp.weavers-tension.step-skipped'
+  | 'wp.weavers-tension.step-completed'
+  | 'wp.weavers-tension.step-failed'
+  | 'wp.weavers-tension.step-remediated'
   | 'wp.weavers-tension.message'
+  | 'wp.weavers-tension.paused'
+  | 'wp.weavers-tension.resumed'
   | 'wp.weavers-tension.completed'
   | 'wp.weavers-tension.aborted';
 
@@ -204,12 +209,45 @@ export interface AuditEventData {
     readonly stepKey: string;
     readonly reason?: string;
   };
+  'wp.weavers-tension.step-completed': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly evidence?: Record<string, unknown>;
+  };
+  'wp.weavers-tension.step-failed': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly reason: string;
+    readonly evidence?: Record<string, unknown>;
+  };
+  'wp.weavers-tension.step-remediated': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly stepIndex: number;
+    readonly stepKey: string;
+    readonly attempts: number;
+    readonly evidence?: Record<string, unknown>;
+  };
   'wp.weavers-tension.message': {
     readonly scenarioSlug: string;
     readonly runId: string;
     readonly stepIndex: number;
     readonly authorKind: 'wizard' | 'webspinner' | 'si' | 'system';
     readonly body: string;
+  };
+  'wp.weavers-tension.paused': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly atStepIndex: number;
+  };
+  'wp.weavers-tension.resumed': {
+    readonly scenarioSlug: string;
+    readonly runId: string;
+    readonly atStepIndex: number;
   };
   'wp.weavers-tension.completed': {
     readonly scenarioSlug: string;
