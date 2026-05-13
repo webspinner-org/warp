@@ -38,16 +38,34 @@ function log(level: 'info' | 'ok' | 'fail' | 'step', msg: string): void {
   process.stdout.write(`${marker} ${msg}\n`);
 }
 
-async function login(page: Page): Promise<void> {
-  log('step', `login as ${PB_EMAIL}`);
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[name="wizard_id"]', PB_EMAIL);
-  await page.fill('input[name="passphrase"]', PB_PASSWORD);
-  await Promise.all([
-    page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 10_000 }),
-    page.click('button[type="submit"]'),
+async function loginViaCookie(ctx: import('playwright').BrowserContext): Promise<void> {
+  // Bypass the login UI entirely. Authenticate directly with
+  // PocketBase, get the superuser token, and install it as the
+  // session cookie that the Loom's getSession() reads.
+  log('step', `auth (superuser) as ${PB_EMAIL} against PB`);
+  const pbUrl = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
+  const res = await fetch(`${pbUrl}/api/collections/_superusers/auth-with-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identity: PB_EMAIL, password: PB_PASSWORD }),
+  });
+  if (!res.ok) {
+    throw new Error(`PB auth failed: HTTP ${res.status} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { token: string };
+  const url = new URL(BASE);
+  await ctx.addCookies([
+    {
+      name: 'wp_session',
+      value: `_superusers::${body.token}`,
+      domain: url.hostname,
+      path: '/',
+      httpOnly: true,
+      secure: url.protocol === 'https:',
+      sameSite: 'Strict',
+    },
   ]);
-  log('ok', `logged in; landed at ${page.url()}`);
+  log('ok', `session cookie installed`);
 }
 
 async function openWeaversTensionIndex(page: Page): Promise<void> {
@@ -170,7 +188,7 @@ async function main(): Promise<void> {
   page.on('pageerror', (e) => log('info', `[pageerror] ${e.message}`));
 
   try {
-    await login(page);
+    await loginViaCookie(ctx);
     await openWeaversTensionIndex(page);
     const runId = await startRun(page);
     await pressStart(page);
