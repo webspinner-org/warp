@@ -79,17 +79,57 @@
   }
 
   // ── server-action helpers ──────────────────────────────────────
+  // SvelteKit form-action responses encode `data` via devalue (a JSON
+  // array-form that preserves richer types). deserialize() un-wraps it.
   async function callAction(name: string, fd: FormData): Promise<unknown> {
     const res = await fetch(`?/${name}`, { method: 'POST', body: fd });
-    const body = (await res.json()) as { type?: string; data?: string };
+    const body = (await res.json()) as { type?: string; data?: unknown };
     if (typeof body.data === 'string') {
+      // SvelteKit serialises `data` as a JSON-encoded array via devalue.
       try {
-        return JSON.parse(body.data);
+        const arr = JSON.parse(body.data) as unknown[];
+        return reviveDevalue(arr);
       } catch {
         return null;
       }
     }
-    return null;
+    return body.data ?? null;
+  }
+
+  // Minimal devalue revival: walks a flattened indexed-array form
+  // (`[root, ...values]`) back into the original object graph. Handles
+  // the shapes our form actions emit (plain objects, arrays, strings,
+  // numbers, booleans). Doesn't try to handle Date / Map / Set —
+  // those don't appear in our action returns.
+  function reviveDevalue(arr: unknown[]): unknown {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    // Plain Map is fine here — never used reactively.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
+    const seen = new Map<number, unknown>();
+    function walk(idx: number): unknown {
+      if (seen.has(idx)) return seen.get(idx);
+      const node = arr[idx];
+      if (node === null || typeof node !== 'object') {
+        // primitive (number → index reference is already handled below;
+        // here arr[idx] is a primitive literal, e.g. `false` for index 3)
+        return node;
+      }
+      if (Array.isArray(node)) {
+        const out: unknown[] = [];
+        seen.set(idx, out);
+        for (const ref of node) {
+          out.push(typeof ref === 'number' ? walk(ref) : ref);
+        }
+        return out;
+      }
+      const out: Record<string, unknown> = {};
+      seen.set(idx, out);
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        out[k] = typeof v === 'number' ? walk(v) : v;
+      }
+      return out;
+    }
+    return walk(0);
   }
 
   async function serverRecordStep(
