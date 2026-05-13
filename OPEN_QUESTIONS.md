@@ -297,3 +297,62 @@ Build it through the loop instead of through Claude Code.
 **Status:** Open. Note captured at end of v2 Weaver's Tension
 iteration. Author v0 + Witness v0 is the smallest closed loop;
 Mender is v2.
+
+---
+
+## 2026-05-12 — WT bugs found at end of v2 testing
+
+Two bugs the Wizard surfaced after my "passes e2e twice" report. The
+e2e harness misses both because it auths as `wizard@webspinner.foundation`
+(a `_superusers` token); the Wizard testing in Safari auths as
+`johndavidmarx@gmail.com` (a `users` token). Pattern: **the harness
+must exercise the user-token path, not only the superuser path**.
+
+### Bug 1 — install op fails with `identity-failed` / `{"kind":"auth"}` under a user-token session
+
+**Root cause:** `loom/src/routes/admin/spinners/new/+page.server.ts`
+passes `session.token` (which may be a `users`-collection JWT) into
+`installSpinnerBundle`. The install op then uses that token to read
+`wp_cell_identity` and `wp_audit`. PB returns 403 because user
+tokens don't bypass collection rules; the install op surfaces it as
+`identity-failed`.
+
+**Fix:** in the form action, derive a superuser token via
+`loomPbToken(fetch)` and pass THAT into `installSpinnerBundle` for
+the PB-side operations (identity / audit / skein / operations
+collections). The `actor` recorded in audit + op envelopes is still
+the user (correct identity); the bearer used for collection access
+is the Loom's superuser (correct privilege).
+
+**Audit pattern to fix elsewhere:** every form action that takes a
+user-initiated request and performs Loom-privileged operations
+needs the same split — actor from session, bearer from
+`loomPbToken`. Audit `/admin/signing/sign`, `/admin/signing/verify`,
+`/admin/spinners/[name]/+page.server.ts` (refreshIntegrity), every
+op-emitting handler.
+
+### Bug 2 — runs that escalate stay `in-progress` in `wp_weavers_tension_runs`
+
+**Root cause:** `executor.ts` calls `onEscalate` when a step fails
+permanently. The player's `onEscalate` hook only updates local
+state (`runStatus = 'failed'`) and does not call a server action.
+The PB row's `status` stays `in-progress`. The Wizard sees stale
+"running" rows on the index for up to 10 minutes (the staleness
+reaper window) before they auto-abort.
+
+**Fix:** add a `markRunFailed` form action that sets
+`run.status = 'failed'` (new run status), updates `endedAt`, emits
+`wp.weavers-tension.aborted`. The player's `onEscalate` calls it.
+
+**Also:** the staleness window is too long for hand-driven testing.
+Drop to 2 minutes for `in-progress` rows that have ZERO step
+results (they never started executing) and keep 10 minutes for
+rows with partial progress.
+
+### Plus — the e2e harness should test both paths
+
+The harness currently auths as `_superusers` only. It should also
+run the scenario as a regular user (after creating one) to catch
+privilege-boundary bugs like Bug 1 before they reach the Wizard.
+
+These three live in the morning queue, not tonight's.
