@@ -62,9 +62,13 @@ A successful run produces:
 | **3** | `spinner.install` meta-runtime op + `tools/webspinner install` | 7 — the install pipeline writes a `wp_skein` row | ✓ shipped |
 | **4** | First template: `hello-spinner` + scaffold helper              | 5, 6 — the scaffold the form copies from         | ✓ shipped |
 | **5** | Weaver dynamic dispatch for Cell-authored Spinners             | 9 — invoking the newly-authored Spinner          | ✓ shipped |
-| **6** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the Webspinner-facing form             | pending   |
+| **6** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the Webspinner-facing form             | ✓ shipped |
 
 Each batch is a separate LLD + approval + build cycle.
+
+**Arc complete.** Every batch in the Webspinner-author arc has shipped. After
+the pre-flight checklist below runs on Kepler, the full 13-step scenario
+becomes the live human-in-the-loop test.
 
 ---
 

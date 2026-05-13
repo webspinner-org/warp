@@ -67,7 +67,11 @@
 </script>
 
 <header class="head">
-  <h1>Skein</h1>
+  <div class="head-row">
+    <h1>Skein</h1>
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+    <a href="/admin/spinners/new" class="new-button">+ New Spinner</a>
+  </div>
   <p class="lede">
     {data.spinners.length} Spinner{data.spinners.length === 1 ? '' : 's'} registered with this Cell —
     each integrity-checked, each runnable only through the Weaver.
@@ -190,6 +194,34 @@
   .head {
     margin: 0 0 1.25rem;
     max-width: 64rem;
+  }
+
+  .head-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .new-button {
+    background: var(--bg-1);
+    border: 1px solid var(--gold-dim);
+    color: var(--gold);
+    padding: 0.5rem 0.95rem;
+    border-radius: 5px;
+    text-decoration: none;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition:
+      border-color 0.12s ease,
+      background 0.12s ease;
+  }
+  .new-button:hover {
+    border-color: var(--gold);
+    background: rgba(201, 169, 106, 0.08);
   }
 
   h1 {
