@@ -2,10 +2,13 @@
 #
 # tools/webspinner — sign and verify Spinner bundles through the Loom.
 #
-# Two subcommands:
+# Three subcommands:
 #
-#   webspinner sign <bundle-path>     Sign a bundle with the Cell identity.
-#   webspinner verify <bundle-path>   Verify the recorded signatures.
+#   webspinner sign    <bundle-path>  Sign a bundle with the Cell identity.
+#   webspinner verify  <bundle-path>  Verify the recorded signatures.
+#   webspinner install <bundle-path>  Lint → sign (if needed) → register in
+#                                     the Skein. Idempotent: re-install
+#                                     PATCHes the existing wp_skein row.
 #
 # Bundle paths must live under ~/warp/spinners/ or ~/Cells/spinners/ — the
 # Loom enforces the same allowlist server-side. The bundle-path argument
@@ -53,7 +56,7 @@ usage() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    sign|verify)
+    sign|verify|install)
       if [ -n "$subcommand" ]; then echo "error: two subcommands given" >&2; exit 2; fi
       subcommand="$1"; shift;;
     --json)
@@ -135,7 +138,13 @@ else:
 require_creds
 login
 
-endpoint="$LOOM_BASE/admin/signing/$subcommand"
+# sign + verify under /admin/signing/ (existing); install + future
+# bundle-scoped ops under /admin/spinners/. Naming consistency rename
+# is a future cosmetic batch.
+case "$subcommand" in
+  install) endpoint="$LOOM_BASE/admin/spinners/install" ;;
+  *) endpoint="$LOOM_BASE/admin/signing/$subcommand" ;;
+esac
 payload=$(python3 -c "
 import json, sys
 print(json.dumps({'bundlePath': sys.argv[1]}))
@@ -186,6 +195,30 @@ if sub == 'sign':
   print(f\"  files written:\")
   for f in files: print(f\"    {f}\")
   print(f\"  opId: {op_id}\")
+  sys.exit(0)
+
+if sub == 'install':
+  digest = v.get('digest', '?')
+  spinner = v.get('spinnerName', '?')
+  source = v.get('source', '?')
+  integrity = v.get('integrityStatus', '?')
+  slug = v.get('slug', '?')
+  fps = v.get('signerFingerprints', [])
+  fp = fps[0] if fps else '?'
+  already = v.get('alreadySigned', False)
+  files = v.get('filesWritten', [])
+  print(f\"  installed: {spinner}\")
+  print(f\"  source:    {source}\")
+  print(f\"  digest:    {digest}\")
+  print(f\"  signer:    {fp} (cell-identity-key)\")
+  print(f\"  integrity: {integrity}\")
+  if already:
+    print(f\"  (bundle was already signed; provenance preserved)\")
+  if files:
+    print(f\"  files written:\")
+    for f in files: print(f\"    {f}\")
+  print(f\"  skein row: slug={slug}, status={integrity}\")
+  print(f\"  opId:      {op_id}\")
   sys.exit(0)
 
 # verify

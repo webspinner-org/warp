@@ -56,12 +56,12 @@ A successful run produces:
 
 ## What remains in the arc
 
-| #     | Batch                                                          | Unblocks scenario step(s)                        |
-| ----- | -------------------------------------------------------------- | ------------------------------------------------ |
-| **2** | `wp_skein` writer + reader                                     | 3, 10, 13 — install records + integrity badges   |
-| **3** | `spinner.install` meta-runtime op + `tools/webspinner install` | 7 — the install pipeline writes a `wp_skein` row |
-| **4** | First template: `hello-spinner`                                | 5, 6 — the scaffold the form copies from         |
-| **5** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the patron-facing form                 |
+| #     | Batch                                                          | Unblocks scenario step(s)                        | Status    |
+| ----- | -------------------------------------------------------------- | ------------------------------------------------ | --------- |
+| **2** | `wp_skein` writer + reader                                     | 3, 10, 13 — install records + integrity badges   | ✓ shipped |
+| **3** | `spinner.install` meta-runtime op + `tools/webspinner install` | 7 — the install pipeline writes a `wp_skein` row | ✓ shipped |
+| **4** | First template: `hello-spinner`                                | 5, 6 — the scaffold the form copies from         | pending   |
+| **5** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the patron-facing form                 | pending   |
 
 Each batch is a separate LLD + approval + build cycle.
 
