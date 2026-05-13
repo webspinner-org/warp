@@ -20,8 +20,15 @@
   </div>
 {/if}
 
+<form method="POST" action="?/start" class="start-form">
+  <button type="submit" class="primary">Start a new run</button>
+  <span class="hint">
+    {data.scenario.stepCount} steps · resumable · each gate is audited
+  </span>
+</form>
+
 <section class="block">
-  <h2>{data.scenario.stepCount} steps</h2>
+  <h2>What this run walks you through</h2>
   <ol class="step-preview">
     {#each data.scenario.steps as s, i (s.key)}
       <li>
@@ -31,13 +38,6 @@
     {/each}
   </ol>
 </section>
-
-<form method="POST" action="?/start" class="start-form">
-  <button type="submit" class="primary">Start a new run</button>
-  <p class="hint">
-    Each run is durable. You can leave it and return — the player resumes where you left off.
-  </p>
-</form>
 
 <style>
   .head {
@@ -107,8 +107,12 @@
     color: #cfcdc4;
   }
   .start-form {
-    margin: 2rem 0;
+    margin: 1rem 0 2rem;
     max-width: 56rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
   .primary {
     background: #2a2a1a;
@@ -126,7 +130,6 @@
   .hint {
     color: #8a8a8a;
     font-size: 0.9rem;
-    margin: 0.6rem 0 0;
   }
   .banner.error {
     background: #2a1a1a;

@@ -18,13 +18,23 @@
   {:else}
     <div class="scenario-grid">
       {#each data.scenarios as s (s.slug)}
-        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-        <a href={`/admin/weavers-tension/${s.slug}`} class="scenario-card">
-          <strong>{s.title}</strong>
-          <code class="card-slug">{s.slug}</code>
-          <span class="card-summary">{s.summary}</span>
-          <span class="card-cta">Start a run →</span>
-        </a>
+        <div class="scenario-card">
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+          <a href={`/admin/weavers-tension/${s.slug}`} class="card-body">
+            <strong>{s.title}</strong>
+            <code class="card-slug">{s.slug}</code>
+            <span class="card-summary">{s.summary}</span>
+          </a>
+          <form
+            method="POST"
+            action={`/admin/weavers-tension/${s.slug}?/start`}
+            class="card-actions"
+          >
+            <button type="submit" class="card-primary">Start a run</button>
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+            <a class="card-secondary" href={`/admin/weavers-tension/${s.slug}`}>Details →</a>
+          </form>
+        </div>
       {/each}
     </div>
   {/if}
@@ -102,22 +112,23 @@
   .scenario-card {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 1rem;
     background: #161616;
     border: 1px solid #2a2a2a;
     border-radius: 6px;
-    color: #cfcdc4;
-    text-decoration: none;
-    transition:
-      border-color 150ms ease,
-      transform 150ms ease;
+    transition: border-color 150ms ease;
   }
   .scenario-card:hover {
     border-color: #f7e2a8;
-    transform: translateY(-2px);
   }
-  .scenario-card strong {
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem 1rem 0.6rem;
+    color: #cfcdc4;
+    text-decoration: none;
+  }
+  .card-body strong {
     color: #f7e2a8;
     font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
     font-size: 1.15rem;
@@ -133,10 +144,35 @@
     line-height: 1.45;
     color: #b5b3aa;
   }
-  .card-cta {
+  .card-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.6rem 1rem 1rem;
+    border-top: 1px solid #1f1f1f;
+    margin-top: 0.4rem;
+  }
+  .card-primary {
+    background: #2a2a1a;
     color: #f7e2a8;
+    border: 1px solid #f7e2a8;
+    padding: 0.4rem 0.9rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Iowan Old Style', 'Iowan', 'Georgia', serif;
+    font-size: 0.9rem;
+  }
+  .card-primary:hover {
+    background: #3a3a1a;
+  }
+  .card-secondary {
+    color: #8a8a8a;
     font-size: 0.85rem;
-    margin-top: 0.3rem;
+    text-decoration: none;
+    margin-left: auto;
+  }
+  .card-secondary:hover {
+    color: #f7e2a8;
   }
   .run-list {
     list-style: none;
