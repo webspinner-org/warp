@@ -63,17 +63,17 @@ Format:
 
 **Question:** Tailscale or WireGuard solves it operationally, but is one preferred for the Weaver's threat model? Tailscale uses a third-party coordination server; WireGuard does not.
 **Why it matters:** Aligns or misaligns with the architecture's "no central operator in the federation" commitment.
-**Status:** Resolved in part by `DECISIONS.md` 2026-05-10 — *Tailscale for the Wizard's personal device mesh; not for federation*. Tailscale is acceptable for the Wizard's own two-device mesh (Spindle ↔ Kepler) because the coordination plane sees only node metadata. Federation between Cells of different Webspinners is *not* Tailscale; it uses the Capability Bus over public TLS/QUIC with end-to-end signed invocations. The full federation transport spec remains pending.
+**Status:** Resolved in part by `DECISIONS.md` 2026-05-10 — _Tailscale for the Wizard's personal device mesh; not for federation_. Tailscale is acceptable for the Wizard's own two-device mesh (Spindle ↔ Kepler) because the coordination plane sees only node metadata. Federation between Cells of different Webspinners is _not_ Tailscale; it uses the Capability Bus over public TLS/QUIC with end-to-end signed invocations. The full federation transport spec remains pending.
 
 ## Mission Lock enforcement mechanism — text vs. mediated
 
-**Question:** The current Claude Code Mission Lock mechanism is text-as-context (`MISSION-LOCK.md` loaded via `CLAUDE.md` auto-load). The settled eventual state (`DECISIONS.md` 2026-05-10 — *Mission-locked Weaver system prompt*; *The Weaver as Claude Code's exteriorized working memory*) is the Weaver mediating every outbound Claude Code LLM call through LiteLLM with the Mission Lock injected as the system prompt and full audit capture in the Grimoire. What is the migration path? At what point does the Weaver gain enough capability that the text-based mechanism is retired?
+**Question:** The current Claude Code Mission Lock mechanism is text-as-context (`MISSION-LOCK.md` loaded via `CLAUDE.md` auto-load). The settled eventual state (`DECISIONS.md` 2026-05-10 — _Mission-locked Weaver system prompt_; _The Weaver as Claude Code's exteriorized working memory_) is the Weaver mediating every outbound Claude Code LLM call through LiteLLM with the Mission Lock injected as the system prompt and full audit capture in the Grimoire. What is the migration path? At what point does the Weaver gain enough capability that the text-based mechanism is retired?
 **Why it matters:** Text-based Mission Lock is moral and contextual; it can drift. Weaver-mediated Mission Lock is structural and auditable. Until the cutover happens, the discipline depends on Claude Code adhering to the text — a known failure mode of LLM-as-policy.
 **Status:** Open. Likely sequence: (a) Weaver service stood up on Kepler; (b) MCP server exposes Weaver tools to Claude Code; (c) Claude Code's API calls in Warp repos are routed through the Weaver via LiteLLM rather than direct to Anthropic; (d) text Mission Lock retained as the canonical document but enforcement moves to the Weaver. The text version stays even after migration; it remains the document the operator and the model can both read.
 
 ## Audit log — when does Claude Code activity start landing in the Grimoire?
 
-**Question:** At what point in bootstrap does Claude Code session activity (tool calls, file edits, decisions recorded) start producing entries in the Grimoire's audit log? The audit-log scheme itself is open (this file, *Audit log — cryptographic chaining scheme*); this is the operational question of when capture begins, not how the chain is structured.
+**Question:** At what point in bootstrap does Claude Code session activity (tool calls, file edits, decisions recorded) start producing entries in the Grimoire's audit log? The audit-log scheme itself is open (this file, _Audit log — cryptographic chaining scheme_); this is the operational question of when capture begins, not how the chain is structured.
 **Why it matters:** The Five Rights' "Right to Inspect" depends on a complete audit trail. The bootstrap period before Weaver-mediation is a gap in that trail.
 **Status:** Open. Likely answer: full audit capture starts when Weaver-mediated calls land (see prior question); the bootstrap period is documented as un-audited and the operator accepts that gap. The bootstrap gap should itself be recorded as a single audit entry once the chain begins, naming the period that was un-captured.
 
@@ -87,7 +87,7 @@ Format:
 
 **Question:** Which key custody scheme governs Foundation release signatures? Hardware-backed root key with rotated subkeys? An m-of-n council of Foundation directors? How are Cell-identity keys generated, stored, and rotated? What is the recognition-revocation pathway when a previously-trusted publisher misbehaves? `ed25519` is the current algorithm; what is the post-quantum migration path?
 **Why it matters:** A signature scheme is only as strong as its key custody. The Foundation Pledge §11.2 forbids surrendering user keys to any third party; the same posture must apply to Foundation keys themselves. Recognition revocation is the lever the Pledge depends on (`TRADEMARK.md`).
-**Status:** Open. This subsumes the prior *Recognition process for aligned implementations* question — recognition is signature-mediated. Likely sequence: hardware-backed root key for the Foundation; m-of-n release council; per-Cell key in the Wizard's hardware (Secure Enclave on Apple Silicon, TPM on others); post-quantum migration tracks NIST PQC.
+**Status:** Open. This subsumes the prior _Recognition process for aligned implementations_ question — recognition is signature-mediated. Likely sequence: hardware-backed root key for the Foundation; m-of-n release council; per-Cell key in the Wizard's hardware (Secure Enclave on Apple Silicon, TPM on others); post-quantum migration tracks NIST PQC.
 
 ## Warp Thread runtime
 
@@ -97,7 +97,7 @@ Format:
 
 ## Bootstrap Spinner runtime — migration to the canonical Weaver
 
-**Question:** The bootstrap Weaver lives inside the Loom (`DECISIONS.md` 2026-05-10 — *Bootstrap Weaver runs inside the Loom*). Today it dispatches the Bootstrap Spinner's `consult` capability through Anthropic with the canon as a whole-file Spool read; the other three capabilities return `pending`. The canonical Weaver is Python + FastAPI per *Default stack*. What is the migration path? At what point does the bootstrap shim get retired?
+**Question:** The bootstrap Weaver lives inside the Loom (`DECISIONS.md` 2026-05-10 — _Bootstrap Weaver runs inside the Loom_). Today it dispatches the Bootstrap Spinner's `consult` capability through Anthropic with the canon as a whole-file Spool read; the other three capabilities return `pending`. The canonical Weaver is Python + FastAPI per _Default stack_. What is the migration path? At what point does the bootstrap shim get retired?
 **Why it matters:** A long-lived bootstrap shim is technical debt that competes with the canonical implementation for attention. A clean migration plan keeps the shim disposable.
 **Status:** Open. Likely sequence: (a) implement `audit`, `record`, `surface` in the bootstrap Weaver to close the four-capability set; (b) stand up the canonical Python+FastAPI Weaver as a sibling process on Kepler; (c) point the Loom's invocation endpoint at the canonical Weaver; (d) remove the in-Loom shim. Each step is independently shippable.
 
@@ -111,7 +111,7 @@ Format:
 
 **Question:** The Wizard wants Cell provisioning (install Docker, Node, pnpm, the Loom, the bootstrap Grimoire, Tailscale, registered superuser, registered vault master key) to be Spinner-driven and re-runnable for future Webspinner Cells. SSH access exists today but the Wizard prefers not to use it ongoing. Open-source tooling and industry best practice are favoured; reinventing wheels is not. Two architectural shapes are on the table:
 
-1. **Local-Loom-self-provisions.** The Loom on the target machine has full local privileges (filesystem, package managers, Docker). A "Cell Provisioning" Spinner runs through the Loom and operates locally — no SSH, no agent. For the *initial* bootstrap (no Loom yet), an Ansible playbook (industry standard, agentless, SSH-or-local-connection) installs the Loom; the operator runs `ansible-playbook bootstrap.yml -i localhost, --connection=local` once. From there, all admin operations go through the Loom.
+1. **Local-Loom-self-provisions.** The Loom on the target machine has full local privileges (filesystem, package managers, Docker). A "Cell Provisioning" Spinner runs through the Loom and operates locally — no SSH, no agent. For the _initial_ bootstrap (no Loom yet), an Ansible playbook (industry standard, agentless, SSH-or-local-connection) installs the Loom; the operator runs `ansible-playbook bootstrap.yml -i localhost, --connection=local` once. From there, all admin operations go through the Loom.
 
 2. **Cell Steward agent.** A small daemon on every Cell exposes a capability surface to the Loom (or to the federation). Initial install is still SSH or physical access; ongoing admin is via the daemon over LAN/Tailscale. Adds a moving part the agentless path avoids; gains the ability to admin remote Cells without SSH after bootstrap.
 
@@ -121,13 +121,14 @@ Format:
 
 ## Long-running Spinner state — schema, retention, polling cadence
 
-**Question:** Per `DECISIONS.md` 2026-05-10 — *Observable, resilient Spinner state* — long-running Spinner invocations write progress to the Grimoire; the Loom polls. What is the schema (`wp_invocation_state` collection: invocation id, step, percent-complete, last-update, partial-output handle, dead-detector heartbeat)? What is the retention policy (when do completed invocation states roll into the audit chain and out of the active store)? What is the Loom's polling cadence (constant 1Hz, exponential backoff, server-driven)? Is server-sent events a viable hybrid — pull-by-default, push-as-acceleration?
+**Question:** Per `DECISIONS.md` 2026-05-10 — _Observable, resilient Spinner state_ — long-running Spinner invocations write progress to the Grimoire; the Loom polls. What is the schema (`wp_invocation_state` collection: invocation id, step, percent-complete, last-update, partial-output handle, dead-detector heartbeat)? What is the retention policy (when do completed invocation states roll into the audit chain and out of the active store)? What is the Loom's polling cadence (constant 1Hz, exponential backoff, server-driven)? Is server-sent events a viable hybrid — pull-by-default, push-as-acceleration?
 **Why it matters:** Without a settled schema, every Spinner invents its own progress model and the Loom's polling renderer becomes special-cased. The principle is operative; the implementation is the mechanism.
 **Status:** Spec pending. Will live under `protocols/invocation-state/`.
 
 ## Pablo grounded retrieval — chunk-and-embed pipeline
 
-**Question:** The Bootstrap Spinner's `consult` capability today loads the *whole* canon as a single passage and dumps it into the model's system prompt (~20K tokens per call). Pablo (sentence-transformers / MiniLM-L6-v2 on `127.0.0.1:11446`) is wired (`loom/src/lib/server/kepler.ts → pabloEmbed()`) but is **not** in the retrieval path. The canonical pipeline per `WARP-CANON.md` §4 (WRAG):
+**Question:** The Bootstrap Spinner's `consult` capability today loads the _whole_ canon as a single passage and dumps it into the model's system prompt (~20K tokens per call). Pablo (sentence-transformers / MiniLM-L6-v2 on `127.0.0.1:11446`) is wired (`loom/src/lib/server/kepler.ts → pabloEmbed()`) but is **not** in the retrieval path. The canonical pipeline per `WARP-CANON.md` §4 (WRAG):
+
 1. Chunk each Spool source by section (`##` boundaries for canon; chapter for manuscript).
 2. Embed every chunk via `pabloEmbed`; store vectors in PocketBase (`wp_pablo_chunks` with embedding-as-base64) or in-memory at startup.
 3. At query time: embed the question via Pablo; cosine-similarity against the chunk store; return top-k passages.
@@ -142,28 +143,48 @@ Today's "ground the entire canon" works because the canon is small (~30 KB → ~
 ## Resend + Turnstile credentials — vaulting the keys
 
 **Question:** Wiring is done — `loom/src/lib/server/turnstile.ts` resolves `turnstile-site-key` and `turnstile-secret-key` from the vault and verifies tokens against Cloudflare's siteverify; the register form embeds the widget when the site key is present; the register action gates on verification. Resend send-on-register is also wired (`loom/src/lib/server/email.ts` resolves `resend-api-key` from the vault first, env var second). The remaining open item is **operational**: the Wizard needs to add the three keys to the vault via the Loom's `/admin/vault` page. Until those rows exist, the Cell stays in bootstrap mode (honeypot + rate-limit only; bootstrap verify-URL fallback in a short-lived cookie).
-**Why it matters:** Operating Principle §17.2 (No Secrets via Claude Code) forbids pasting the keys into a Claude Code session. The vault is the canonical secret store; the wiring is complete but operationally inert until the secrets are *in* the vault.
-**Status:** Wiring shipped (`DECISIONS.md` 2026-05-10 — *Turnstile bot-defense wiring*). Operational: the Wizard adds `resend-api-key`, `turnstile-site-key`, `turnstile-secret-key` to the vault. The webspinner-forms Worker's existing site-key (`0x4AAAAAAC_etYqXdJL0Xs9e`) can serve as the bootstrap value if the Wizard wants to share a key across surfaces.
+**Why it matters:** Operating Principle §17.2 (No Secrets via Claude Code) forbids pasting the keys into a Claude Code session. The vault is the canonical secret store; the wiring is complete but operationally inert until the secrets are _in_ the vault.
+**Status:** Wiring shipped (`DECISIONS.md` 2026-05-10 — _Turnstile bot-defense wiring_). Operational: the Wizard adds `resend-api-key`, `turnstile-site-key`, `turnstile-secret-key` to the vault. The webspinner-forms Worker's existing site-key (`0x4AAAAAAC_etYqXdJL0Xs9e`) can serve as the bootstrap value if the Wizard wants to share a key across surfaces.
 
 ## Public canon vs private production work — repo split
 
 **Question:** Direct operator instruction: "Docs for the open source community goes in GitHub. The Production work for Webspinner can be kept somewhat private for now." What is the precise split? Today everything lives in `~/warp/` and would push to a single GitHub repo. The split needs a clear rule so Spinner authors and the Wizard know where new artifacts go.
 
-**Why it matters:** The Foundation's open-source posture (canon §11, Apache 2.0, `TRADEMARK.md`) wants the architectural canon publicly readable. Operational specifics for *this* Cell — vault contents (already excluded), the Wizard's federation contract list when peers arrive, internal Spinner manifests that disclose customer details — should not be public.
+**Why it matters:** The Foundation's open-source posture (canon §11, Apache 2.0, `TRADEMARK.md`) wants the architectural canon publicly readable. Operational specifics for _this_ Cell — vault contents (already excluded), the Wizard's federation contract list when peers arrive, internal Spinner manifests that disclose customer details — should not be public.
 
 **Status:** Spec pending. Likely shape:
+
 - **Public** (`~/warp/`, pushed to `github.com/webspinner-org/warp`): canon, sdk, loom (sans secrets), bootstrap Spinner manifests + how-it-works docs, brand SVGs, license, docs.
 - **Private** (`~/warp-cell/` or `~/.warp/cell/`, never pushed): per-Cell Spinner instances with operator-specific config, Cell identity keys, vault data, the Cell's journal, federation contracts.
 - A `.gitignore` and a Spinner-loader path-resolution rule that finds Spinners in both `~/warp/spinners/` (public) and `~/warp-cell/spinners/` (private).
 
 ## Genesis Spinner — remaining handler implementations
 
-**Question:** Genesis is 4/8 capabilities implemented (`provisionToolchain` v0.1 read-only probe; `syncRepo` rsync + git-clone; `buildWorkspace` pnpm install + build; `verifyCell` HTTP probes — see `DECISIONS.md` 2026-05-10 — *Genesis v0.2*). Four capabilities remain: `generateBootstrapState`, `deployGrimoire`, `seedVault`, `deployLoom`. Each *writes* — keys, services, secrets, plists — and requires careful audit + idempotency design. What is the contract: rerun-safe (idempotent re-application against existing state) or one-shot (refuse to overwrite an existing Cell without an explicit force)? How do `deployGrimoire` and `deployLoom` build a launchd plist (macOS) vs systemd unit (Linux) from a single source description? Where does `seedVault` source the operator's keys from on a *peer* Wizard's machine (their macOS Keychain? a sealed handoff package signed by the Foundation?)?
+**Question:** Genesis is 4/8 capabilities implemented (`provisionToolchain` v0.1 read-only probe; `syncRepo` rsync + git-clone; `buildWorkspace` pnpm install + build; `verifyCell` HTTP probes — see `DECISIONS.md` 2026-05-10 — _Genesis v0.2_). Four capabilities remain: `generateBootstrapState`, `deployGrimoire`, `seedVault`, `deployLoom`. Each _writes_ — keys, services, secrets, plists — and requires careful audit + idempotency design. What is the contract: rerun-safe (idempotent re-application against existing state) or one-shot (refuse to overwrite an existing Cell without an explicit force)? How do `deployGrimoire` and `deployLoom` build a launchd plist (macOS) vs systemd unit (Linux) from a single source description? Where does `seedVault` source the operator's keys from on a _peer_ Wizard's machine (their macOS Keychain? a sealed handoff package signed by the Foundation?)?
 **Why it matters:** Cell provisioning is the Foundation's most-leveraged Spinner — every peer Wizard who joins in summer runs it. The remaining four capabilities are the ones that bring a Cell from "files on disk" to "running services with an authenticated Wizard". They define the operator handoff.
-**Status:** Spec pending. The shell-capability contract is shipped and proven (`DECISIONS.md` 2026-05-10 — *Genesis v0.2*); the next four handlers extend it. Likely sequence: `generateBootstrapState` first (deterministic crypto, no service touch), then `seedVault` (operator-keychain interaction), then `deployGrimoire` and `deployLoom` (service registration; macOS launchd path is canonical, Linux systemd path is a separate decision).
+**Status:** Spec pending. The shell-capability contract is shipped and proven (`DECISIONS.md` 2026-05-10 — _Genesis v0.2_); the next four handlers extend it. Likely sequence: `generateBootstrapState` first (deterministic crypto, no service touch), then `seedVault` (operator-keychain interaction), then `deployGrimoire` and `deployLoom` (service registration; macOS launchd path is canonical, Linux systemd path is a separate decision).
 
 ## Quiet Loom — 14B model stability under prompt-pump load
 
 **Question:** The 14B model (`mlx-community/Qwen2.5-14B-Instruct-4bit`) is now the launchd default and runs Pablo reliably on a fresh boot. Earlier it processed 3989 input tokens then crashed the mlx-server (semaphore leak warning), forcing a restart. What does the failure mode actually look like, and is it the 14B model itself, the prompt-pump pattern, or the mlx-server's session caching?
 **Why it matters:** Pablo's nuance lives in the larger model. Sustained Pablo use (every admin page reviewed multiple times in a single session) is the load profile.
 **Status:** Logged as observed behaviour. After a clean boot+bootstrap on Kepler the 14B is stable on the first 5-10 Pablo runs. Continued use over a session may surface the crash again — needs an isolation test (sustained prompt-pump against the 14B endpoint with the Pablo system prompt). `~/Library/Logs/webspinner-mlx-server/stderr.log` is the channel; the semaphore-leak warning is the signal.
+
+## Dependency stability + simplicity-budget codification
+
+**Question:** Both principles named in `DECISIONS.md` 2026-05-12 are operative as discipline; the codification artifacts are deferred. Concretely:
+
+- **`DEPENDENCIES.md`** — tier table for every external dep + the swap plan per tier. Lives at the repo root. Treated as canon for dep additions.
+- **ESLint custom rule `no-direct-tier0-imports`** — forbid Spinner code from importing `@noble/*` directly. Only `sdk/src/signing.ts` and `sdk/src/digest.ts` may. ~30 lines of rule code + a small AST traversal.
+- **`tools/simplicity-audit` Spinner** — measures file size, identifier count, cyclomatic complexity, abstractions introduced, deps imported. Reports findings in the same shape as Pablo. Gates `tools/ship` on hard-cap violations. ~250 lines.
+- **Dep-audit cadence** — every 6 months, list each dep, its tier, last release date, license, our wrapper module; flag stale deps for replacement. Could be a `tools/dep-audit` Spinner or a manual review.
+
+**Status:** Open. Operative as discipline; not codified.
+
+**Trigger to land:** the first real violation. Examples that would force one of the above to ship:
+
+- Spinner code imports `@noble/*` directly (forces the ESLint rule).
+- A Loom module crosses 400 lines without a `DECISIONS.md` justification (forces `tools/simplicity-audit`).
+- A dep goes unmaintained for >12 months (forces the dep-audit cadence).
+
+Until a trigger fires, the discipline lives in the Wizard's review + the operative commitments here.

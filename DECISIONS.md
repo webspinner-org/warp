@@ -13,7 +13,7 @@ Format:
 
 ## 2026-05-10 — License: Apache 2.0 with trademark held by the Foundation
 
-**Decision:** The Warp repository is licensed under the Apache License 2.0. The names *Warp* and *Webspinner* are trademarks of the Webspinner Foundation, held separately from the code license per Apache 2.0 §6. See `TRADEMARK.md`.
+**Decision:** The Warp repository is licensed under the Apache License 2.0. The names _Warp_ and _Webspinner_ are trademarks of the Webspinner Foundation, held separately from the code license per Apache 2.0 §6. See `TRADEMARK.md`.
 **Why:** The book (manuscript ch. 16, ch. 25) prescribes Apache 2.0 for Foundation reference work. The trademark separation is the lever the Foundation Pledge depends on (ch. 26 §6).
 
 ## 2026-05-10 — Contribution model: DCO sign-off
@@ -29,14 +29,16 @@ Format:
 ## 2026-05-10 — Hardware roles
 
 **Decision:**
+
 - **Hetzner Hillsboro** (GPU server, to be provisioned per `WEAVER-SETUP.md`): primary Weaver Cell. Always-on. Authoritative.
 - **Kepler Studio**: local-network performance tier. Smaller warm MLX model, Grimoire mirror. Federates to Hetzner; not authoritative.
 - **Spindle (M5 Max MacBook Pro)**: the Loom. Authoring surface. Federates to Kepler at home, Hetzner elsewhere.
-**Why:** Hetzner uptime and GPU capability beat what the home network and Apple Silicon can give for an always-on policy governor. Glass-house posture removes the data-residency objection. Kepler stays useful as a low-latency tier when on the home network. Spindle remains the working surface.
+  **Why:** Hetzner uptime and GPU capability beat what the home network and Apple Silicon can give for an always-on policy governor. Glass-house posture removes the data-residency objection. Kepler stays useful as a low-latency tier when on the home network. Spindle remains the working surface.
 
 ## 2026-05-10 — Default stack
 
 **Decision:**
+
 - Python 3.12 + FastAPI for the Weaver service
 - LiteLLM as the BYOK gateway shim (replaceable later)
 - vLLM for local-model serving on Hetzner GPU
@@ -44,11 +46,11 @@ Format:
 - Postgres 16 for session state and audit log
 - BGE-M3 for embeddings; BGE-reranker-v2-Gemma (or comparable open-weight) for reranking
 - MCP SDK in Python for Claude Code integration
-**Why:** Each component is mature, open, and integrates cleanly with the others. The shims (LiteLLM especially) are explicitly replaceable in a later phase with Webspinner-built equivalents that adhere to the WRAG and Capability Bus specifications.
+  **Why:** Each component is mature, open, and integrates cleanly with the others. The shims (LiteLLM especially) are explicitly replaceable in a later phase with Webspinner-built equivalents that adhere to the WRAG and Capability Bus specifications.
 
 ## 2026-05-10 — Tapestry retired as cross-repo source of truth
 
-**Decision:** The previous `~/webspinner/tapestry` document is no longer the cross-repo authoritative spec for Warp. The *AI Enclosure* manuscript (`~/ai-enclosure/`) is the canonical text, distilled in this repo's `WARP-CANON.md`, and indexed in the Grimoire when the Weaver is live.
+**Decision:** The previous `~/webspinner/tapestry` document is no longer the cross-repo authoritative spec for Warp. The _AI Enclosure_ manuscript (`~/ai-enclosure/`) is the canonical text, distilled in this repo's `WARP-CANON.md`, and indexed in the Grimoire when the Weaver is live.
 **Why:** Direct user instruction. The manuscript is now complete and is a more comprehensive, more disciplined, and more publicly defensible source of truth than the working tapestry it grew from.
 
 ## 2026-05-10 — The Weaver as Claude Code's exteriorized working memory
@@ -69,13 +71,13 @@ Format:
 ## 2026-05-10 — Hetzner provisioning deferred until federation
 
 **Decision:** Provisioning of a Hetzner CPU dedicated server as the public-facing Weaver host is deferred until the first peer Webspinner Cell needs to find this Cell. The existing Hetzner box `sn-backend-01` (CPX21, Hillsboro, deployed 2026-05-08 for the prior si-native effort) was deleted on 2026-05-10. The Hardware Roles decision below (this file, prior 2026-05-10 entry) is amended in part: Kepler is the always-on Weaver during bootstrap; Hetzner is the always-on Weaver when peers arrive.
-**Why:** During bootstrap there is one Cell. The Pledge §11.1 forbids any centralized facility through which substantial user populations are routed; today there are no peers to route. Standing up a Hetzner box now spends ~$14/mo for capacity that is not exercised. Hetzner is the right shape *when* federation is real. Migration is clean: Postgres `pg_dump` / Qdrant snapshot / SvelteKit container redeploy / Cell identity keys are portable; only a Foundation-controlled DNS name needs to be pinned from day one to repoint at migration time.
+**Why:** During bootstrap there is one Cell. The Pledge §11.1 forbids any centralized facility through which substantial user populations are routed; today there are no peers to route. Standing up a Hetzner box now spends ~$14/mo for capacity that is not exercised. Hetzner is the right shape _when_ federation is real. Migration is clean: Postgres `pg_dump` / Qdrant snapshot / SvelteKit container redeploy / Cell identity keys are portable; only a Foundation-controlled DNS name needs to be pinned from day one to repoint at migration time.
 **Supersedes:** "2026-05-10 — Hardware roles" in part — Hetzner Hillsboro role description amended; Kepler and Spindle roles unchanged.
 
 ## 2026-05-10 — Tailscale for the Wizard's personal device mesh; not for federation
 
-**Decision:** Tailscale (over WireGuard) is the chosen VPN for connecting Spindle to Kepler when Spindle is off the home network. This decision applies *only* to the Wizard's own device mesh. Cell-to-Cell federation does not use Tailscale; it uses the Capability Bus over public TLS/QUIC with end-to-end signed invocations.
-**Why:** Tailscale's coordination plane sees node public keys and node names but not traffic content. For one operator's two devices, this is an acceptable trade. For Cell federation, the Pledge §11.1 and the open question on transport (`OPEN_QUESTIONS.md` *How does Hetzner Hillsboro federate cleanly with Spindle and Kepler over a residential NAT?*) require no third-party coordinator in the federation path. The two cases have different threat models and different acceptable mediators.
+**Decision:** Tailscale (over WireGuard) is the chosen VPN for connecting Spindle to Kepler when Spindle is off the home network. This decision applies _only_ to the Wizard's own device mesh. Cell-to-Cell federation does not use Tailscale; it uses the Capability Bus over public TLS/QUIC with end-to-end signed invocations.
+**Why:** Tailscale's coordination plane sees node public keys and node names but not traffic content. For one operator's two devices, this is an acceptable trade. For Cell federation, the Pledge §11.1 and the open question on transport (`OPEN_QUESTIONS.md` _How does Hetzner Hillsboro federate cleanly with Spindle and Kepler over a residential NAT?_) require no third-party coordinator in the federation path. The two cases have different threat models and different acceptable mediators.
 
 ## 2026-05-10 — SI-Native lifted into Warp; brand retired
 
@@ -84,14 +86,14 @@ Format:
 
 ## 2026-05-10 — PocketBase as the bootstrap Grimoire
 
-**Decision:** PocketBase (single 20 MB Go binary; SQLite-backed; admin UI; auth + storage) serves as the Cell's Grimoire during bootstrap. Migration to the canonical Postgres + Qdrant stack is scheduled for when the WRAG seven-stage pipeline is implemented (`OPEN_QUESTIONS.md` *WRAG protocol — formal pipeline spec* must land first).
+**Decision:** PocketBase (single 20 MB Go binary; SQLite-backed; admin UI; auth + storage) serves as the Cell's Grimoire during bootstrap. Migration to the canonical Postgres + Qdrant stack is scheduled for when the WRAG seven-stage pipeline is implemented (`OPEN_QUESTIONS.md` _WRAG protocol — formal pipeline spec_ must land first).
 **Why:** Postgres + Qdrant is right eventually but expensive in moving parts today. PocketBase is one binary, has a working schema for the lifted vault, and is already targeted by the lifted code. The Phase-1 vault wire format (AES-GCM ciphertext blobs) is forward-compatible with the Phase-2 passphrase + Argon2id + HKDF design and the eventual Postgres schema; the migration cost is bounded.
 **Supersedes:** "2026-05-10 — Default stack" in part — Grimoire data layer amended for the bootstrap; canonical eventual stack unchanged.
 
 ## 2026-05-10 — Claude Code's narrowed role: agent factory, not implementer
 
 **Decision:** In Warp repositories and any Webspinner repository that adopts the canon, Claude Code's role is constrained to writing agent definitions. Agents run from the Warp UX (the Admin Utility / Loom) and execute under the Weaver. Claude Code does not implement Warp by reaching for Edit and Bash to "just do" work that should be an agent's job. The bootstrap exception applies until the Weaver and the first agents exist; the bootstrap shrinks every session. The binding mechanism is `MISSION-LOCK.md` (canon §18).
-**Why:** Two months of using Claude Code as a one-off action engine produced technical debt at the same rate it produced value. *Webspinner builds Webspinner* is the discipline that closes the loop: Claude Code creates the agents, the agents create the artifacts, the architecture extends rather than accretes.
+**Why:** Two months of using Claude Code as a one-off action engine produced technical debt at the same rate it produced value. _Webspinner builds Webspinner_ is the discipline that closes the loop: Claude Code creates the agents, the agents create the artifacts, the architecture extends rather than accretes.
 
 ## 2026-05-10 — Operating Principles promoted to canon
 
@@ -106,11 +108,12 @@ Format:
 ## 2026-05-10 — Spinner integrity: digest, signature, gating
 
 **Decision:** Every Spinner has a content-addressable digest of its canonical bundle (manifest + documentation + entrypoint module bytes) in `<algorithm>:<hex>` form (`sha256` today; algorithmically-agile). Spinners are signed by their publishers — Foundation release keys for first-party Spinners; Cell identity keys for Cell-published Spinners — using `ed25519` today. The Weaver re-computes the digest and re-verifies signatures on every load. Failures are explicit, audit-logged, and gating per `WARP-CANON.md` §19.2:
+
 - `digest-mismatch` → load gated; `wp.spinner.integrity.fail` with `action: 'gated'`.
 - `signature-invalid`, `unknown-signer` → load gated.
 - `unsigned` → warned, not gated; Wizard's policy decides.
 - `pending-install` → observed digest reported; no install record yet.
-**Why:** Spinners are loaded into a privileged execution context with vault access. Tampering is the most consequential failure mode; treating it structurally (gate before run) rather than as a soft check is the only viable posture. The discipline is borrowed from container-image practice.
+  **Why:** Spinners are loaded into a privileged execution context with vault access. Tampering is the most consequential failure mode; treating it structurally (gate before run) rather than as a soft check is the only viable posture. The discipline is borrowed from container-image practice.
 
 ## 2026-05-10 — Spinners run only through the Weaver
 
@@ -119,7 +122,7 @@ Format:
 
 ## 2026-05-10 — Webspinner UX is operative, not polish
 
-**Decision:** The UX is the architecture. Every Spinner ships a *How It Works* document the Loom renders. Every capability has a `displayName` and a plain-language description. Every invocation narrates what is happening, audited and reviewable. A Spinner whose documentation is missing or whose capability descriptions are placeholder text fails the production-candidate bar (Operating Principle §17.3) and does not register.
+**Decision:** The UX is the architecture. Every Spinner ships a _How It Works_ document the Loom renders. Every capability has a `displayName` and a plain-language description. Every invocation narrates what is happening, audited and reviewable. A Spinner whose documentation is missing or whose capability descriptions are placeholder text fails the production-candidate bar (Operating Principle §17.3) and does not register.
 **Why:** The Webspinner is not a CLI user. The Wizard, and every Webspinner who joins, learns the architecture by using it. Transparency is the thing being built — opaque Spinners erode the Right to Inspect (`WARP-CANON.md` §9.2).
 
 ## 2026-05-10 — Bootstrap Spinner shipped as production-reusable
@@ -130,20 +133,21 @@ Format:
 ## 2026-05-10 — Skein, Spools, Silk Patterns named in canon
 
 **Decision:** Three more terms enter the canonical vocabulary alongside Spinner / Spinner Weaving / Warp Thread:
+
 - **Skein** — the discoverable catalogue of Spinners (replaces "Catalog"); Loom route `/admin/skein`.
-- **Spool** — a registered data source a Spinner reads from at invocation. The canon is a Spool. The manuscript is a Spool. The audit log will be a Spool. The vault is *not* a Spool. SDK type `SpoolManifest`; Loom route `/admin/spools`.
+- **Spool** — a registered data source a Spinner reads from at invocation. The canon is a Spool. The manuscript is a Spool. The audit log will be a Spool. The vault is _not_ a Spool. SDK type `SpoolManifest`; Loom route `/admin/spools`.
 - **Silk Pattern** — a Spinner's persistent memory: invocation history plus metrics, surfaced as a placard on the Spinner's detail page. SDK types `SilkPatternEntry` / `SilkPatternMetrics` / `SilkPattern`; PocketBase collection `wp_silk_pattern`.
-Canon §19 expanded. The vocabulary is the architecture; substitute terms (catalog, data source, memory) drag in connotations the canon does not carry.
-**Why:** Direct operator instruction. The Webspinner UX is everything; vernacular consistency removes cognitive translation between technical terms and the Webspinner's understanding.
+  Canon §19 expanded. The vocabulary is the architecture; substitute terms (catalog, data source, memory) drag in connotations the canon does not carry.
+  **Why:** Direct operator instruction. The Webspinner UX is everything; vernacular consistency removes cognitive translation between technical terms and the Webspinner's understanding.
 
 ## 2026-05-10 — Bootstrap Weaver runs inside the Loom (one-time exception)
 
-**Decision:** The Weaver pipeline that resolves vault references, reads Spools, calls Anthropic with the mission lock, records audit, and appends Silk Pattern entries is implemented in the Loom's Node server (`~/warp/loom/src/lib/server/weaver.ts`) as a temporary in-Loom shim. This is the explicit one-time God-of-the-bootstrap exception — Claude Code's last large act of platform engineering before the Webspinner takes over via the Loom. The canonical Weaver is Python + FastAPI per `DECISIONS.md` *Default stack*; when it lands, the in-Loom shim is removed and the Loom's invocation endpoint forwards to the canonical Weaver.
+**Decision:** The Weaver pipeline that resolves vault references, reads Spools, calls Anthropic with the mission lock, records audit, and appends Silk Pattern entries is implemented in the Loom's Node server (`~/warp/loom/src/lib/server/weaver.ts`) as a temporary in-Loom shim. This is the explicit one-time God-of-the-bootstrap exception — Claude Code's last large act of platform engineering before the Webspinner takes over via the Loom. The canonical Weaver is Python + FastAPI per `DECISIONS.md` _Default stack_; when it lands, the in-Loom shim is removed and the Loom's invocation endpoint forwards to the canonical Weaver.
 **Why:** Without an invocation runtime, the Bootstrap Spinner is documentation; the Webspinner cannot use the Loom to drive subsequent work. Standing up the canonical Python+FastAPI Weaver as a separate service was the larger move; the in-Loom shim ships the same contract (vault → Spool → mission-lock + Anthropic → audit + Silk Pattern) in less mechanism. The migration path is bounded — the Spinner contract does not change.
 
 ## 2026-05-10 — Bootstrap Weaver dispatch is hardcoded; canonical path is dynamic-import
 
-**Decision:** The bootstrap Weaver hardcodes the dispatch from Spinner name + capability to its handler implementation. Today it knows one Spinner — the Bootstrap Spinner — and dispatches `consult` to an in-Weaver handler; the other capabilities (`audit`, `record`, `surface`) return `pending` with a clear message. The canonical path, when it lands, is dynamic-import of the Spinner's compiled entrypoint (`<spinner>/dist/index.js`) — the Spinner's `invoke(capability, input, context)` function executes the capability logic with the Weaver providing the context (vault, Spool reads, model call, audit emission). The canonical path is open work (`OPEN_QUESTIONS.md` — *Bootstrap Spinner runtime — migration to the canonical Weaver*).
+**Decision:** The bootstrap Weaver hardcodes the dispatch from Spinner name + capability to its handler implementation. Today it knows one Spinner — the Bootstrap Spinner — and dispatches `consult` to an in-Weaver handler; the other capabilities (`audit`, `record`, `surface`) return `pending` with a clear message. The canonical path, when it lands, is dynamic-import of the Spinner's compiled entrypoint (`<spinner>/dist/index.js`) — the Spinner's `invoke(capability, input, context)` function executes the capability logic with the Weaver providing the context (vault, Spool reads, model call, audit emission). The canonical path is open work (`OPEN_QUESTIONS.md` — _Bootstrap Spinner runtime — migration to the canonical Weaver_).
 **Why:** Hardcoded dispatch is faster to ship and acceptable when there is one Spinner. Dynamic-import is the canonical pattern for the steady-state where many Spinners run; pretending to support it before there is more than one Spinner is premature abstraction.
 
 ## 2026-05-10 — Observable, resilient Spinner state (Pull, not Push)
@@ -158,17 +162,18 @@ Canon §19 expanded. The vocabulary is the architecture; substitute terms (catal
 
 ## 2026-05-10 — Genesis Spinner: encoding the founding bootstrap
 
-**Decision:** The platform-engineering work Claude Code performed by hand on 2026-05-10 to bring up the founding Cell on Kepler — install Node + pnpm + PocketBase via Homebrew, rsync the warp repo from Spindle to Kepler, run `pnpm install` and `pnpm -r build`, generate `~/.warp/bootstrap/{vault-master-key,pb-email,pb-password}`, set up the Grimoire data directory — is preserved as the Genesis Spinner (`~/warp/spinners/genesis/`). Eight capabilities declared (`provisionToolchain`, `syncRepo`, `buildWorkspace`, `generateBootstrapState`, `deployGrimoire`, `seedVault`, `deployLoom`, `verifyCell`); handlers are open work. Once implemented, the Genesis Spinner runs from any existing Loom to provision a peer Cell, or from a tiny CLI bootstrapper for the very first Cell where no Loom yet exists. The God-once exception (this file, *Bootstrap Weaver runs inside the Loom*) does not repeat — every subsequent Cell is Spinner-provisioned.
+**Decision:** The platform-engineering work Claude Code performed by hand on 2026-05-10 to bring up the founding Cell on Kepler — install Node + pnpm + PocketBase via Homebrew, rsync the warp repo from Spindle to Kepler, run `pnpm install` and `pnpm -r build`, generate `~/.warp/bootstrap/{vault-master-key,pb-email,pb-password}`, set up the Grimoire data directory — is preserved as the Genesis Spinner (`~/warp/spinners/genesis/`). Eight capabilities declared (`provisionToolchain`, `syncRepo`, `buildWorkspace`, `generateBootstrapState`, `deployGrimoire`, `seedVault`, `deployLoom`, `verifyCell`); handlers are open work. Once implemented, the Genesis Spinner runs from any existing Loom to provision a peer Cell, or from a tiny CLI bootstrapper for the very first Cell where no Loom yet exists. The God-once exception (this file, _Bootstrap Weaver runs inside the Loom_) does not repeat — every subsequent Cell is Spinner-provisioned.
 **Why:** Direct operator instruction: "all of the stuff God just did will have to be enabled on a Spinner later. Persist the work." The recipe is now encoded in the Genesis Spinner's `how-it-works.md`; the handlers land as their own focused build.
 
 ## 2026-05-10 — UX takes priority — Genesis handlers deferred
 
-**Decision:** Today's work pivots from platform-engineering implementation to Loom UX polish, per direct operator instruction ("we need to move on to our UX today"). The Genesis Spinner manifest and documentation persist what Claude Code did at the founding; the handler implementations and the launchd LaunchAgent files for Grimoire and Loom are deferred to a focused next-turn build. Open work in `OPEN_QUESTIONS.md` — *Genesis Spinner — handler implementation*.
+**Decision:** Today's work pivots from platform-engineering implementation to Loom UX polish, per direct operator instruction ("we need to move on to our UX today"). The Genesis Spinner manifest and documentation persist what Claude Code did at the founding; the handler implementations and the launchd LaunchAgent files for Grimoire and Loom are deferred to a focused next-turn build. Open work in `OPEN_QUESTIONS.md` — _Genesis Spinner — handler implementation_.
 **Why:** The Wow-as-Baseline principle (§17.5) is operative; the Loom's first impression governs whether the Webspinner trusts the architecture they are about to use. Polishing the surface today is higher-leverage than completing the genesis automation while the Loom still wears its dev-tool aesthetic.
 
 ## 2026-05-10 — Canonical Wizard auth: users collection, register + login
 
 **Decision:** The canonical Wizard authentication path is the PocketBase `users` auth collection (`createRule = ""` allows public registration). The Loom now ships:
+
 - `/register` — branded form with name/email/password/password-confirm, honeypot field, server-side rate limit (5 attempts / 60 s / IP), 12-char password floor.
 - `/login` — tries `users` first, falls back to `_superusers` only on credential failure (bootstrap-recovery surface, never default).
 - Auth gate (`/admin/+layout.server.ts`) refreshes against the right collection per the session cookie's prefix (`users::<token>` vs `_superusers::<token>`).
@@ -180,22 +185,22 @@ The full register → login → /admin → invoke flow was validated end-to-end 
 ## 2026-05-10 — Adapter-Node CSRF: ORIGIN/PROTOCOL_HEADER/HOST_HEADER set explicitly
 
 **Decision:** The Loom's launchd LaunchAgent sets `ORIGIN=http://johns-mac-studio.local:3000` (the canonical mDNS URL the Wizard reaches), plus `PROTOCOL_HEADER=x-forwarded-proto` and `HOST_HEADER=x-forwarded-host`. SvelteKit's CSRF check compares `Origin` to `request.url.origin`; pinning `ORIGIN` makes the check deterministic regardless of which network interface the request came in on.
-**Why:** End-to-end testing surfaced 403 *Cross-site POST form submissions are forbidden* on every form post when `ORIGIN` was unset. Empirical fix. Eventual Tailscale + public-DNS migration adjusts this single env var.
+**Why:** End-to-end testing surfaced 403 _Cross-site POST form submissions are forbidden_ on every form post when `ORIGIN` was unset. Empirical fix. Eventual Tailscale + public-DNS migration adjusts this single env var.
 
 ## 2026-05-10 — Email verification + Turnstile server-side: deferred until secrets are vaulted
 
-**Decision:** Today's register flow ships *without* email-token verification and *without* server-side Turnstile verify. Bot defense relies on the honeypot `website` field plus per-IP rate limiting (5/min). Both Resend (email) and Turnstile (bot challenge) require API keys + secrets that today live as Cloudflare Worker secrets in `~/websites/webspinner-forms/`, not on Spindle in plaintext. Wiring them prematurely without a vault to retrieve from re-opens the credential-management friction explicitly named by the Wizard.
+**Decision:** Today's register flow ships _without_ email-token verification and _without_ server-side Turnstile verify. Bot defense relies on the honeypot `website` field plus per-IP rate limiting (5/min). Both Resend (email) and Turnstile (bot challenge) require API keys + secrets that today live as Cloudflare Worker secrets in `~/websites/webspinner-forms/`, not on Spindle in plaintext. Wiring them prematurely without a vault to retrieve from re-opens the credential-management friction explicitly named by the Wizard.
 
 The infrastructure is in place: `users.ts` carries the not-verified error kind; the auth-with-password endpoint already returns the `verified` flag; the auth gate has a hook for refusing unverified sessions. When the Resend + Turnstile secrets land in the vault, a focused turn wires them.
-**Why:** Half-baked email-verify (no actual email sent) is worse than no email-verify with honest documentation. Wow-as-Baseline (§17.5) forbids surfaces that *look* finished but aren't.
+**Why:** Half-baked email-verify (no actual email sent) is worse than no email-verify with honest documentation. Wow-as-Baseline (§17.5) forbids surfaces that _look_ finished but aren't.
 
 ## 2026-05-10 — Auth state management: validate-before-redirect, cookie-attribute-symmetry
 
 **Decision:** Two coupled bugs caused a Safari "Too many redirects" loop and an attendant 500. Fixed structurally:
 
-1. **`clearSession(cookies, url)`** now requires the request URL and emits the cookie with the *same* `path` / `httpOnly` / `secure` / `sameSite` attributes as `setSession`. The previous one-arg `clearSession({path:'/'})` left SvelteKit to fill in defaults that included `Secure` even on HTTP origins. Safari (spec-compliant) rejects `Set-Cookie: Secure` over HTTP entirely — *including* the Max-Age=0 deletion. The cookie persisted, the loop continued, "Too many redirects" eventually surfaced. Symmetric attributes guarantee the deletion takes.
+1. **`clearSession(cookies, url)`** now requires the request URL and emits the cookie with the _same_ `path` / `httpOnly` / `secure` / `sameSite` attributes as `setSession`. The previous one-arg `clearSession({path:'/'})` left SvelteKit to fill in defaults that included `Secure` even on HTTP origins. Safari (spec-compliant) rejects `Set-Cookie: Secure` over HTTP entirely — _including_ the Max-Age=0 deletion. The cookie persisted, the loop continued, "Too many redirects" eventually surfaced. Symmetric attributes guarantee the deletion takes.
 
-2. **`/login` load now validates before redirecting.** The previous logic was `if (getSession(cookies)) throw redirect(303, '/admin')` — it trusted cookie *presence*. With a stale cookie, `/admin` couldn't refresh the session, cleared it, and redirected back to `/login`, which redirected to `/admin` again. The new logic refreshes the session against the right PocketBase collection (`users` or `_superusers`); if valid, redirect; if invalid, clear and render the form. No loop is possible.
+2. **`/login` load now validates before redirecting.** The previous logic was `if (getSession(cookies)) throw redirect(303, '/admin')` — it trusted cookie _presence_. With a stale cookie, `/admin` couldn't refresh the session, cleared it, and redirected back to `/login`, which redirected to `/admin` again. The new logic refreshes the session against the right PocketBase collection (`users` or `_superusers`); if valid, redirect; if invalid, clear and render the form. No loop is possible.
 
 Same pattern applied to `/admin/+layout.server.ts`, `/verify-pending`, `/verify`, and `/logout` — every clearSession call now passes `url`, every redirect-after-session-presence is validation-gated.
 
@@ -205,7 +210,7 @@ Verified empirically: stale cookie hits land on the form with a clean Set-Cookie
 ## 2026-05-10 — Admin-utility anti-autofill: CSS-masked text inputs, non-standard field names
 
 **Decision:** The Loom's `/login` form does not use `<input type="password">` or `name="password"`. The visible "password" field is `<input type="text" name="passphrase">` with `-webkit-text-security: disc` applied via class (`.passphrase.mask`); the show/hide toggle flips the class, never the input type. The "email" field is `<input type="text" inputmode="email" name="wizard_id">`. Server-side action reads `wizard_id` and `passphrase`; visible labels and `aria-label`s preserve the user-facing and screen-reader semantics. Plus full anti-autofill data-attribute set: `data-1p-ignore`, `data-lpignore`, `data-bwignore`, `data-form-type="other"`, `autocomplete="off"`, `spellcheck="false"`, `autocapitalize="off"`, `autocorrect="off"`.
-**Why:** Direct operator instruction: "I told you I do not go in on a path, I go in on the root URL and click the splash screen... I didn't touch a key on the login page" — Safari was popping its Keychain credential offer on focus because it recognised the `<input type="password">` and the saved cred for the domain. The earlier autocomplete-off + decoy approach blocked *pre-fill* but not the *Keychain offer popup*. Removing `type="password"` and `name="password"` removes Safari's heuristic anchor entirely; the form is no longer a sign-in form to the browser, and Keychain doesn't offer. CSS-mask via `-webkit-text-security` is the canonical pattern (Stripe / Cloudflare / AWS console admin sign-ins use it). Matches Operating Principle §17.2 — admin utilities don't want browser-resident credential storage.
+**Why:** Direct operator instruction: "I told you I do not go in on a path, I go in on the root URL and click the splash screen... I didn't touch a key on the login page" — Safari was popping its Keychain credential offer on focus because it recognised the `<input type="password">` and the saved cred for the domain. The earlier autocomplete-off + decoy approach blocked _pre-fill_ but not the _Keychain offer popup_. Removing `type="password"` and `name="password"` removes Safari's heuristic anchor entirely; the form is no longer a sign-in form to the browser, and Keychain doesn't offer. CSS-mask via `-webkit-text-security` is the canonical pattern (Stripe / Cloudflare / AWS console admin sign-ins use it). Matches Operating Principle §17.2 — admin utilities don't want browser-resident credential storage.
 
 ## 2026-05-10 — Cache + error hardening (refresh-safe by default)
 
@@ -219,22 +224,25 @@ Verified empirically with curl on Kepler against `/login`, `/admin` (sans sessio
 ## 2026-05-10 — Pablo wired into retrieval — chunk + embed + top-k
 
 **Decision:** The Bootstrap Spinner's `consult` capability now uses the Kepler-resident Pablo embeddings sidecar (`127.0.0.1:11446`, `sentence-transformers/all-MiniLM-L6-v2`, MPS-accelerated) for grounded retrieval, replacing the prior whole-file Spool dump. New module `loom/src/lib/server/pablo-retrieval.ts`:
+
 - Chunks declared Spools by `##` (H2) headings into 77 sections across `WARP-CANON.md` + `DECISIONS.md` + `OPEN_QUESTIONS.md`.
 - Embeds each chunk on first use (lazy-loaded; warm cache for subsequent calls).
 - At query time: embeds the question, computes cosine similarity, returns top-8 passages.
 - Audit emission carries retrieval metadata: total chunks, returned passages, sources, cache-hit flag, elapsed ms.
 
 Empirical wins validated end-to-end on Kepler:
+
 - **Input tokens per consult: ~4K** (was ~20K with whole-file). 5× reduction.
 - **Retrieval time: 190 ms cold, 52 ms warm** — well under the 500 ms first-token budget per `LLM-STRATEGY.md`.
 - Answer quality up: top-k returns exactly the relevant canon sections (§3 for "What is a Cell?", §11 for the Pledge), letting the model focus instead of hunt.
 
-What's still open: BGE re-ranker (canon §4 stage 3), grounding verification (stage 6), and persistence of embeddings to PocketBase (today's cache lives in the Loom process; restart re-embeds — sub-second for current corpus size). All in `OPEN_QUESTIONS.md` — *Pablo grounded retrieval — chunk-and-embed pipeline*.
+What's still open: BGE re-ranker (canon §4 stage 3), grounding verification (stage 6), and persistence of embeddings to PocketBase (today's cache lives in the Loom process; restart re-embeds — sub-second for current corpus size). All in `OPEN_QUESTIONS.md` — _Pablo grounded retrieval — chunk-and-embed pipeline_.
 **Why:** The canon-faithful WRAG pipeline (§4) goes end-to-end through Pablo for the embedding stages. The Wizard's question — "are you using Pablo?" — was a real call-out: wired-but-not-used was a violation of the §11 Pledge's spirit, even though Anthropic was already excluded.
 
 ## 2026-05-10 — Email verification flow shipped (with Resend-when-vaulted + bootstrap fallback)
 
 **Decision:** Real identity verification ships now (supersedes the prior "deferred" entry above for the verification flow itself; Turnstile server-verify and actual Resend send remain gated on vaulted secrets):
+
 - New PB collection `wp_email_verifications` (token + expires_at + consumed_at, indexed by token).
 - New routes: `/register` (creates user, issues token, attempts email send, redirects to /verify-pending), `/verify-pending` (shows email, supports resend, rate-limited 60s), `/verify?token=...` (consumes token, marks user.verified=true), with a clean error state for invalid/expired/consumed tokens.
 - Auth gate at `/admin/+layout.server.ts` refuses unverified sessions and redirects to `/verify-pending`.
@@ -293,7 +301,7 @@ The panel is rendered inline in `admin/+layout.svelte` (no library import; compo
 
 **Decision:** `spinners/pablo/library/` ships with six entries: `README.md`, `contrast.md`, `typography.md`, `composition.md`, `brand-consistency.md`, `cards.md`. Each entry states the rule, names the source (WCAG / web.dev / NN/g / Stephen Few / Bringhurst / Tufte / M3 / Apple HIG), gives an explicit Pablo check protocol, lists common failures.
 
-Findings cited to a library entry are *appealable* — a Wizard overrides Pablo by writing an `**Override:**` reason that references the same entry. Pablo accepts the override on the next walk.
+Findings cited to a library entry are _appealable_ — a Wizard overrides Pablo by writing an `**Override:**` reason that references the same entry. Pablo accepts the override on the next walk.
 
 The Wizard's earlier critiques (e.g. `~/sitoolmaker-com/agents/pablo-critiques/2026-05-06-sitoolmaker-v0.1.md`) cite this library by name; now those citations resolve to files on disk. Library files currently inlined in Pablo's Mission Lock; future revision wires the directory as a `pablo-references` Spool Pablo declares.
 
@@ -341,7 +349,7 @@ The Wizard's earlier critiques (e.g. `~/sitoolmaker-com/agents/pablo-critiques/2
 
 **ed25519 signatures via @noble/curves**, detached signatures stored at `provenance/<digest>.sig` alongside the manifest, signer-fingerprint included in filename for disambiguation. Foundation release key + Cell identity keys are the two signers in v1.
 
-**Why:** The Wizard's stated goal — *enable the Loom to do everything without the user* — requires a storage and credential model that makes the Loom the chokepoint for every operation. Mirroring the proven git + registry pattern from npm / cargo / Go modules / Helm gives Webspinner industry-standard rails. The static-file Foundation Skein honors STANCE.md's "build the primitive, not the scaling apparatus." Authoring-in-repo is the explainability default; the opt-out flag preserves the agility for commercial cases.
+**Why:** The Wizard's stated goal — _enable the Loom to do everything without the user_ — requires a storage and credential model that makes the Loom the chokepoint for every operation. Mirroring the proven git + registry pattern from npm / cargo / Go modules / Helm gives Webspinner industry-standard rails. The static-file Foundation Skein honors STANCE.md's "build the primitive, not the scaling apparatus." Authoring-in-repo is the explainability default; the opt-out flag preserves the agility for commercial cases.
 
 Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md`. CLAUDE.md boot order references it.
 
@@ -353,33 +361,33 @@ This supersedes the choice in the earlier 2026-05-12 entry ("one git repository 
 
 The split between repositories is now:
 
-  - **`webspinner-org/warp`** — the Warp architecture: canon, docs, the Loom app source, the Genesis Spinners (`bootstrap`, `pablo`, `wizards-journal`, `genesis`), the tools, the test harness. These are the architecture's primitives; they ship with the reference implementation.
-  - **`webspinner-org/Cells`** — all Cell-authored Spinners. Populated by the Loom's authoring meta-runtime. Private during the bootstrap epoch; opens public when the meta-runtime + the first Cell-authored Spinner clear the production-candidate quality bar.
+- **`webspinner-org/warp`** — the Warp architecture: canon, docs, the Loom app source, the Genesis Spinners (`bootstrap`, `pablo`, `wizards-journal`, `genesis`), the tools, the test harness. These are the architecture's primitives; they ship with the reference implementation.
+- **`webspinner-org/Cells`** — all Cell-authored Spinners. Populated by the Loom's authoring meta-runtime. Private during the bootstrap epoch; opens public when the meta-runtime + the first Cell-authored Spinner clear the production-candidate quality bar.
 
 Cell-local runtime mirror:
 
-  - **`~/warp/spinners/<name>/`** — Genesis Spinners only.
-  - **`~/Cells/spinners/<name>/`** — Cell-authored Spinners, checked out at a specific `<slug>-v<version>` tag. Also the live authoring workspace during draft.
+- **`~/warp/spinners/<name>/`** — Genesis Spinners only.
+- **`~/Cells/spinners/<name>/`** — Cell-authored Spinners, checked out at a specific `<slug>-v<version>` tag. Also the live authoring workspace during draft.
 
 The Weaver loads Spinners from both trees; the local Skein (`wp_skein`) records the source-tree path along with the digest + signature.
 
 **Why monorepo over polyrepo for Cells:**
 
-  - One credential boundary, one push remote, one PR-ingest path into the Foundation Skein.
-  - Cross-Spinner refactors are one PR, not N coordinated PRs.
-  - Per-Spinner SemVer rhythm preserved via tag prefix.
-  - Cheap to migrate later — the Spinner directories are self-contained.
+- One credential boundary, one push remote, one PR-ingest path into the Foundation Skein.
+- Cross-Spinner refactors are one PR, not N coordinated PRs.
+- Per-Spinner SemVer rhythm preserved via tag prefix.
+- Cheap to migrate later — the Spinner directories are self-contained.
 
 **Repos we will need next (not now):**
 
-  - **`webspinner-org/library`** — the corpus of industry-best-practice patterns the authoring conversation queries (accounting patterns, intake-form patterns, e-commerce patterns, donor-tracking patterns, etc.). Critical for precedent-based authoring per `STANDARDS.md`. Today: doesn't exist. Trigger to create: first authoring meta-runtime build, since the precedent search needs a corpus to query.
+- **`webspinner-org/library`** — the corpus of industry-best-practice patterns the authoring conversation queries (accounting patterns, intake-form patterns, e-commerce patterns, donor-tracking patterns, etc.). Critical for precedent-based authoring per `STANDARDS.md`. Today: doesn't exist. Trigger to create: first authoring meta-runtime build, since the precedent search needs a corpus to query.
 
 **Repos we do not need yet:**
 
-  - **`webspinner-org/loom`** — the Loom currently lives in `~/warp/loom/`. Splitting it out is *scaling apparatus*, not primitive. Per `STANCE.md`. Trigger to extract: first peer Wizard adopts a Cell and needs to install the Loom independently of the reference repo. Until then, the Loom rides with `warp`.
-  - **`webspinner-org/weaver`** — extract when the canonical Python + FastAPI Weaver work begins. Today the bootstrap Weaver is the shim at `warp/loom/src/lib/server/weaver.ts`; that suffices.
-  - **`webspinner-org/skein`** — when the Foundation Skein graduates from a static JSON file behind a Foundation URL to a service. Per `STANCE.md`, not yet.
-  - **`webspinner-org/canon`** — the canon currently lives in `warp/`. Extract if the canon's release rhythm diverges from the reference implementation's. Today it doesn't.
+- **`webspinner-org/loom`** — the Loom currently lives in `~/warp/loom/`. Splitting it out is _scaling apparatus_, not primitive. Per `STANCE.md`. Trigger to extract: first peer Wizard adopts a Cell and needs to install the Loom independently of the reference repo. Until then, the Loom rides with `warp`.
+- **`webspinner-org/weaver`** — extract when the canonical Python + FastAPI Weaver work begins. Today the bootstrap Weaver is the shim at `warp/loom/src/lib/server/weaver.ts`; that suffices.
+- **`webspinner-org/skein`** — when the Foundation Skein graduates from a static JSON file behind a Foundation URL to a service. Per `STANCE.md`, not yet.
+- **`webspinner-org/canon`** — the canon currently lives in `warp/`. Extract if the canon's release rhythm diverges from the reference implementation's. Today it doesn't.
 
 Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md` §2.1, §2.2, §5. `Cells` scaffolded with README.md, CLAUDE.md, TRADEMARK.md, CONTRIBUTING.md, .gitignore, SKEIN.json, and `spinners/` directory at commit `webspinner-org/Cells@43586fb`.
 
@@ -387,40 +395,40 @@ Persisted in `~/warp/ARTIFACTS-AND-STORAGE.md` §2.1, §2.2, §5. `Cells` scaffo
 
 **Decision:** Spinner execution outside the Loom's in-process trusted path happens inside a **runner** — an immutable, ephemeral, encapsulated execution environment. Three load-bearing properties:
 
-  - **Immutable** — the runner image is built once, signed by the Foundation release key, counter-signed by the Cell identity key, and used many times. No state persists in the image between runs.
-  - **Ephemeral** — every execution gets a fresh instance, destroyed on completion (success, failure, or cancellation). No warm pool.
-  - **Encapsulated** — typed input (Spinner bundle + test plan + secret-refs + execution budget) and typed output (result + audit events + emitted artifacts). The execution surface is invisible to the Loom.
+- **Immutable** — the runner image is built once, signed by the Foundation release key, counter-signed by the Cell identity key, and used many times. No state persists in the image between runs.
+- **Ephemeral** — every execution gets a fresh instance, destroyed on completion (success, failure, or cancellation). No warm pool.
+- **Encapsulated** — typed input (Spinner bundle + test plan + secret-refs + execution budget) and typed output (result + audit events + emitted artifacts). The execution surface is invisible to the Loom.
 
 **Three execution backends, pluggable per Spinner's `isolation` manifest declaration:**
 
-  - **Container** (OrbStack on Mac dev; Podman on Linux prod) — ~200 ms cold; ~50 MB overhead; namespaces + cgroups + seccomp. Sufficient for trusted Spinners during bootstrap.
-  - **Firecracker microVM** (Apache 2.0; AWS-built; industry standard for ephemeral compute — AWS Lambda, Fly.io) — ~125 ms cold; ~5 MB overhead; full hardware-virt boundary. Production default.
-  - **Full Linux VM** (Lima on Mac; KVM on Linux) — ~3–10 s cold; ~512 MB; strongest isolation. For privileged or security-sensitive Spinners.
+- **Container** (OrbStack on Mac dev; Podman on Linux prod) — ~200 ms cold; ~50 MB overhead; namespaces + cgroups + seccomp. Sufficient for trusted Spinners during bootstrap.
+- **Firecracker microVM** (Apache 2.0; AWS-built; industry standard for ephemeral compute — AWS Lambda, Fly.io) — ~125 ms cold; ~5 MB overhead; full hardware-virt boundary. Production default.
+- **Full Linux VM** (Lima on Mac; KVM on Linux) — ~3–10 s cold; ~512 MB; strongest isolation. For privileged or security-sensitive Spinners.
 
 A Spinner declares `isolation: container | microvm | vm | any` in its manifest. The runner host's policy may upgrade the class (never downgrade).
 
 **Host placement:**
 
-  - **Not Kepler.** Kepler is the Loom + Weaver + Grimoire host; too small to also pool runners and breaks the "Loom-restart-recovers" property.
-  - **Spindle (M5 Max)** — bootstrap-epoch runner pool. LAN + Tailscale-reachable. MLX-capable for Quiet Loom evaluations. Container + Lima-VM backends.
-  - **Hetzner** — production runner pool when federation begins. Dedicated Linux Firecracker host(s). KVM enabled.
+- **Not Kepler.** Kepler is the Loom + Weaver + Grimoire host; too small to also pool runners and breaks the "Loom-restart-recovers" property.
+- **Spindle (M5 Max)** — bootstrap-epoch runner pool. LAN + Tailscale-reachable. MLX-capable for Quiet Loom evaluations. Container + Lima-VM backends.
+- **Hetzner** — production runner pool when federation begins. Dedicated Linux Firecracker host(s). KVM enabled.
 
 **Network model:**
 
-  - Loom → runner-host dispatch over HTTPS + mTLS, authenticated via Cell-identity-signed certs.
-  - Runner instances have **no inbound network access**.
-  - Runner instances have **outbound access only to declared endpoints** (the Loom for audit, the BYOK gateway for model calls, declared Spool endpoints). All other outbound traffic refused at the runner-host firewall.
+- Loom → runner-host dispatch over HTTPS + mTLS, authenticated via Cell-identity-signed certs.
+- Runner instances have **no inbound network access**.
+- Runner instances have **outbound access only to declared endpoints** (the Loom for audit, the BYOK gateway for model calls, declared Spool endpoints). All other outbound traffic refused at the runner-host firewall.
 
 **Default disposition:**
 
-  - First execution of a newly authored Spinner → always in a runner.
-  - Any execution of a Spinner whose digest isn't Cell-countersigned → always in a runner.
-  - Test-plan execution → always in a runner (clean state per test).
-  - Routine invocations of trusted, Cell-signed Spinners → in-process by default; runner per the Spinner's `isolation` manifest declaration.
+- First execution of a newly authored Spinner → always in a runner.
+- Any execution of a Spinner whose digest isn't Cell-countersigned → always in a runner.
+- Test-plan execution → always in a runner (clean state per test).
+- Routine invocations of trusted, Cell-signed Spinners → in-process by default; runner per the Spinner's `isolation` manifest declaration.
 
 **Runner-host service** is itself a Spinner (Genesis-tier, `~/warp/spinners/runner/`, forthcoming). Deployed via launchd on Spindle and systemd on Hetzner. Has its own audit chain stitched to the Loom's by operation ID.
 
-**Why:** The Wizard's specification — *runners encapsulated in some way, immutable and ephemeral, on this laptop or on Hetzner, Kepler too small.* Industry-standard pattern (Lambda, Cloudflare Workers, Fly.io machines) for ephemeral compute. Provides untrusted-code isolation, integration-test purity, reproducibility, cost containment, and a clean trust boundary for the federation epoch.
+**Why:** The Wizard's specification — _runners encapsulated in some way, immutable and ephemeral, on this laptop or on Hetzner, Kepler too small._ Industry-standard pattern (Lambda, Cloudflare Workers, Fly.io machines) for ephemeral compute. Provides untrusted-code isolation, integration-test purity, reproducibility, cost containment, and a clean trust boundary for the federation epoch.
 
 Persisted in `~/warp/RUNNERS.md`. CLAUDE.md boot order step 8 references it. STANDARDS.md open-source-by-layer table updated with the three runner backends.
 
@@ -428,14 +436,51 @@ Persisted in `~/warp/RUNNERS.md`. CLAUDE.md boot order step 8 references it. STA
 
 **Decision:** Cinematic photorealistic illustration in Webspinner Spinners is generated by **OpenAI Image 2**, called through the BYOK gateway (LiteLLM today; Foundation-built gateway later) with the operator's API key stored in the vault at `vault://_self/openai-api-key`. The Foundation will not under-shoot the imagery quality bar because of generator-source ideology.
 
-**Why:** The Wizard's stated position — *I really love the quality they establish when used in a UX properly. We have to get past* the hedging on a closed-source generator. The architecture's BYOK discipline (canon §17.2) already admits closed-source providers behind operator-owned keys; the imagery generator follows the same pattern as text-model BYOK. The quality threshold for "delights and astounds" per `VISION.md` is the load-bearing constraint, not the generator's license.
+**Why:** The Wizard's stated position — _I really love the quality they establish when used in a UX properly. We have to get past_ the hedging on a closed-source generator. The architecture's BYOK discipline (canon §17.2) already admits closed-source providers behind operator-owned keys; the imagery generator follows the same pattern as text-model BYOK. The quality threshold for "delights and astounds" per `VISION.md` is the load-bearing constraint, not the generator's license.
 
 **Operative pattern:**
 
-  - **Vault-mediated** — every call resolves the operator's OpenAI key at request time; never logged; never passed via Claude Code.
-  - **Gateway-mediated** — LiteLLM's `image_generation()` is the contract surface today; replaceable behind the same call shape later.
-  - **Pablo-governed** — `~/warp/spinners/pablo/library/imagery.md` (forthcoming) holds the imagery rules: when to use cinematic illustration, prompt patterns that produce brand-aligned results, composition rules against the canonical palette + typography.
-  - **Provenance-recorded** — every image generated by a Spinner is recorded in the Silk Pattern with prompt + model + generation timestamp + result digest; C2PA metadata embedded where supported.
-  - **Cost-disciplined** — the imagery Spinner reports estimated cost before generation and honors a per-operation budget.
+- **Vault-mediated** — every call resolves the operator's OpenAI key at request time; never logged; never passed via Claude Code.
+- **Gateway-mediated** — LiteLLM's `image_generation()` is the contract surface today; replaceable behind the same call shape later.
+- **Pablo-governed** — `~/warp/spinners/pablo/library/imagery.md` (forthcoming) holds the imagery rules: when to use cinematic illustration, prompt patterns that produce brand-aligned results, composition rules against the canonical palette + typography.
+- **Provenance-recorded** — every image generated by a Spinner is recorded in the Silk Pattern with prompt + model + generation timestamp + result digest; C2PA metadata embedded where supported.
+- **Cost-disciplined** — the imagery Spinner reports estimated cost before generation and honors a per-operation budget.
 
 Persisted as a new paragraph in `STANDARDS.md` §1 (the UX standard) and a new row in the open-source-by-layer table.
+
+## 2026-05-12 — Dependency stability + simplicity-budget principles
+
+**Decision:** Two architectural principles named, codification deferred to later batches.
+
+### Dependency stability — own the contract, not the implementation
+
+Every external dependency sits in one of four tiers (existential, load-bearing infrastructure, utility, external services). Each tier has its own mitigation strategy. The operative principle is: **for every external import, a Warp-side adapter exists.**
+
+- A Spinner never imports `@noble/curves` directly; it imports `signBundleDigest` from the SDK.
+- A route handler never imports `prettier`; it shells out via `tools/`.
+- Model providers (OpenAI Image 2, etc.) sit behind the BYOK gateway.
+
+Swap cost is bounded to one wrapper module per dep.
+
+**Crypto-tier deps** (`@noble/curves`, `@noble/hashes`) are vendor-eligible when release cadence diverges from ours or algorithmic agility (post-quantum) becomes required. Today's libs are fine; the principle is stated for the future.
+
+**Operative now:**
+
+- The 2 modules that import noble (`sdk/src/signing.ts`, `sdk/src/digest.ts`) ARE the swap surface. Adding a third would require a `DECISIONS.md` entry.
+- Prettier + eslint only invoked via `tools/ship` and lefthook (zero Spinner imports).
+- BYOK gateway already abstracts model providers.
+- The hand-rolled RFC 8785 JCS in `sdk/src/canonical-json.ts` is the canonical example of this principle applied — we owned the spec, not the library.
+
+### Simplicity budget — the human-readability defense
+
+If the system is too complex for a senior engineer to maintain in a day, we're hostage to whichever LLM happens to comprehend it. Defenses:
+
+- Plain-English module docstrings at the top of every file (already operative convention).
+- Soft caps: Spinner bundle source < 300 lines, < 5 deps beyond the SDK, < 2 new abstractions introduced.
+- Hard cap: Loom module file < 400 lines (split or justify in `DECISIONS.md` if larger).
+- One responsibility per admin page (no kitchen sinks).
+- Quarterly outsider walkthrough during the federation epoch; during bootstrap, a fresh Claude Code session reads the architecture from scratch every 12 weeks and reports confusion as journal entries.
+
+**The canon is the source of truth, not the code.** If an LLM corrupts the code across many small changes, the canon still says what the code SHOULD do. `tools/audit` detects drift between code and canon; `tools/ship` gates on findings; the Wizard approves every batch. **Audit + journal + Wizard approval is the operative defense against LLM-driven architectural drift.**
+
+**Codification deferred** to future batches per `OPEN_QUESTIONS.md` — a `DEPENDENCIES.md` document, an ESLint custom rule (`no-direct-tier0-imports`), and a `tools/simplicity-audit` Spinner. Why deferred: per `STANCE.md` (_"build the primitive that scales, don't build the scaling apparatus before there is scale"_), the architectural commitment is real and operative in how I work; codifying it now is the scaling apparatus. When a real violation forces it, we ship the codification.
