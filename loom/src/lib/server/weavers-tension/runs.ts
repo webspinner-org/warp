@@ -83,10 +83,13 @@ export async function ensureRunsCollection(
         { name: 'scenario_slug', type: 'text', required: true, max: 128 },
         { name: 'status', type: 'text', required: true, max: 16 },
         { name: 'op_id', type: 'text', required: true, max: 64 },
-        // min: 0 is required for PB to accept zero as a non-blank value
-        // when the field is required (PB's number.required treats 0 as
-        // "blank" otherwise).
-        { name: 'current_step_index', type: 'number', required: true, min: 0 },
+        // required:false is deliberate. PocketBase 0.38's `number, required:true`
+        // validator rejects zero as "blank" (Go's int zero-value collides with
+        // PB's "missing" semantics) and silently drops `min:0` from the
+        // persisted schema, so there's no API-level workaround. The
+        // application always sets this field at write time, so PB-side
+        // required-validation isn't load-bearing.
+        { name: 'current_step_index', type: 'number', required: false },
         { name: 'actor_kind', type: 'text', required: true, max: 16 },
         { name: 'actor_id', type: 'text', required: true, max: 128 },
         { name: 'actor_email', type: 'text', required: false, max: 256 },
