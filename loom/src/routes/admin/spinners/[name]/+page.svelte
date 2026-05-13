@@ -4,6 +4,7 @@
   let tab = $state<'how-it-works' | 'mission-lock' | 'manifest' | 'readme'>('how-it-works');
   let activeCapability = $state(data.manifest.capabilities[0]?.name ?? '');
   let invoking = $state(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let invokeResult = $state<any>(null);
   let invokeError = $state<string | null>(null);
   let devView = $state(false);
@@ -41,7 +42,7 @@
 
   // Genesis capabilities — eight handlers across read-only probes
   // and host-mutating provisioning. Forms keyed by capability name.
-  const isGenesis = data.manifest.name === '@webspinner-foundation/genesis';
+  const _isGenesis = data.manifest.name === '@webspinner-foundation/genesis';
 
   // syncRepo
   let syncSource = $state<'local-rsync' | 'git-remote'>('local-rsync');
@@ -97,8 +98,7 @@
         return { ok: true, value: { question: consultQuestion } };
       }
       case 'record': {
-        if (recordTitle.trim().length === 0)
-          return { ok: false, error: 'Title is required.' };
+        if (recordTitle.trim().length === 0) return { ok: false, error: 'Title is required.' };
         if (recordBody.trim().length === 0) return { ok: false, error: 'Body is required.' };
         if (isJournal) {
           const tags = journalTags
@@ -121,8 +121,7 @@
         return { ok: true, value: v };
       }
       case 'recall': {
-        if (recallQuery.trim().length === 0)
-          return { ok: false, error: 'Query is required.' };
+        if (recallQuery.trim().length === 0) return { ok: false, error: 'Query is required.' };
         const v: Record<string, unknown> = { query: recallQuery };
         if (recallKind !== '') v.kind = recallKind;
         if (recallSince.trim().length > 0) v.since = recallSince;
@@ -203,8 +202,7 @@
         return { ok: true, value: v };
       }
       case 'audit': {
-        if (auditSubject.trim().length === 0)
-          return { ok: false, error: 'Subject is required.' };
+        if (auditSubject.trim().length === 0) return { ok: false, error: 'Subject is required.' };
         return { ok: true, value: { subject: auditSubject, kind: auditKind } };
       }
       case 'surface':
@@ -222,7 +220,10 @@
           const parsed = fallbackJson.trim().length === 0 ? {} : JSON.parse(fallbackJson);
           return { ok: true, value: parsed };
         } catch (e) {
-          return { ok: false, error: `Input is not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+          return {
+            ok: false,
+            error: `Input is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+          };
         }
       }
     }
@@ -293,7 +294,10 @@
   }
 
   function paragraphs(text: string): string[] {
-    return text.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0);
+    return text
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
   }
 
   async function copyToClipboard(text: string) {
@@ -324,6 +328,7 @@
   <title>{data.manifest.displayName} · Spinner · Warp</title>
 </svelte:head>
 
+<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 <a class="back" href="/admin/spinners">← Spinners</a>
 
 <header class="hero">
@@ -416,6 +421,53 @@
   </div>
 </section>
 
+{#if data.skein}
+  <section class="skein-panel">
+    <h2>Skein record</h2>
+    <dl class="skein-fields">
+      <dt>Source</dt>
+      <dd><code>{data.skein.source}</code></dd>
+
+      <dt>Recorded digest</dt>
+      <dd><code class="digest-hex">{data.skein.recordedDigest}</code></dd>
+
+      <dt>Integrity status</dt>
+      <dd>
+        <span class={`integrity-pill ${data.skein.integrityStatus}`}>
+          {data.skein.integrityStatus}
+        </span>
+        <span class="check-time">checked {data.skein.lastIntegrityCheck}</span>
+      </dd>
+
+      <dt>Installed</dt>
+      <dd>
+        {data.skein.installedAt} by <code>{data.skein.installedBy}</code>
+      </dd>
+
+      <dt>Signers ({data.skein.signerCount})</dt>
+      <dd>
+        {#if data.skein.signerCount === 0}
+          <em>none — unsigned</em>
+        {:else}
+          <ul class="signer-list">
+            {#each data.skein.signers as s (s.fingerprint)}
+              <li>
+                <code>{s.fingerprint}</code>
+                <span class="signer-label">{s.signerLabel}</span>
+                <span class="signer-time">{s.signedAt}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </dd>
+    </dl>
+
+    <form method="POST" action="?/refreshIntegrity" class="refresh-form">
+      <button type="submit" class="refresh-btn"> Refresh integrity </button>
+    </form>
+  </section>
+{/if}
+
 <section class="capabilities">
   <h2>Capabilities</h2>
   <table>
@@ -464,7 +516,8 @@
       {#each data.spoolDisplay as s (s.name)}
         <li>
           <code>{s.name}</code> ← <strong>{s.spoolDisplayName}</strong>
-          <span class="muted">(<code>{s.spool}</code>, {s.required ? 'required' : 'optional'})</span>
+          <span class="muted">(<code>{s.spool}</code>, {s.required ? 'required' : 'optional'})</span
+          >
         </li>
       {/each}
     </ul>
@@ -495,8 +548,8 @@
         {@html data.docs.howItWorksHtml}
       {:else}
         <p class="muted">
-          No <code>how-it-works.md</code> on disk. Per the Operating Principles, every Spinner must
-          ship a How It Works document — surface this as a drift report.
+          No <code>how-it-works.md</code> on disk. Per the Operating Principles, every Spinner must ship
+          a How It Works document — surface this as a drift report.
         </p>
       {/if}
     {:else if tab === 'mission-lock'}
@@ -540,13 +593,15 @@
           rows="3"
           spellcheck="true"
         ></textarea>
-        <span class="hint">Grounded in the Spinner's declared Spools. Citations come back with the answer.</span>
+        <span class="hint"
+          >Grounded in the Spinner's declared Spools. Citations come back with the answer.</span
+        >
       </label>
     {:else if activeCapability === 'record' && isJournal}
       <div class="field">
         <span>Kind</span>
         <div class="kind-chips">
-          {#each (['action', 'decision', 'problem', 'learning', 'note'] as JournalKind[]) as k}
+          {#each ['action', 'decision', 'problem', 'learning', 'note'] as JournalKind[] as k (k)}
             <label class="kind-chip">
               <input type="radio" name="journal-kind" value={k} bind:group={journalKind} />
               <span class={`kind kind-${k}`}>{k}</span>
@@ -560,10 +615,7 @@
       </label>
       <label class="field">
         <span>Body</span>
-        <textarea
-          bind:value={recordBody}
-          placeholder="What happened, why, what next."
-          rows="6"
+        <textarea bind:value={recordBody} placeholder="What happened, why, what next." rows="6"
         ></textarea>
       </label>
       <div class="meta-row">
@@ -579,7 +631,11 @@
     {:else if activeCapability === 'record'}
       <label class="field">
         <span>Title</span>
-        <input bind:value={recordTitle} placeholder="Short title for the decision" maxlength="120" />
+        <input
+          bind:value={recordTitle}
+          placeholder="Short title for the decision"
+          maxlength="120"
+        />
       </label>
       <label class="field">
         <span>Body</span>
@@ -597,7 +653,9 @@
       <label class="field">
         <span>Query</span>
         <input bind:value={recallQuery} placeholder="What you are looking for, in plain words" />
-        <span class="hint">Semantic search across the journal. Cosine similarity against MiniLM-L6-v2 embeddings.</span>
+        <span class="hint"
+          >Semantic search across the journal. Cosine similarity against MiniLM-L6-v2 embeddings.</span
+        >
       </label>
       <div class="meta-row">
         <label class="field">
@@ -659,8 +717,8 @@
       </fieldset>
     {:else if activeCapability === 'surface'}
       <p class="hint">
-        No input needed. Click <strong>Run</strong> to surface unfinished threads — uncommitted
-        work, open questions, spec-pending entries, and dated TODOs in the Cell.
+        No input needed. Click <strong>Run</strong> to surface unfinished threads — uncommitted work,
+        open questions, spec-pending entries, and dated TODOs in the Cell.
       </p>
     {:else if activeCapability === 'review'}
       <label class="field">
@@ -669,7 +727,10 @@
       </label>
       <label class="field">
         <span>Wizard intent <span class="opt">(optional)</span></span>
-        <input bind:value={reviewTopic} placeholder="What you want Pablo to look for, in patron-facing words" />
+        <input
+          bind:value={reviewTopic}
+          placeholder="What you want Pablo to look for, in patron-facing words"
+        />
       </label>
       <label class="field">
         <span>Rendered HTML</span>
@@ -679,7 +740,9 @@
           rows="10"
           spellcheck="false"
         ></textarea>
-        <span class="hint">Or run <code>tools/pablo &lt;route&gt;</code> from the repo for a one-command critique loop.</span>
+        <span class="hint"
+          >Or run <code>tools/pablo &lt;route&gt;</code> from the repo for a one-command critique loop.</span
+        >
       </label>
     {:else if activeCapability === 'provisionToolchain'}
       <p class="hint">
@@ -701,13 +764,18 @@
       </fieldset>
       {#if syncSource === 'local-rsync'}
         <label class="field">
-          <span>Source path <span class="opt">(optional; defaults to this Loom's repo dir)</span></span>
+          <span
+            >Source path <span class="opt">(optional; defaults to this Loom's repo dir)</span></span
+          >
           <input bind:value={syncSourcePath} placeholder="/Users/.../warp" />
         </label>
       {:else}
         <label class="field">
           <span>Git remote URL</span>
-          <input bind:value={syncGitRemote} placeholder="https://github.com/webspinner-org/warp.git" />
+          <input
+            bind:value={syncGitRemote}
+            placeholder="https://github.com/webspinner-org/warp.git"
+          />
         </label>
         <label class="field">
           <span>Git ref</span>
@@ -734,11 +802,15 @@
       </p>
       <div class="meta-row">
         <label class="field">
-          <span>Loom URL <span class="opt">(default <code>http://127.0.0.1:3000</code>)</span></span>
+          <span>Loom URL <span class="opt">(default <code>http://127.0.0.1:3000</code>)</span></span
+          >
           <input bind:value={verifyLoomUrl} placeholder="http://127.0.0.1:3000" />
         </label>
         <label class="field">
-          <span>Grimoire URL <span class="opt">(default <code>http://127.0.0.1:8090</code>)</span></span>
+          <span
+            >Grimoire URL <span class="opt">(default <code>http://127.0.0.1:8090</code>)</span
+            ></span
+          >
           <input bind:value={verifyGrimoireUrl} placeholder="http://127.0.0.1:8090" />
         </label>
       </div>
@@ -760,18 +832,22 @@
     {:else if activeCapability === 'seedVault'}
       <p class="hint">
         Encrypts each secret with the Cell's vault master key and writes to the
-        <code>vault_secrets</code> collection. Duplicates are reported, not overwritten —
-        rotate via <a href="/admin/vault">/admin/vault</a>.
+        <code>vault_secrets</code> collection. Duplicates are reported, not overwritten — rotate via
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+        <a href="/admin/vault">/admin/vault</a>.
       </p>
       <label class="field">
         <span>Secrets <span class="opt">(JSON array)</span></span>
         <textarea bind:value={seedVaultJson} rows="8" spellcheck="false"></textarea>
-        <span class="hint">Each item: <code>{`{ "name": "...", "value": "...", "description": "..." }`}</code>.</span>
+        <span class="hint"
+          >Each item: <code>{`{ "name": "...", "value": "...", "description": "..." }`}</code
+          >.</span
+        >
       </label>
     {:else if activeCapability === 'deployGrimoire'}
       <p class="hint">
-        Writes <code>~/Library/LaunchAgents/foundation.webspinner.grimoire.plist</code> and
-        bootstraps it via launchctl. Idempotent: no-op when content matches.
+        Writes <code>~/Library/LaunchAgents/foundation.webspinner.grimoire.plist</code> and bootstraps
+        it via launchctl. Idempotent: no-op when content matches.
       </p>
       <div class="meta-row">
         <label class="field">
@@ -779,12 +855,20 @@
           <input type="number" min="1024" max="65535" bind:value={deployGrimoirePort} />
         </label>
         <label class="field">
-          <span>PocketBase binary <span class="opt">(default <code>/opt/homebrew/bin/pocketbase</code>)</span></span>
+          <span
+            >PocketBase binary <span class="opt"
+              >(default <code>/opt/homebrew/bin/pocketbase</code>)</span
+            ></span
+          >
           <input bind:value={deployGrimoireBin} placeholder="/opt/homebrew/bin/pocketbase" />
         </label>
       </div>
       <label class="field">
-        <span>Data dir <span class="opt">(default ~/Library/Application Support/.../Grimoire/pb_data)</span></span>
+        <span
+          >Data dir <span class="opt"
+            >(default ~/Library/Application Support/.../Grimoire/pb_data)</span
+          ></span
+        >
         <input bind:value={deployGrimoireDataDir} placeholder="(default)" />
       </label>
       <label class="radio">
@@ -793,9 +877,9 @@
       </label>
     {:else if activeCapability === 'deployLoom'}
       <p class="hint">
-        Writes <code>~/Library/LaunchAgents/foundation.webspinner.loom.plist</code> and
-        bootstraps it via launchctl. v0.2 plist does NOT inject vault keys or PB creds —
-        the operator enriches the plist manually after this runs.
+        Writes <code>~/Library/LaunchAgents/foundation.webspinner.loom.plist</code> and bootstraps it
+        via launchctl. v0.2 plist does NOT inject vault keys or PB creds — the operator enriches the plist
+        manually after this runs.
       </p>
       <div class="meta-row">
         <label class="field">
@@ -803,7 +887,11 @@
           <input type="number" min="1024" max="65535" bind:value={deployLoomPort} />
         </label>
         <label class="field">
-          <span>Origin <span class="opt">(default <code>http://&lt;hostname&gt;:&lt;port&gt;</code>)</span></span>
+          <span
+            >Origin <span class="opt"
+              >(default <code>http://&lt;hostname&gt;:&lt;port&gt;</code>)</span
+            ></span
+          >
           <input bind:value={deployLoomOrigin} placeholder="http://kepler.local:3000" />
         </label>
       </div>
@@ -834,7 +922,11 @@
           <input type="checkbox" bind:checked={confirmDestructive} />
           <span>
             <strong>Yes, run it.</strong>
-            <em>This capability writes to your host (vault rows, launchd plists, or files under <code>~/.warp/bootstrap/</code>). It is idempotent where possible but real.</em>
+            <em
+              >This capability writes to your host (vault rows, launchd plists, or files under <code
+                >~/.warp/bootstrap/</code
+              >). It is idempotent where possible but real.</em
+            >
           </span>
         </label>
       </div>
@@ -843,7 +935,9 @@
     <div class="actions">
       <button
         type="submit"
-        disabled={invoking || !activeCapability || (destructiveCaps.has(activeCapability) && !confirmDestructive)}
+        disabled={invoking ||
+          !activeCapability ||
+          (destructiveCaps.has(activeCapability) && !confirmDestructive)}
       >
         {invoking ? 'Running…' : 'Run'}
       </button>
@@ -875,7 +969,7 @@
           {/if}
         </header>
         <div class="answer">
-          {#each paragraphs(out.answer) as p}
+          {#each paragraphs(out.answer) as p, pi (pi)}
             <p>{p}</p>
           {/each}
         </div>
@@ -883,7 +977,7 @@
           <div class="citations">
             <h3>Citations</h3>
             <ul>
-              {#each out.citations as c}
+              {#each out.citations as c, ci (ci)}
                 <li><code>{c}</code></li>
               {/each}
             </ul>
@@ -893,7 +987,8 @@
           <p class="provenance">
             {out.provenance.provider ?? ''}
             {#if out.provenance.model}· <code>{out.provenance.model.split('/').pop()}</code>{/if}
-            {#if out.provenance.retrieval}· {out.provenance.retrieval.returnedPassages} of {out.provenance.retrieval.totalChunks} passages
+            {#if out.provenance.retrieval}· {out.provenance.retrieval.returnedPassages} of {out
+                .provenance.retrieval.totalChunks} passages
               {#if out.provenance.retrieval.cacheHit}<span class="hit">cache hit</span>{/if}
             {/if}
           </p>
@@ -912,10 +1007,12 @@
         {/if}
         {#if Array.isArray(out.findings) && out.findings.length > 0}
           <ol class="findings">
-            {#each out.findings as f, i}
+            {#each out.findings as f, _i (_i)}
               <li class={`finding sev-${f.severity ?? 'medium'}`}>
                 <header>
-                  <span class={`sev-pill sev-${f.severity ?? 'medium'}`}>{f.severity ?? 'medium'}</span>
+                  <span class={`sev-pill sev-${f.severity ?? 'medium'}`}
+                    >{f.severity ?? 'medium'}</span
+                  >
                   <span class="category">{f.category ?? 'other'}</span>
                   <span class="source"><code>{f.source ?? 'pablos-eye'}</code></span>
                 </header>
@@ -941,16 +1038,22 @@
           <strong>{out.title}</strong>
           <span class="timestamp">{out.timestamp}</span>
         </p>
-        <p class="hint">Entry id: <code>{out.id}</code>. Visible on <a href="/admin/journal">/admin/journal</a> and recallable by semantic query.</p>
+        <p class="hint">
+          Entry id: <code>{out.id}</code>. Visible on <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+          <a href="/admin/journal">/admin/journal</a> and recallable by semantic query.
+        </p>
       </article>
     {:else if activeCapability === 'record' && typeof out.entry === 'string'}
       <article class="entry-result">
         <header>
           <strong>Drafted DECISIONS.md entry</strong>
-          <button type="button" class="copy" onclick={() => copyToClipboard(out.entry)}>Copy</button>
+          <button type="button" class="copy" onclick={() => copyToClipboard(out.entry)}>Copy</button
+          >
         </header>
         <pre><code>{out.entry}</code></pre>
-        <p class="hint">Append this to <code>DECISIONS.md</code> — do not rewrite existing entries.</p>
+        <p class="hint">
+          Append this to <code>DECISIONS.md</code> — do not rewrite existing entries.
+        </p>
       </article>
     {:else if activeCapability === 'recall' && Array.isArray(out.entries)}
       <article class="recall-result">
@@ -964,7 +1067,7 @@
           <p class="muted">No matches.</p>
         {:else}
           <ol class="recall-entries">
-            {#each out.entries as e}
+            {#each out.entries as e, ei (ei)}
               <li>
                 <header>
                   <span class={`kind kind-${e.kind}`}>{e.kind}</span>
@@ -972,10 +1075,12 @@
                   <span class="score">{(e.score * 100).toFixed(0)}%</span>
                   <span class="timestamp">{e.timestamp.slice(0, 10)}</span>
                 </header>
-                <p class="recall-body">{e.body.length > 280 ? e.body.slice(0, 280) + '…' : e.body}</p>
+                <p class="recall-body">
+                  {e.body.length > 280 ? e.body.slice(0, 280) + '…' : e.body}
+                </p>
                 {#if Array.isArray(e.tags) && e.tags.length > 0}
                   <div class="recall-tags">
-                    {#each e.tags as t}<span class="tag-chip">{t}</span>{/each}
+                    {#each e.tags as t (t)}<span class="tag-chip">{t}</span>{/each}
                   </div>
                 {/if}
               </li>
@@ -987,13 +1092,18 @@
       <article class="bootstrap-result">
         <header>
           <strong>Session context</strong>
-          <button type="button" class="copy" onclick={() => copyToClipboard(out.context)}>Copy</button>
-          <button type="button" class="copy" onclick={() => downloadContext(out.context)}>Download .md</button>
+          <button type="button" class="copy" onclick={() => copyToClipboard(out.context)}
+            >Copy</button
+          >
+          <button type="button" class="copy" onclick={() => downloadContext(out.context)}
+            >Download .md</button
+          >
         </header>
         <pre class="context"><code>{out.context}</code></pre>
         {#if out.stats}
           <p class="hint">
-            {out.stats.recentEntries} of {out.stats.totalEntries} entries within {out.stats.horizonDays}-day horizon.
+            {out.stats.recentEntries} of {out.stats.totalEntries} entries within {out.stats
+              .horizonDays}-day horizon.
           </p>
         {/if}
       </article>
@@ -1004,14 +1114,17 @@
           <p class="muted">No drift detected.</p>
         {:else}
           <ol class="findings">
-            {#each out.drift as d}
+            {#each out.drift as d, di (di)}
               <li class={`finding sev-${d.severity ?? 'info'}`}>
                 <header>
                   <span class={`sev-pill sev-${d.severity ?? 'info'}`}>{d.severity ?? 'info'}</span>
                   {#if d.rule}<span class="category">{d.rule}</span>{/if}
                 </header>
                 {#if d.evidence}<pre class="evidence"><code>{d.evidence}</code></pre>{/if}
-                {#if d.suggestion}<p class="fix"><strong>Suggestion:</strong> {d.suggestion}</p>{/if}
+                {#if d.suggestion}<p class="fix">
+                    <strong>Suggestion:</strong>
+                    {d.suggestion}
+                  </p>{/if}
               </li>
             {/each}
           </ol>
@@ -1019,12 +1132,16 @@
       </article>
     {:else if activeCapability === 'surface' && Array.isArray(out.threads)}
       <article class="threads-result">
-        <header><strong>{out.threads.length} unfinished thread{out.threads.length === 1 ? '' : 's'}</strong></header>
+        <header>
+          <strong
+            >{out.threads.length} unfinished thread{out.threads.length === 1 ? '' : 's'}</strong
+          >
+        </header>
         {#if out.threads.length === 0}
           <p class="muted">All threads resolved. Tight Cell.</p>
         {:else}
           <ul>
-            {#each out.threads as t}
+            {#each out.threads as t, ti (ti)}
               <li>
                 <span class={`thread-kind ${t.kind}`}>{t.kind}</span>
                 <span class="thread-subject">{t.subject}</span>
@@ -1510,7 +1627,10 @@
     cursor: pointer;
     font-family: inherit;
     letter-spacing: 0.01em;
-    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
   }
 
   .cap-tabs button:hover {
@@ -1565,7 +1685,7 @@
   }
 
   /* Review's HTML field is monospace so the patron can see structure. */
-  textarea[placeholder*="HTML"] {
+  textarea[placeholder*='HTML'] {
     font-family: ui-monospace, 'SF Mono', monospace !important;
     font-size: 0.85rem !important;
   }
@@ -2128,7 +2248,10 @@
     border: 1px solid var(--line, #1f1f1f);
     color: var(--text-mute);
     background: var(--bg-1, #111);
-    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
     line-height: 1.4;
   }
 
@@ -2138,11 +2261,30 @@
     background: rgba(95, 207, 224, 0.08);
   }
 
-  .kind.kind-action { color: var(--cyan-dim, #4ba9b8); border-color: var(--cyan-dim, #4ba9b8); background: rgba(95, 207, 224, 0.06); }
-  .kind.kind-decision { color: var(--gold); border-color: #3a3220; background: #1a160a; }
-  .kind.kind-problem { color: #f88; border-color: #602020; background: #2a0808; }
-  .kind.kind-learning { color: #9fd99f; border-color: #2a4020; background: #0d1a0d; }
-  .kind.kind-note { color: var(--text-mute); border-color: var(--line, #1f1f1f); }
+  .kind.kind-action {
+    color: var(--cyan-dim, #4ba9b8);
+    border-color: var(--cyan-dim, #4ba9b8);
+    background: rgba(95, 207, 224, 0.06);
+  }
+  .kind.kind-decision {
+    color: var(--gold);
+    border-color: #3a3220;
+    background: #1a160a;
+  }
+  .kind.kind-problem {
+    color: #f88;
+    border-color: #602020;
+    background: #2a0808;
+  }
+  .kind.kind-learning {
+    color: #9fd99f;
+    border-color: #2a4020;
+    background: #0d1a0d;
+  }
+  .kind.kind-note {
+    color: var(--text-mute);
+    border-color: var(--line, #1f1f1f);
+  }
 
   .meta-row {
     display: grid;
@@ -2356,5 +2498,145 @@
     background: transparent;
     border: 0;
     padding: 0;
+  }
+
+  /* Skein panel */
+  .skein-panel {
+    margin: 1.5rem 0;
+    max-width: 64rem;
+  }
+
+  .skein-panel h2 {
+    margin: 0 0 0.7rem;
+    color: var(--gold-dim, #a48852);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+
+  .skein-fields {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.4rem 1.2rem;
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+    font-family: var(--font-data, ui-sans-serif, system-ui);
+  }
+
+  .skein-fields dt {
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+    align-self: baseline;
+  }
+
+  .skein-fields dd {
+    margin: 0;
+    color: var(--text-secondary);
+  }
+
+  .skein-fields dd code {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.86em;
+  }
+
+  .digest-hex {
+    word-break: break-all;
+    display: inline-block;
+    max-width: 50ch;
+  }
+
+  .integrity-pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    color: var(--text-mute);
+  }
+
+  .integrity-pill.verified {
+    color: #8fb88f;
+    border-color: #2a4020;
+    background: #0d1a0d;
+  }
+
+  .integrity-pill.unsigned,
+  .integrity-pill.pending-install {
+    color: var(--gold, #c9a96a);
+    border-color: #3a3220;
+    background: #1a160a;
+  }
+
+  .integrity-pill.digest-mismatch,
+  .integrity-pill.signature-invalid {
+    color: #f88;
+    border-color: #602020;
+    background: #2a0808;
+  }
+
+  .check-time {
+    margin-left: 0.5rem;
+    color: var(--text-mute);
+    font-size: 0.78rem;
+  }
+
+  .signer-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .signer-list li {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+    font-size: 0.82rem;
+  }
+
+  .signer-label {
+    color: var(--text-mute);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .signer-time {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+  }
+
+  .refresh-form {
+    margin-top: 0.5rem;
+  }
+
+  .refresh-btn {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    color: var(--text-secondary);
+    padding: 0.4rem 0.85rem;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .refresh-btn:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
   }
 </style>

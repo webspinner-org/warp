@@ -16,6 +16,7 @@ export type AuditEventType =
   | 'wp.spinner.signed'
   | 'wp.spinner.verified'
   | 'wp.spinner.linted'
+  | 'wp.spinner.integrity-checked'
   | 'wp.thread.invoke';
 
 export type AuditResult = 'success' | 'denied' | 'error';
@@ -125,6 +126,22 @@ export interface AuditEventData {
     readonly allValid?: boolean;
     readonly unsigned?: boolean;
     readonly errorKind?: string;
+  };
+  /**
+   * Emitted once per `refreshIntegrity` operation. Records the new
+   * integrity verdict against the wp_skein row's previously-recorded
+   * digest. `transition` carries the before/after status so an
+   * auditor can spot when a Spinner went from verified → tampered.
+   */
+  'wp.spinner.integrity-checked': {
+    readonly spinnerName: SpinnerName;
+    readonly slug: string;
+    readonly bundlePath: string;
+    readonly previousStatus: string;
+    readonly newStatus: string;
+    readonly recordedDigest: string;
+    readonly observedDigest?: string;
+    readonly transitioned: boolean;
   };
   /**
    * Emitted once per `lintSpinnerBundle` operation. Success populates

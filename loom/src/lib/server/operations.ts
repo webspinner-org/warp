@@ -33,6 +33,7 @@ export type OperationKind =
   | 'spinner.sign'
   | 'spinner.verify'
   | 'spinner.lint'
+  | 'spinner.integrity-check'
   | 'spinner.author'
   | 'spinner.publish'
   | 'spinner.install'

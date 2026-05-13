@@ -12,14 +12,14 @@
         if (!hay.includes(needle)) return false;
       }
       if (filter === 'threadable' && !s.threadable) return false;
-      if (filter === 'verified' && s.integrity.kind !== 'verified') return false;
-      if (filter === 'pending' && s.integrity.kind !== 'pending-install') return false;
+      if (filter === 'verified' && s.integrityStatus !== 'verified') return false;
+      if (filter === 'pending' && s.integrityStatus !== 'pending-install') return false;
       return true;
     });
   });
 
-  function integrityLabel(integrity: { kind: string }): string {
-    switch (integrity.kind) {
+  function integrityLabel(status: string): string {
+    switch (status) {
       case 'verified':
         return 'Verified';
       case 'unsigned':
@@ -30,15 +30,28 @@
         return 'Tampered';
       case 'signature-invalid':
         return 'Signature invalid';
-      case 'unknown-signer':
-        return 'Unknown signer';
       default:
-        return integrity.kind;
+        return status;
     }
   }
 
-  function integrityClass(integrity: { kind: string }): string {
-    switch (integrity.kind) {
+  function sourceLabel(source: string): string {
+    switch (source) {
+      case 'genesis':
+        return 'Genesis';
+      case 'cell-authored':
+        return 'Cell';
+      case 'foundation-recognized':
+        return 'Foundation';
+      case 'third-party':
+        return '3rd-party';
+      default:
+        return source;
+    }
+  }
+
+  function integrityClass(status: string): string {
+    switch (status) {
       case 'verified':
         return 'ok';
       case 'unsigned':
@@ -46,7 +59,6 @@
         return 'warn';
       case 'digest-mismatch':
       case 'signature-invalid':
-      case 'unknown-signer':
         return 'bad';
       default:
         return '';
@@ -66,10 +78,19 @@
   <div class="search-field">
     <label for="skein-search" class="search-label">Search</label>
     <div class="search">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"/>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="11" cy="11" r="7" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
       <input
         id="skein-search"
@@ -83,14 +104,30 @@
   </div>
 
   <div class="filters" role="tablist" aria-label="Filter Spinners">
-    <button role="tab" aria-selected={filter === 'all'} class:active={filter === 'all'}
-      onclick={() => (filter = 'all')}>All</button>
-    <button role="tab" aria-selected={filter === 'verified'} class:active={filter === 'verified'}
-      onclick={() => (filter = 'verified')}>Verified</button>
-    <button role="tab" aria-selected={filter === 'threadable'} class:active={filter === 'threadable'}
-      onclick={() => (filter = 'threadable')}>Threadable</button>
-    <button role="tab" aria-selected={filter === 'pending'} class:active={filter === 'pending'}
-      onclick={() => (filter = 'pending')}>Pending install</button>
+    <button
+      role="tab"
+      aria-selected={filter === 'all'}
+      class:active={filter === 'all'}
+      onclick={() => (filter = 'all')}>All</button
+    >
+    <button
+      role="tab"
+      aria-selected={filter === 'verified'}
+      class:active={filter === 'verified'}
+      onclick={() => (filter = 'verified')}>Verified</button
+    >
+    <button
+      role="tab"
+      aria-selected={filter === 'threadable'}
+      class:active={filter === 'threadable'}
+      onclick={() => (filter = 'threadable')}>Threadable</button
+    >
+    <button
+      role="tab"
+      aria-selected={filter === 'pending'}
+      class:active={filter === 'pending'}
+      onclick={() => (filter = 'pending')}>Pending install</button
+    >
   </div>
 
   <span class="count" aria-live="polite">
@@ -109,14 +146,23 @@
   <ul class="list">
     {#each visible as s (s.slug)}
       <li>
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
         <a href={`/admin/spinners/${s.slug}`} class="row">
           <span class="icon" aria-hidden="true">
-            <img src={`/admin/spinners/${s.slug}/thumbnail`} alt="" loading="lazy" decoding="async" />
+            <img
+              src={`/admin/spinners/${s.slug}/thumbnail`}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           </span>
           <span class="main">
             <span class="title-row">
               <strong>{s.displayName}</strong>
-              <span class={`pill ${integrityClass(s.integrity)}`}>{integrityLabel(s.integrity)}</span>
+              <span class={`pill ${integrityClass(s.integrityStatus)}`}
+                >{integrityLabel(s.integrityStatus)}</span
+              >
+              <span class="source-chip" title={`source: ${s.source}`}>{sourceLabel(s.source)}</span>
             </span>
             <span class="meta">
               <code>{s.name}</code>
@@ -249,7 +295,10 @@
     cursor: pointer;
     font-family: inherit;
     letter-spacing: 0.02em;
-    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
   }
 
   .filters button:hover {
@@ -410,6 +459,19 @@
     flex-shrink: 0;
   }
 
+  .source-chip {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    border: 1px solid var(--line, #1f1f1f);
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: ui-monospace, 'SF Mono', monospace;
+  }
+
   .pill.ok {
     color: #8fb88f;
     border-color: #2a4020;
@@ -433,7 +495,9 @@
     font-size: 1.4rem;
     font-weight: 300;
     flex-shrink: 0;
-    transition: color 0.12s ease, transform 0.12s ease;
+    transition:
+      color 0.12s ease,
+      transform 0.12s ease;
     line-height: 1;
   }
 
