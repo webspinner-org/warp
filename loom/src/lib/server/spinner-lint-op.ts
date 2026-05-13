@@ -10,7 +10,7 @@
  *   4. Record one row in `wp_operations` with structured input/output.
  *   5. Emit one `wp.spinner.linted` audit event correlated to the op.
  *
- * Lint findings live on the operation's output for the patron/operator
+ * Lint findings live on the operation's output for the Webspinner/operator
  * to inspect at `/admin/operations/<opId>`; the audit event carries
  * the summary counts (errorCount, warningCount, ok) for compliance
  * filtering.

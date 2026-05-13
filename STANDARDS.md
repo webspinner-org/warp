@@ -31,14 +31,14 @@ Foundation design system. The Pablo library at
 - **Vocabulary**: "Synthetic Intelligence" or "SI" — never "AI" as
   a load-bearing standalone word. The full canonical vocabulary
   (Cell, Spinner, Spool, Skein, Silk Pattern, Warp Thread, Weaver,
-  Loom, Grimoire, Wizard, Patron) is operative.
+  Loom, Grimoire, Wizard, Webspinner) is operative.
 - **Accessibility**: WCAG AA on body text; AAA on prose surfaces.
   Focus-visible on every interactive control.
 - **Affordance**: each region earns its first line; one focal
   point per screen-height; F-pattern scan respected.
 
 **Operative discipline**: Pablo runs on every UI-producing
-Spinner's output *before delivery*. The Wizard does not see
+Spinner's output _before delivery_. The Wizard does not see
 un-reviewed UI.
 
 **Imagery — cinematic photorealistic illustration.** Where the
@@ -101,14 +101,14 @@ them.
 
 Nothing reaches the Wizard before `delivered`. Intermediate stages
 are private; the audit chain captures them; the Loom surfaces them
-to operators but not to patrons.
+to operators but not to Webspinners.
 
 A Spinner's manifest declares which stages it emits. A Warp Thread
 declares which stage of each step it consumes.
 
 **Operative discipline**: a Spinner that delivers a draft as the
 final output is a Spinner that violates Wow as Baseline (canon
-§17.5) and the *works the first time* clause of `VISION.md`.
+§17.5) and the _works the first time_ clause of `VISION.md`.
 
 ---
 
@@ -121,7 +121,7 @@ contract is named and versioned.**
 - Every capability's `inputSchema` and `outputSchema` carries its
   own SemVer in a top-level `$id` URN:
   `urn:webspinner:capability:<spinner-name>:<capability-name>:vMAJOR.MINOR.PATCH`.
-- Manifests declare *compatible version ranges* when a Spinner
+- Manifests declare _compatible version ranges_ when a Spinner
   depends on another's capability — `dependsOn: [{ name: ..., capability: ..., versionRange: "^1.2" }]`.
 - The Weaver enforces compatibility at install (registration) and at
   invocation (each call). Failure modes: `schema-incompatible-caller`,
@@ -133,7 +133,7 @@ contract is named and versioned.**
   pointer to the new field. The Loom surfaces deprecations to
   operators.
 
-This is the *only* way loosely-coupled Spinners stay agile across
+This is the _only_ way loosely-coupled Spinners stay agile across
 deployments. The alternative is a coordinated upgrade dance every
 time anyone changes a capability — exactly the rigidity the Wizard
 refuses.
@@ -164,7 +164,7 @@ write to a collection it did not declare.
 When the scale demands it, PocketBase is supplanted by Postgres +
 Qdrant per the canon's default stack. The contract — typed-but-
 flexible collections + vector store + Spool-mediated documents —
-does not change. This is the *doesn't preclude* discipline from
+does not change. This is the _doesn't preclude_ discipline from
 `STANCE.md`.
 
 ---
@@ -180,32 +180,32 @@ Canonical picks per architectural layer. These are reviewed when a
 better-maintained or more capable alternative emerges, or when the
 current pick is unmaintained for >12 months.
 
-| Layer | Pick | Why |
-|---|---|---|
-| Manifest validation | `ajv` | Fastest JSON Schema validator; supports Draft 2020-12 |
-| Bundle digest hashing | `@noble/hashes` (sha256) | Audited, zero-dependency, TS-first |
-| Signing | `@noble/curves` (ed25519) | Audited, zero-dependency, no native deps |
-| CLI shell | `commander` | Wide adoption; minimal API |
-| Interactive prompts | `@inquirer/prompts` | Modular, accessible, modern API |
-| JSON Pointer | `jsonpointer` | Focused, RFC 6901 compliant |
-| Rules engine | `json-logic-js` | Declarative, language-portable, the canonical parameter-driven-logic primitive |
-| State machines | `xstate` | Visualizable, typed, popular (or its patterns hand-rolled for Cell-local) |
-| Form schema | JSON Schema | Source of truth for form fields, validation, and bindings |
-| Form rendering | Svelte + JSON Schema renderer | Native to the Loom; renderer hand-rolled against JSON Schema |
-| Markdown | `marked` | Already in use; predictable |
-| Static site generation | Astro | Already in use on webspinner.ai; minimal JS, fast |
-| Web app framework | SvelteKit | Already in use on the Loom |
-| Structured DB | PocketBase (bootstrap); Postgres + Qdrant (scale) | Flexible-schema; parameter-driven |
-| Vector embedding | sentence-transformers MiniLM-L6-v2 (today); BGE-M3 (scale) | Cell-local; no off-Cell calls |
-| Re-ranker | BGE-reranker-v2 | Open weights; MLX-compatible |
-| Audit envelope | CloudEvents 1.0 | Industry standard; tooling-friendly |
-| Test framework | Vitest + Playwright | Already in use |
-| Image processing | `sharp` | Industry standard for Node |
-| Cinematic photorealistic illustration | OpenAI Image 2 via BYOK / LiteLLM | Wizard-validated quality bar; brand-aligned defaults possible via prompt patterns + Pablo's imagery library |
-| Container runner backend | OrbStack (Mac dev); Podman (Linux prod) | OSS where possible; OrbStack is dev-only convenience |
-| MicroVM runner backend | Firecracker | Apache 2.0; AWS-built; industry standard for ephemeral compute |
-| Full-VM runner backend | Lima (Mac); KVM direct (Linux) | OSS; well-understood |
-| Tracing | OpenTelemetry | Scale-only; not now (per STANCE.md) |
+| Layer                                 | Pick                                                       | Why                                                                                                         |
+| ------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Manifest validation                   | `ajv`                                                      | Fastest JSON Schema validator; supports Draft 2020-12                                                       |
+| Bundle digest hashing                 | `@noble/hashes` (sha256)                                   | Audited, zero-dependency, TS-first                                                                          |
+| Signing                               | `@noble/curves` (ed25519)                                  | Audited, zero-dependency, no native deps                                                                    |
+| CLI shell                             | `commander`                                                | Wide adoption; minimal API                                                                                  |
+| Interactive prompts                   | `@inquirer/prompts`                                        | Modular, accessible, modern API                                                                             |
+| JSON Pointer                          | `jsonpointer`                                              | Focused, RFC 6901 compliant                                                                                 |
+| Rules engine                          | `json-logic-js`                                            | Declarative, language-portable, the canonical parameter-driven-logic primitive                              |
+| State machines                        | `xstate`                                                   | Visualizable, typed, popular (or its patterns hand-rolled for Cell-local)                                   |
+| Form schema                           | JSON Schema                                                | Source of truth for form fields, validation, and bindings                                                   |
+| Form rendering                        | Svelte + JSON Schema renderer                              | Native to the Loom; renderer hand-rolled against JSON Schema                                                |
+| Markdown                              | `marked`                                                   | Already in use; predictable                                                                                 |
+| Static site generation                | Astro                                                      | Already in use on webspinner.ai; minimal JS, fast                                                           |
+| Web app framework                     | SvelteKit                                                  | Already in use on the Loom                                                                                  |
+| Structured DB                         | PocketBase (bootstrap); Postgres + Qdrant (scale)          | Flexible-schema; parameter-driven                                                                           |
+| Vector embedding                      | sentence-transformers MiniLM-L6-v2 (today); BGE-M3 (scale) | Cell-local; no off-Cell calls                                                                               |
+| Re-ranker                             | BGE-reranker-v2                                            | Open weights; MLX-compatible                                                                                |
+| Audit envelope                        | CloudEvents 1.0                                            | Industry standard; tooling-friendly                                                                         |
+| Test framework                        | Vitest + Playwright                                        | Already in use                                                                                              |
+| Image processing                      | `sharp`                                                    | Industry standard for Node                                                                                  |
+| Cinematic photorealistic illustration | OpenAI Image 2 via BYOK / LiteLLM                          | Wizard-validated quality bar; brand-aligned defaults possible via prompt patterns + Pablo's imagery library |
+| Container runner backend              | OrbStack (Mac dev); Podman (Linux prod)                    | OSS where possible; OrbStack is dev-only convenience                                                        |
+| MicroVM runner backend                | Firecracker                                                | Apache 2.0; AWS-built; industry standard for ephemeral compute                                              |
+| Full-VM runner backend                | Lima (Mac); KVM direct (Linux)                             | OSS; well-understood                                                                                        |
+| Tracing                               | OpenTelemetry                                              | Scale-only; not now (per STANCE.md)                                                                         |
 
 Hand-rolling reserved for: the Weaver dispatch table, the Mission
 Lock injection pattern, the Silk Pattern persistence shape, the
@@ -224,12 +224,12 @@ How this works in practice:
 1. The Wizard speaks the sentence.
 2. The authoring Spinner (the meta-Spinner) searches the Skein for
    existing Spinners with overlapping intent.
-3. It searches the Foundation library for *patterns* — accounting
+3. It searches the Foundation library for _patterns_ — accounting
    patterns, form patterns, site patterns, content patterns — that
    match the domain.
 4. It proposes the closest precedent as the starting point, named
-   explicitly: *"This is most like the small-business-CRM Spinner.
-   We can specialize from there. Shall we?"*
+   explicitly: _"This is most like the small-business-CRM Spinner.
+   We can specialize from there. Shall we?"_
 5. Specialization happens through parameter dialogue, not from-
    scratch coding. The precedent is the skeleton; the Wizard's
    answers fill in the parameters.
@@ -242,9 +242,9 @@ markdown file (or set of files) with the canonical structure,
 the canonical rules, the canonical UX, and the canonical
 parameters. Pablo's library was the first; many more follow.
 
-This is the architectural answer to the Wizard's *"the AI knows to
+This is the architectural answer to the Wizard's _"the AI knows to
 create an integrated general ledger, accounts payable, accounts
-receivable..."*. The AI knows because the *library* knows. The
+receivable..."_. The AI knows because the _library_ knows. The
 authoring conversation queries the library.
 
 ---
@@ -256,7 +256,7 @@ These standards are reviewed when:
 - A new pillar from `VISION.md` lands and changes what a Spinner
   must do.
 - A library on the open-source picks list is unmaintained for
-  >12 months.
+  > 12 months.
 - A measurably better alternative emerges in the open-source
   ecosystem (benchmarked on Cell workload; cited in
   `DECISIONS.md`).
@@ -266,7 +266,7 @@ These standards are reviewed when:
 
 ---
 
-*Updated 2026-05-12. These standards bind every Spinner authored
+_Updated 2026-05-12. These standards bind every Spinner authored
 in this Cell and every Spinner the Foundation recognizes through
 the Skein. Updates are append-only; previous versions live in
-git.*
+git._

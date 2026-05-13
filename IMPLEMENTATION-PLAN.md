@@ -3,7 +3,7 @@
 The methodical path from v0.7.0 (admin Cell + four operator-facing
 Spinners) to the operative milestone: **a Wizard uses Webspinner to
 create a Spinner and run it.** This document is the strategy + the
-methodology + the dependency-ordered work. It is *not* the canon
+methodology + the dependency-ordered work. It is _not_ the canon
 (`WARP-CANON.md`), the operational diary (`ROADMAP.md`), or the
 day-to-day in-flight register (`OPEN_QUESTIONS.md`). It sits between
 those — strategic enough to read in one sitting, operational enough
@@ -12,7 +12,7 @@ to drive the next ten commits.
 The webspinner.ai site is the public commitment. We do not lower its
 claims to match today's code. We ship the code that makes the claims
 true. Each tier below ends with a specific subset of the site's hero
-or pillar copy becoming *demonstrably* accurate; that becomes the
+or pillar copy becoming _demonstrably_ accurate; that becomes the
 release-tag trigger for the next public update.
 
 ---
@@ -29,7 +29,7 @@ These bind the work as operating discipline. They are not aspirational
    Half-finished work is not acceptable; partial work is acceptable
    only if the seam is named in `OPEN_QUESTIONS.md`.
 
-2. **Awesome design.** Every patron-visible surface passes Pablo
+2. **Awesome design.** Every Webspinner-visible surface passes Pablo
    review before ship. Every operational figure (Spinner anatomy,
    Capability Bus close-up, Warp Thread executor diagram) matches the
    Cell-Diagram visual register so the body of work reads as one
@@ -66,23 +66,23 @@ These bind the work as operating discipline. They are not aspirational
 
 A Wizard signed in at the Loom can:
 
-  1. **Describe** the Spinner she wants — kind, capabilities, voice
-     register, declared model, declared Spools, declared vault refs.
-  2. **Scaffold** a Spinner bundle from a template (consult / audit /
-     review / produce), pre-filled with the manifest skeleton,
-     mission-lock skeleton, how-it-works skeleton, thumbnail
-     placeholder, src/index.ts capability shell, package + tsconfig.
-  3. **Iterate** on the bundle with Pablo reviewing the surface, with
-     the Bootstrap Spinner auditing the mission-lock for drift, with
-     tests scaffolded and runnable.
-  4. **Sign** the bundle with her Cell's identity key (ed25519 over
-     the canonical digest).
-  5. **Register** the signed Spinner with the Weaver. Integrity
-     verifies. The Spinner appears in the Skein listing alongside
-     Bootstrap, Pablo, Wizard's Journal, Genesis.
-  6. **Run** it — invoke its capabilities through the standard
-     Spinner detail surface; the audit chain records every
-     invocation; the Silk Pattern accumulates.
+1. **Describe** the Spinner she wants — kind, capabilities, voice
+   register, declared model, declared Spools, declared vault refs.
+2. **Scaffold** a Spinner bundle from a template (consult / audit /
+   review / produce), pre-filled with the manifest skeleton,
+   mission-lock skeleton, how-it-works skeleton, thumbnail
+   placeholder, src/index.ts capability shell, package + tsconfig.
+3. **Iterate** on the bundle with Pablo reviewing the surface, with
+   the Bootstrap Spinner auditing the mission-lock for drift, with
+   tests scaffolded and runnable.
+4. **Sign** the bundle with her Cell's identity key (ed25519 over
+   the canonical digest).
+5. **Register** the signed Spinner with the Weaver. Integrity
+   verifies. The Spinner appears in the Skein listing alongside
+   Bootstrap, Pablo, Wizard's Journal, Genesis.
+6. **Run** it — invoke its capabilities through the standard
+   Spinner detail surface; the audit chain records every
+   invocation; the Silk Pattern accumulates.
 
 When this round-trip closes, "Webspinner creates Webspinner" is
 operative. That moment is the closing of Tier 1 below.
@@ -96,11 +96,11 @@ are the prerequisites; nothing further ships until they do.
 
 ### 0.1 Spinner signing — ed25519 over the canonical digest
 
-**Why.** The website hero promises *"sealed bundles, content-
-addressable digests, publisher signatures."* Today the first two are
+**Why.** The website hero promises _"sealed bundles, content-
+addressable digests, publisher signatures."_ Today the first two are
 real; signatures are spec-pending. Every other property of a Spinner
 — Foundation-recognized publication, federation across Cells, trust
-across the boundary of *anyone but the operator who built it* —
+across the boundary of _anyone but the operator who built it_ —
 depends on signing being real.
 
 **Definition of done.**
@@ -139,7 +139,7 @@ revocation registry land later.
 
 ### 0.2 Spinner authoring primitives — schema, validation, scaffolding
 
-**Why.** Before there is a `webspinner` CLI, there is the *grammar*
+**Why.** Before there is a `webspinner` CLI, there is the _grammar_
 the CLI operates on. The SDK has `SpinnerManifest` as a TypeScript
 type. To author a Spinner, the operator needs:
 
@@ -242,9 +242,9 @@ Authoring is the canonical non-technical-Wizard experience.
 - New nav entry "New Spinner" under the Spinners group.
 - The authoring conversation per `VISION.md` §"The authoring
   conversation" — Wizard speaks a sentence → Loom searches Skein
-  + Foundation library precedents → proposes a starting point →
-  walks dynamic clarifying-question forms → specializes the
-  bundle. Iterative *"make it more X"* refinement supported.
+  - Foundation library precedents → proposes a starting point →
+    walks dynamic clarifying-question forms → specializes the
+    bundle. Iterative _"make it more X"_ refinement supported.
 - The polishing pipeline (output staging per `STANDARDS.md` §3 —
   draft → reviewed → audited → polished → delivered). Pablo runs
   on UI; Bootstrap audits prose; both findings inform the polish
@@ -279,7 +279,7 @@ deploy logs as a meta-runtime UX precedent; look at Cloudflare
 Pages build logs; look at GitLab's pipeline UI; look at Argo's
 Workflow visualisation. Cite.
 
-**Risk.** The authoring surface is the highest-stakes patron-
+**Risk.** The authoring surface is the highest-stakes Webspinner-
 facing Wow-as-Baseline surface the Foundation will ship. Pablo
 reviews it weekly during build. The meta-runtime has its own
 risk surface — long-running operations that fail mid-stream need
@@ -293,8 +293,8 @@ Templates are the proven shapes the authoring conversation draws
 from — each is a full I-P-O contract plus a reference Spinner
 bundle the Wizard parameterizes through dialogue.
 
-The first three templates *are not the operator-internal categories
-I had earlier* (consult / audit / review / produce). Those remain
+The first three templates _are not the operator-internal categories
+I had earlier_ (consult / audit / review / produce). Those remain
 available as patterns for Spinner authors who need them — they are
 abstractions of what Bootstrap and Pablo already do — but they are
 not the first templates. The first templates are the archetypes
@@ -303,25 +303,25 @@ the Wizard named (`VISION.md` §"Three first authoring archetypes"):
 **Definition of done. Three archetype templates land in
 `~/warp/templates/`, each as a real working Spinner bundle:**
 
-- **`weave-website`** — *"I want a website for my bakery in
+- **`weave-website`** — _"I want a website for my bakery in
   Asheville that sells sourdough and pies and lets people
-  preorder."*
+  preorder."_
   Input: a one-sentence intent + clarifying answers via dynamic
   forms. Process: retrieves a static-site precedent from the
   Foundation library; specializes copy, navigation, brand; renders
   Astro source. Output: deployable site bundle + a hosted-
   microservice manifest for any forms it embeds.
 
-- **`weave-form`** — *"I need a contact form on my professional
-  services site that captures lead source and budget range."*
+- **`weave-form`** — _"I need a contact form on my professional
+  services site that captures lead source and budget range."_
   Input: a description of the form's purpose + field hints.
   Process: generates the form's JSON Schema, a Svelte renderer,
   and a microservice endpoint manifest with audit + Spool
   binding. Output: embeddable snippet + Cell-side microservice
   deployment ready to install.
 
-- **`weave-app-package`** — *"Create an integrated accounting
-  package for my small business."*
+- **`weave-app-package`** — _"Create an integrated accounting
+  package for my small business."_
   Input: a one-sentence application description. Process: searches
   the Foundation library for industry-best-practice precedents
   (for accounting: GL + AP + AR + invoicing + statements +
@@ -334,16 +334,17 @@ speaks the sentence; the Cell produces the thing; the thing
 works. That is the demo we land Tier 1 against.
 
 The earlier operator-internal categories (`consult`, `audit`,
-`review`, `produce`) are *available* as second-tier templates
-when the corpus of patron-archetype templates is mature. They
+`review`, `produce`) are _available_ as second-tier templates
+when the corpus of Webspinner-archetype templates is mature. They
 are not the priority.
 
 **Best open source.** Per `STANDARDS.md`: `ajv` for manifest +
 form-schema validation, `json-logic-js` for declarative business
 rules in produced applications, `marked` for prose emission,
 Astro programmatic API for `weave-website` site generation, Svelte
-+ JSON-Schema renderer for `weave-form` field rendering. No
-scaffolding-engine.
+
+- JSON-Schema renderer for `weave-form` field rendering. No
+  scaffolding-engine.
 
 **Empirical study.** Look at `create-svelte`, `create-next-app`,
 Vercel's "deploy template" flow. Look at how Bubble, Glide, and
@@ -353,7 +354,7 @@ templates handle precedent-based composition. Cite the prior art.
 
 **Risk.** The archetype templates are far more ambitious than the
 operator-internal ones. The first version of `weave-website` is
-expected to produce a *working, branded, accessible, deployed* site
+expected to produce a _working, branded, accessible, deployed_ site
 from one sentence. The quality bar from `VISION.md` (works the
 first time, elegantly branded, delights and astounds) is the gate.
 Pablo + Bootstrap reviewers are not optional — they are part of the
@@ -361,11 +362,11 @@ default pipeline. If Tier 1.3 ships a `weave-website` that needs
 a second pass to be acceptable, the standard is broken; fix the
 template, not the second pass.
 
-### 1.4 Pablo learns to review *Spinners*, not just rendered HTML
+### 1.4 Pablo learns to review _Spinners_, not just rendered HTML
 
 **Why.** Today Pablo reviews a rendered surface against the design
-library. Spinner authoring needs Pablo to review the *manifest +
-mission-lock* against a Spinner library. This is the same Pablo, a
+library. Spinner authoring needs Pablo to review the _manifest +
+mission-lock_ against a Spinner library. This is the same Pablo, a
 different cited library.
 
 **Definition of done.**
@@ -390,7 +391,7 @@ fixture.
 ---
 
 **At the end of Tier 1, the milestone is true.** The website's hero
-copy *Composition into Warp Threads* is still aspirational (that's
+copy _Composition into Warp Threads_ is still aspirational (that's
 Tier 2), but the rest of the pillars are demonstrably real for
 Spinners. The release that closes Tier 1 is `v1.0.0` — Webspinner
 creates Webspinner.
@@ -405,7 +406,7 @@ this Cell.
 
 ### 2.1 Warp Thread executor — composition runtime
 
-**Why.** The site's hero says *"composition into Warp Threads."*
+**Why.** The site's hero says _"composition into Warp Threads."_
 The manifest type exists; the executor doesn't. Until it does, the
 Foundation's composition story is OCI-Compose-shaped at best.
 
@@ -445,7 +446,7 @@ to defer the federation complexity to Tier 3.
 ### 2.2 Audit chain — cryptographic chaining
 
 **Why.** Today every audit event is durable but the chain is not
-*verifiable* — there is no Merkle linkage between events. For
+_verifiable_ — there is no Merkle linkage between events. For
 trust across federation, the chain needs to be verifiable.
 
 **Definition of done.**
@@ -539,31 +540,31 @@ release that closes Tier 2 is `v1.5.0`.
 
 ---
 
-## Tier 3 — patron path and federation
+## Tier 3 — Webspinner path and federation
 
 Tier 3 can begin in parallel with Tier 2 if scope is constrained.
-The items here open the architecture to *people who aren't the
-Wizard.* They are the gate between "Foundation-internal tool" and
+The items here open the architecture to _people who aren't the
+Wizard._ They are the gate between "Foundation-internal tool" and
 "a thing other Wizards adopt."
 
-### 3.1 First patron-facing Spinner
+### 3.1 First Webspinner-facing Spinner
 
 **Why.** Today every Spinner is operator-facing. Bootstrap is for
 the Wizard; Pablo is for the Wizard; the Journal is for the Wizard;
 Genesis is for the Wizard. The architecture's value proposition is
-that a Cell *does work for someone besides the Wizard.* Until a
-patron Spinner exists, that value is unproven.
+that a Cell _does work for someone besides the Wizard._ Until a
+Webspinner Spinner exists, that value is unproven.
 
 **Definition of done.**
 
 - A `weave-website` or `weave-form` or `weave-strategy-doc`
-  Spinner (pick one). Walks a patron through a request, produces
+  Spinner (pick one). Walks a Webspinner through a request, produces
   an artifact, exits with audit.
-- The Spinner's mission-lock declares the patron-path constraints
-  (no off-Cell inference; SI not AI in patron prose; em-dashes
+- The Spinner's mission-lock declares the Webspinner-path constraints
+  (no off-Cell inference; SI not AI in Webspinner prose; em-dashes
   preserved).
-- An artifact-emission contract: how does a Spinner *give the
-  patron the thing* it made? File download? Email send? Inline
+- An artifact-emission contract: how does a Spinner _give the
+  Webspinner the thing_ it made? File download? Email send? Inline
   render? Decide in `DECISIONS.md` before building.
 
 **Best open source.** Depends on the artifact kind. For a static-
@@ -573,24 +574,24 @@ core`. For email, the existing Resend integration.
 **Empirical study.** Look at how Vercel's v0, Anthropic Artifacts,
 and ChatGPT's Custom GPTs handle artifact emission. Cite.
 
-**Risk.** Scope explosion. Pick *one* patron Spinner; ship it end-
+**Risk.** Scope explosion. Pick _one_ Webspinner Spinner; ship it end-
 to-end before pitching a second.
 
-### 3.2 Patron Loom surface
+### 3.2 Webspinner Loom surface
 
-**Why.** The patron should not see `/admin/*`. A patron Loom is a
+**Why.** The Webspinner should not see `/admin/*`. A Webspinner Loom is a
 separate route family — `/weave`, `/spinner-name`, or a parallel
 hostname — with its own auth and its own visual register (still the
 Foundation brand, but stripped of operator chrome).
 
 **Definition of done.**
 
-- New routes outside `/admin/*` for patron interactions.
-- Patron auth in PocketBase: either a separate `patrons` collection
-  or a `role` field on `users` distinguishing operator from patron.
-- BYOK routing on the patron path honors the Wizard's vault, not
-  the patron's. (The patron does not see API keys.)
-- The Loom's session model handles operator + patron concurrently
+- New routes outside `/admin/*` for Webspinner interactions.
+- Webspinner auth in PocketBase: either a separate `Webspinners` collection
+  or a `role` field on `users` distinguishing operator from Webspinner.
+- BYOK routing on the Webspinner path honors the Wizard's vault, not
+  the Webspinner's. (The Webspinner does not see API keys.)
+- The Loom's session model handles operator + Webspinner concurrently
   without confusing one for the other.
 
 **Best open source.** Existing stack (SvelteKit + PocketBase).
@@ -600,7 +601,7 @@ No new dep.
 the "admin user vs end user in the same product" boundary. Cite.
 
 **Risk.** Session-confusion bugs. A leak between operator and
-patron auth would be catastrophic. Write the e2e tests first;
+Webspinner auth would be catastrophic. Write the e2e tests first;
 implement after.
 
 ### 3.3 Capability Bus wire format
@@ -679,16 +680,17 @@ in the vault, rotation path documented, revocation list (even if
 stub) before broad publication.
 
 **Operator burden at standup.** Today Genesis exists but registering
-+ verifying as a Wizard + running the Cell is multiple manual steps.
-For real adoption, target one command: `webspinner cell init`
-that runs Genesis, generates the bootstrap state, deploys the
-services, and prints the verified-Wizard URL. That's the demo a
-peer Wizard runs at acquisition.
 
-**Patron auth contamination.** The most dangerous architectural
+- verifying as a Wizard + running the Cell is multiple manual steps.
+  For real adoption, target one command: `webspinner cell init`
+  that runs Genesis, generates the bootstrap state, deploys the
+  services, and prints the verified-Wizard URL. That's the demo a
+  peer Wizard runs at acquisition.
+
+**Webspinner auth contamination.** The most dangerous architectural
 risk in Tier 3 — a session boundary leak between operator and
-patron — needs e2e tests before any patron flow ships. Treat
-patron auth as security-critical from the first commit.
+Webspinner — needs e2e tests before any Webspinner flow ships. Treat
+Webspinner auth as security-critical from the first commit.
 
 ---
 
@@ -705,7 +707,7 @@ private work. The contract between them:
   release-tag trigger.
 - **The `/roadmap` page is the seam.** As long as everything
   aspirational in the hero is named on `/roadmap`, the site is
-  honest. The roadmap is updated *after* each shipment, never
+  honest. The roadmap is updated _after_ each shipment, never
   before.
 - **No tier ships behind a flag.** "Soft launch" is technical
   debt. A capability is either operative or not implemented; the
@@ -730,12 +732,12 @@ locks. Add to `OPEN_QUESTIONS.md` if not already there.
 - **Warp Thread durability** — full event-sourcing vs snapshot-
   per-step? Performance vs recoverability tradeoff. Reference:
   Temporal's design notes; cite.
-- **Re-ranker latency budget** — what's the patron-perceptible
+- **Re-ranker latency budget** — what's the Webspinner-perceptible
   ceiling on retrieval-augmented invocations? Target sub-second
   end-to-end excluding generation; measure on Kepler before
   adopting BGE.
-- **Patron BYOK vs operator BYOK** — when the patron asks for
-  off-Cell inference, does the patron supply a key, or does the
+- **Webspinner BYOK vs operator BYOK** — when the Webspinner asks for
+  off-Cell inference, does the Webspinner supply a key, or does the
   operator's key carry the cost? Canon §7 implies both flows;
   pick one as the v1 default, defer the other.
 
@@ -745,12 +747,12 @@ locks. Add to `OPEN_QUESTIONS.md` if not already there.
 
 The next four release tags, in order, mapped to this plan:
 
-| Tag | Closes |
-|---|---|
-| `v0.8.0` | Tier 0.1 (signing) + Tier 0.2 (authoring primitives) |
-| `v0.9.0` | Tier 1.1 (CLI) + Tier 1.3 (templates) |
+| Tag      | Closes                                                                               |
+| -------- | ------------------------------------------------------------------------------------ |
+| `v0.8.0` | Tier 0.1 (signing) + Tier 0.2 (authoring primitives)                                 |
+| `v0.9.0` | Tier 1.1 (CLI) + Tier 1.3 (templates)                                                |
 | `v1.0.0` | Tier 1.2 (in-Loom authoring) + Tier 1.4 (Pablo reviews Spinners) — **the milestone** |
-| `v1.5.0` | Tier 2 in aggregate (Warp Threads + audit chain + Spool registry + WRAG re-ranker) |
+| `v1.5.0` | Tier 2 in aggregate (Warp Threads + audit chain + Spool registry + WRAG re-ranker)   |
 
 Tier 3 is sized and tagged when Tier 2 lands.
 
@@ -761,7 +763,7 @@ Tier 3 is sized and tagged when Tier 2 lands.
 This plan is a working artifact. When a tier item ships, mark it in
 `ROADMAP.md` and promote the corresponding `DECISIONS.md` entry.
 When a tier item changes (scope grows, dependency surfaces, prior-
-art study reveals a better path), update this file *first*, then
+art study reveals a better path), update this file _first_, then
 implement. The plan is the operative shape of the work — the canon
 is the architecture, this document is the path through it.
 
@@ -770,5 +772,5 @@ update this plan to reconcile.
 
 ---
 
-*Updated 2026-05-12. Current tag: v0.7.0. Next milestone: v1.0.0,
-Webspinner-creates-Webspinner.*
+_Updated 2026-05-12. Current tag: v0.7.0. Next milestone: v1.0.0,
+Webspinner-creates-Webspinner._

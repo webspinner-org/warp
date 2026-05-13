@@ -1,16 +1,16 @@
-# PATRON-AUTHOR-TESTPLAN.md — end-to-end UX test for the first patron-author arc
+# WEBSPINNER-AUTHOR-TESTPLAN.md — end-to-end UX test for the first Webspinner-author arc
 
-The first patron-shaped test of the Warp architecture: a Wizard (or eventual
-patron) sits at the Loom in their browser and produces a working Spinner
+The first Webspinner-shaped test of the Warp architecture: a Wizard (or eventual
+Webspinner) sits at the Loom in their browser and produces a working Spinner
 end-to-end through the admin UI. This file is the running checklist for
 "are we ready to do that test yet?"
 
-Updated as batches in the patron-author arc land. The Wizard executes the
+Updated as batches in the Webspinner-author arc land. The Wizard executes the
 live test when every required surface is checked.
 
 ---
 
-## The scenario — what the patron does, in order
+## The scenario — what the Webspinner does, in order
 
 ```
 1.  /admin                  — Cell status loads
@@ -34,7 +34,7 @@ A successful run produces:
 - One `wp_skein` row with `integrityStatus: 'verified'`.
 - Two `wp_operations` rows: `spinner.install`, `spinner.invoke`.
 - Three `wp_audit` events: `wp.spinner.installed`, `wp.spinner.invoke`,
-  optionally `wp.spinner.integrity-checked` if the patron clicks refresh.
+  optionally `wp.spinner.integrity-checked` if the Webspinner clicks refresh.
 - Zero soft-failures on the Loom side.
 
 ---
@@ -61,7 +61,7 @@ A successful run produces:
 | **2** | `wp_skein` writer + reader                                     | 3, 10, 13 — install records + integrity badges   | ✓ shipped |
 | **3** | `spinner.install` meta-runtime op + `tools/webspinner install` | 7 — the install pipeline writes a `wp_skein` row | ✓ shipped |
 | **4** | First template: `hello-spinner`                                | 5, 6 — the scaffold the form copies from         | pending   |
-| **5** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the patron-facing form                 | pending   |
+| **5** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the Webspinner-facing form             | pending   |
 
 Each batch is a separate LLD + approval + build cycle.
 
@@ -108,12 +108,12 @@ loop run. Documented so the test isn't surprising.
   _"template + form → Spinner"_ path. Conversational authoring is Tier 1.2.
 - **Pablo + Bootstrap auto-polish loop on the authored Spinner** — the
   install op (batch 3) signs and registers, but does NOT auto-invoke
-  Pablo/Bootstrap. The patron does that manually via existing buttons.
+  Pablo/Bootstrap. The Webspinner does that manually via existing buttons.
   Auto-polish is a future enhancement.
 - **SI log-interpreter** — operation errors show their `kind` string
   (`manifest-invalid`, `signature-invalid`) not plain-language explanations.
   Substrate is in place; the interpreter Spinner is Tier 3.
-- **Patron auth** — this test runs as Wizard (`_superusers`). The patron-
+- **Webspinner auth** — this test runs as Wizard (`_superusers`). The Webspinner-
   user flow (with per-user filtering on `wp_skein` and `wp_operations`) is
   Tier 3.
 - **`/admin/signing/{sign,verify}` rename to `/admin/spinners/{sign,verify}`**
@@ -146,14 +146,14 @@ If any pre-flight check fails, the failure surface is one of:
 
 - Deploy hygiene (run `tools/deploy-loom` again with `--typecheck`)
 - Creds (re-check `~/.warp/bootstrap/` on the host running CLIs)
-- A patron-author batch having a regression (re-lint, re-run tests)
+- A Webspinner-author batch having a regression (re-lint, re-run tests)
 - Pablo finding a UI regression on the refactored pages (fix and re-ship)
 
 ---
 
 ## Success criteria — the live test passes when
 
-1. **Every step 1–13 completes without an error surfacing to the patron.**
+1. **Every step 1–13 completes without an error surfacing to the Webspinner.**
    Operation rows + audit events get written. The Spinner directory exists
    on disk. The integrity badge says "verified."
 
@@ -174,10 +174,10 @@ If any pre-flight check fails, the failure surface is one of:
 
 4. **The Wizard's reaction is "that was easy."** This is the architectural
    target from `VISION.md` §"The quality bar": _delights and astounds._
-   The patron-author arc gets us to _"works the first time."_ Delight is a
+   The Webspinner-author arc gets us to _"works the first time."_ Delight is a
    later, polish-driven concern.
 
 ---
 
 _Updated as batches land. This file is the running test plan for the
-patron-author arc; reconcile after every commit that touches batch 2–5._
+Webspinner-author arc; reconcile after every commit that touches batch 2–5._

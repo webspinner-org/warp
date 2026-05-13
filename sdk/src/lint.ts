@@ -176,7 +176,7 @@ export async function lintSpinnerBundle(
     findings.push({
       severity: 'warning',
       rule: 'doc-content',
-      message: `how-it-works is ${howItWorksBytes.byteLength} bytes; the patron-facing bar is ≥${MIN_DOC_LENGTH} bytes`,
+      message: `how-it-works is ${howItWorksBytes.byteLength} bytes; the Webspinner-facing bar is ≥${MIN_DOC_LENGTH} bytes`,
       field: '/documentation/howItWorks',
     });
   }

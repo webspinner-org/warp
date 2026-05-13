@@ -24,7 +24,7 @@ const VALID_STATUSES: readonly OperationStatus[] = ['ok', 'failed', 'partial'];
 
 const VALID_ACTOR_KINDS: readonly OperationActor['kind'][] = [
   'wizard',
-  'patron',
+  'webspinner',
   'meta-runtime',
   'system',
 ];

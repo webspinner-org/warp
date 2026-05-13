@@ -2,7 +2,7 @@
 
 The operative promise. Read this with `STANCE.md` (how we work),
 `STANDARDS.md` (what we build to), and `IMPLEMENTATION-PLAN.md`
-(the path through it). This file is the *why*.
+(the path through it). This file is the _why_.
 
 When this file conflicts with `WARP-CANON.md`, the canon wins.
 Update this file when the promise grows.
@@ -32,8 +32,8 @@ take. They are real use cases; demonstrating them is the work.
 
 ### 1. A complete website from one sentence
 
-> *"I want a website for my bakery in Asheville that sells sourdough
-> and pies and lets people preorder."*
+> _"I want a website for my bakery in Asheville that sells sourdough
+> and pies and lets people preorder."_
 
 The Cell produces a deployable static site — brand-aligned, well-
 typed, accessibility-checked — with a preorder form bound to a
@@ -44,8 +44,8 @@ Wizard speaks at; the Cell handles them.
 
 ### 2. An embeddable form with full microservice binding
 
-> *"I need a contact form on my professional services site that
-> captures lead source and budget range."*
+> _"I need a contact form on my professional services site that
+> captures lead source and budget range."_
 
 The Cell produces a form snippet ready to embed in any host site,
 plus a microservice endpoint that receives, validates, audits, and
@@ -55,7 +55,7 @@ all generated. The Wizard pastes one snippet. It works.
 
 ### 3. A whole-application package
 
-> *"Create an integrated accounting package for my small business."*
+> _"Create an integrated accounting package for my small business."_
 
 The Cell knows what this implies — General Ledger, Accounts
 Payable, Accounts Receivable, invoice + statement production, check
@@ -80,8 +80,8 @@ The pattern, in five turns:
 
 1. **The Wizard speaks one sentence.** Intent in plain words.
 2. **The Cell searches the Skein and the Foundation library** for
-   the closest matching precedent. *Webspinner has done something
-   like this before; here is the shape we know works.*
+   the closest matching precedent. _Webspinner has done something
+   like this before; here is the shape we know works._
 3. **The Cell proposes a starting point** and surfaces a dynamic
    form of clarifying questions — the questions are specific to the
    precedent, not generic.
@@ -92,7 +92,7 @@ The pattern, in five turns:
    draft → reviewed → audited → polished → delivered. What lands in
    front of the Wizard is the polished version. It is the artifact.
 
-If the Wizard says *"make it more X,"* the Cell adapts. The
+If the Wizard says _"make it more X,"_ the Cell adapts. The
 conversation continues. The Wizard never sees scaffolding, never
 sees an error, never sees an "incomplete" intermediate. The Cell's
 internal stages are private; the Wizard sees only the artifact, and
@@ -103,7 +103,7 @@ only when it is ready.
 ## The quality bar
 
 Three operative requirements, named by the Wizard, binding on every
-patron-facing artifact:
+Webspinner-facing artifact:
 
 1. **Works the first time.** There is no "v0 ships rough, v1
    polishes it" pattern. The first thing the Wizard sees is the
@@ -118,12 +118,12 @@ patron-facing artifact:
 3. **Delights and astounds.** Every artifact exceeds what the Wizard
    imagined when they spoke the sentence. Defaults are excellent.
    Edge cases are designed. Error states are illustrated. The
-   Wizard's reaction is *"how did you know I needed that?"*
+   Wizard's reaction is _"how did you know I needed that?"_
 
 The bar is high deliberately. The Foundation's differentiation against
 contemporary AI tooling is precisely this: every other tool ships
 something usable and asks the user to refine. Webspinner ships
-something *finished* and asks the Wizard if they want to refine
+something _finished_ and asks the Wizard if they want to refine
 further. The default state is good.
 
 ---
@@ -135,7 +135,7 @@ A consequence map. Each is reflected in `STANDARDS.md` and
 
 - **The first authored Spinners are not operator-internal tooling.**
   Essay-drafting, journal-recording, Cell-provisioning — those are
-  the substrate. The first Spinners we *demonstrate* are the
+  the substrate. The first Spinners we _demonstrate_ are the
   archetypes above. The plan's Tier 1.3 templates retarget
   accordingly.
 
@@ -156,7 +156,7 @@ A consequence map. Each is reflected in `STANDARDS.md` and
 - **Pablo and Bootstrap are reviewers, not just authors' tools.**
   Pablo gates every UI-producing Spinner's output. Bootstrap gates
   every prose-producing Spinner's output. They are operative parts
-  of the patron-facing pipeline, not optional pre-publication
+  of the Webspinner-facing pipeline, not optional pre-publication
   hygiene.
 
 - **Composition is essential, not aspirational.** Whole-application
@@ -173,7 +173,7 @@ The Foundation's reason to exist is that the synthetic-intelligence
 revolution otherwise concentrates power in the operators of
 hyperscale systems. The Pledge (canon §11) names what the Foundation
 will refuse to do. This vision names what the Foundation will
-*build*.
+_build_.
 
 Normal people — bakers, lawyers, small-business owners, teachers,
 artists, parents — have real intent. They speak it in plain words.
@@ -187,7 +187,7 @@ Spinners are the work. The Wizard is the subject.
 
 ---
 
-*Updated 2026-05-12. This vision belongs to the current epoch. When
+_Updated 2026-05-12. This vision belongs to the current epoch. When
 the first non-technical Wizard stands up a Cell from a Foundation-
 provided template and produces their first artifact, the vision
-evolves.*
+evolves._

@@ -188,3 +188,43 @@ Today's "ground the entire canon" works because the canon is small (~30 KB → ~
 - A dep goes unmaintained for >12 months (forces the dep-audit cadence).
 
 Until a trigger fires, the discipline lives in the Wizard's review + the operative commitments here.
+
+## Terminology debt — "patron" remaining in pre-existing files
+
+**Question:** Per `DECISIONS.md` 2026-05-12 — _Vocabulary correction: "Webspinner" is the canonical role term_ — the canonical role term is **Webspinner**, not **patron**. My recent work has been corrected. Pre-existing files retain "patron" usage.
+
+**Drift remaining:**
+
+- `spinners/pablo/library/contrast.md`, `cards.md`, `f-pattern-scanning.md`,
+  `brand-consistency.md`, `progress-revealing.md` — design citations
+  refer to "the patron" as the UI user.
+- `spinners/pablo/mission-lock.md`, `how-it-works.md`, `README.md`,
+  `src/index.ts` — Pablo's framing.
+- `spinners/bootstrap/how-it-works.md` — Bootstrap's framing.
+- `loom/src/lib/server/kepler.ts` — `// patron-path generation` etc.
+- `loom/src/lib/server/weaver.ts` — line 547 has the Bootstrap
+  Spinner's vocabulary list including `/ Patron`; lines 593, 597
+  reference patron-facing copy.
+- `loom/src/lib/server/turnstile.ts` — comment mentioning
+  "patron-facing registration."
+- `ROADMAP.md` — pre-existing content references patron auth, patron
+  Loom, patron path.
+- References to `POLICY-PATRON-PATH-LLM.md` (different repo at
+  `~/webspinner-work/`).
+
+**Status:** Open. Sound as old usage; consistent within each file but
+drifts from the canon.
+
+**Trigger to land:** Either (1) a dedicated terminology-debt cleanup
+batch when the Wizard wants it, or (2) opportunistic — each file gets
+its terms updated when touched for another reason (`tools/audit` on
+the file should now flag the drift as an error, since the canon's
+position is established in `DECISIONS.md` 2026-05-12).
+
+The Bootstrap Spinner's drift-detection vocabulary list in
+`weaver.ts:547` (which lists `/ Patron` as a canonical term) is
+particularly load-bearing — `tools/audit` reads from that list when
+evaluating drift. Updating that list to use "Webspinner" instead of
+"Patron" would propagate the correction through every future audit
+run; that's the highest-leverage single edit for this debt, if
+prioritized.

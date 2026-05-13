@@ -2,7 +2,7 @@
  * `wp_operations` — the meta-runtime operation log.
  *
  * Every multi-step task the Loom performs on the Wizard's (or
- * eventually the patron's) behalf writes one row here at the end of
+ * eventually the Webspinner's) behalf writes one row here at the end of
  * execution. The row captures the envelope of the operation:
  *   - what kind of operation it was
  *   - who triggered it
@@ -16,7 +16,7 @@
  * tell the full story.
  *
  * This is the substrate the SI log-interpreter Spinner will read when
- * the patron asks "what went wrong?" — it scans recent operations for
+ * the Webspinner asks "what went wrong?" — it scans recent operations for
  * `status: failed`, walks the linked audit events, and translates.
  *
  * The collection is created idempotently on first write so the Loom
@@ -44,8 +44,8 @@ export type OperationKind =
 export type OperationStatus = 'ok' | 'failed' | 'partial';
 
 export interface OperationActor {
-  /** wizard | patron | meta-runtime | system */
-  readonly kind: 'wizard' | 'patron' | 'meta-runtime' | 'system';
+  /** wizard | Webspinner | meta-runtime | system */
+  readonly kind: 'wizard' | 'webspinner' | 'meta-runtime' | 'system';
   readonly id: string;
   readonly email?: string;
 }
@@ -53,19 +53,19 @@ export interface OperationActor {
 /**
  * Map an OperationActor to an AuditActor. The audit chain uses the
  * SDK's coarser actor taxonomy (`human | spinner | system`); the
- * operation log uses our finer one (`wizard | patron | meta-runtime |
+ * operation log uses our finer one (`wizard | Webspinner | meta-runtime |
  * system`). This is the single canonical mapping.
  */
 export function operationActorToAuditActor(actor: OperationActor): AuditActor {
   const kindMap = {
     wizard: 'human',
-    patron: 'human',
+    webspinner: 'human',
     'meta-runtime': 'spinner',
     system: 'system',
   } as const;
   const authMethodMap = {
     wizard: 'pb-superuser',
-    patron: 'pb-user',
+    webspinner: 'pb-user',
     'meta-runtime': 'cell-identity',
     system: 'system',
   } as const;

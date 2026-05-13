@@ -484,3 +484,67 @@ If the system is too complex for a senior engineer to maintain in a day, we're h
 **The canon is the source of truth, not the code.** If an LLM corrupts the code across many small changes, the canon still says what the code SHOULD do. `tools/audit` detects drift between code and canon; `tools/ship` gates on findings; the Wizard approves every batch. **Audit + journal + Wizard approval is the operative defense against LLM-driven architectural drift.**
 
 **Codification deferred** to future batches per `OPEN_QUESTIONS.md` — a `DEPENDENCIES.md` document, an ESLint custom rule (`no-direct-tier0-imports`), and a `tools/simplicity-audit` Spinner. Why deferred: per `STANCE.md` (_"build the primitive that scales, don't build the scaling apparatus before there is scale"_), the architectural commitment is real and operative in how I work; codifying it now is the scaling apparatus. When a real violation forces it, we ship the codification.
+
+## 2026-05-12 — Vocabulary correction: "Webspinner" is the canonical role term
+
+**Decision:** The canonical term for the user/customer role is **"Webspinner"** (not "patron"). The Wizard corrected this in conversation after noticing the drift in a recent LLD.
+
+**Per `WARP-CANON.md` (multiple sections):**
+
+- §17.3 — _"Webspinner builds Webspinner."_
+- §17.4 — _"The Webspinner is never left wondering what is going on."_
+- §17.5 — _"Every UX surface the Webspinner sees..."_; _"the Webspinner is not a CLI user."_
+- §19.1 — _"a required How It Works document the Loom renders for the Webspinner."_
+- §19.7 — _"The Webspinner UX is everything."_; _"A Spinner must not silently use the Webspinner's data..."_
+
+The vocabulary table in §2 does NOT formally enumerate role terms (it lists architectural primitives — Cell, Loom, Weaver, etc.) — but the canon's usage throughout treats "Webspinner" as the operative role name.
+
+**Role taxonomy:**
+
+| Term                          | Meaning                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| **Webspinner**                | The user / customer — the person whose intent the Cell honors                   |
+| **Wizard**                    | The operator — the Webspinner with administrative responsibilities for the Cell |
+| **Spinner**                   | The AI Agent (the runnable artifact authored by Webspinners)                    |
+| **The Webspinner Foundation** | The organization that stewards the architecture                                 |
+
+In the bootstrap epoch with one operator, **Wizard = Webspinner = the same person** (this Wizard authors his own Spinners). When peer Wizards adopt Cells, **a Cell has one Wizard (operator) but may serve many Webspinners (users).**
+
+**Drift to correct in this batch (my recent work, last ~10 commits):**
+
+- `VISION.md`, `STANCE.md`, `STANDARDS.md`, `ARTIFACTS-AND-STORAGE.md`,
+  `IMPLEMENTATION-PLAN.md` — "patron" → "Webspinner" throughout
+- `PATRON-AUTHOR-TESTPLAN.md` → renamed to
+  `WEBSPINNER-AUTHOR-TESTPLAN.md` + content updated
+- Recent `DECISIONS.md` entries I authored — "patron" → "Webspinner"
+- `loom/src/lib/server/operations.ts` — `OperationActor.kind` enum
+  member `'patron'` → `'webspinner'`
+- All op + route files that constructed actors with `kind: 'patron'`
+- `sdk/src/lint.ts` — comment about "patron-facing" doc bar
+
+**Drift NOT corrected in this batch (logged in `OPEN_QUESTIONS.md`):**
+
+- `spinners/pablo/library/*.md` — Pablo's design citations refer to
+  "the patron" as the UI user; touching these means re-reviewing the
+  design assertions.
+- `spinners/pablo/{mission-lock,how-it-works,README}.md` — same.
+- `spinners/bootstrap/how-it-works.md` — pre-existing.
+- `loom/src/lib/server/{kepler,weaver,turnstile}.ts` — pre-existing
+  infra comments + the Bootstrap Spinner's drift-detection vocabulary
+  list at `weaver.ts:547` (`/ Patron`).
+- `ROADMAP.md` — pre-existing content.
+- References to `POLICY-PATRON-PATH-LLM.md` (different repo,
+  `~/webspinner-work/`).
+
+These remain "patron" until a dedicated terminology-debt cleanup batch
+or until the file is touched for other reasons. They are a known drift,
+flagged in `OPEN_QUESTIONS.md`.
+
+**Why this matters:** the canon is the source of truth. Vocabulary drift
+between my recent work and the canon is the kind of slow corruption the
+simplicity-budget principle in `DECISIONS.md` 2026-05-12 (earlier entry)
+explicitly warns against — _"an LLM corrupts the code across many small
+changes"_ via subtle drift. Catching it here, before it propagates to
+the patron-author UI form, is exactly the discipline `tools/audit` is
+supposed to enforce. The retroactive `tools/audit` sweep on Kepler
+would have caught this; it's been in the reconcile queue.

@@ -18,7 +18,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     if (!r.ok) throw error(401, 'Session expired.');
     actorEmail = r.value.record.email;
     actorId = r.value.record.id;
-    actorKind = 'patron';
+    actorKind = 'webspinner';
   } else {
     const r = await refreshSuperuser(fetch, session.token);
     if (!r.ok) throw error(401, 'Session expired.');
