@@ -77,6 +77,18 @@ async function openWeaversTensionIndex(page: Page): Promise<void> {
 
 async function startRun(page: Page): Promise<string> {
   log('step', `start a run of "${SCENARIO_SLUG}"`);
+  // Capture every response to the ?/start endpoint for diagnostics.
+  page.on('response', (resp) => {
+    if (
+      resp.request().method() === 'POST' &&
+      resp.url().includes(`/admin/weavers-tension/${SCENARIO_SLUG}`)
+    ) {
+      log(
+        'info',
+        `[startRun POST response] ${resp.status()} ${resp.url()} origin=${resp.request().headers()['origin'] ?? '<none>'}`,
+      );
+    }
+  });
   const form = page.locator(`form[action="/admin/weavers-tension/${SCENARIO_SLUG}?/start"]`);
   await form.waitFor({ timeout: 5_000 });
   await Promise.all([
