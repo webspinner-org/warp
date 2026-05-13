@@ -41,8 +41,8 @@ function log(level: 'info' | 'ok' | 'fail' | 'step', msg: string): void {
 async function login(page: Page): Promise<void> {
   log('step', `login as ${PB_EMAIL}`);
   await page.goto(`${BASE}/login`);
-  await page.fill('input[name="email"]', PB_EMAIL);
-  await page.fill('input[name="password"]', PB_PASSWORD);
+  await page.fill('input[name="wizard_id"]', PB_EMAIL);
+  await page.fill('input[name="passphrase"]', PB_PASSWORD);
   await Promise.all([
     page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 10_000 }),
     page.click('button[type="submit"]'),
