@@ -32,6 +32,7 @@ const COLLECTION = 'wp_operations';
 export type OperationKind =
   | 'spinner.sign'
   | 'spinner.verify'
+  | 'spinner.lint'
   | 'spinner.author'
   | 'spinner.publish'
   | 'spinner.install'

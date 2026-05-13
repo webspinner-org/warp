@@ -15,6 +15,7 @@ export type AuditEventType =
   | 'wp.spinner.integrity.fail'
   | 'wp.spinner.signed'
   | 'wp.spinner.verified'
+  | 'wp.spinner.linted'
   | 'wp.thread.invoke';
 
 export type AuditResult = 'success' | 'denied' | 'error';
@@ -123,6 +124,21 @@ export interface AuditEventData {
     }[];
     readonly allValid?: boolean;
     readonly unsigned?: boolean;
+    readonly errorKind?: string;
+  };
+  /**
+   * Emitted once per `lintSpinnerBundle` operation. Success populates
+   * digest + counts; the linter's findings live on the operation row
+   * in `wp_operations.output`. Early failures (path-not-allowed,
+   * manifest-invalid) populate only bundlePath + errorKind.
+   */
+  'wp.spinner.linted': {
+    readonly bundlePath: string;
+    readonly spinnerName?: SpinnerName;
+    readonly ok?: boolean;
+    readonly digest?: string;
+    readonly errorCount?: number;
+    readonly warningCount?: number;
     readonly errorKind?: string;
   };
   'wp.thread.invoke': {

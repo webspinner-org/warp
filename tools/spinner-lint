@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+#
+# tools/spinner-lint — validate a Spinner bundle through the Loom.
+#
+# Usage:
+#   tools/spinner-lint <bundle-path>
+#   tools/spinner-lint <bundle-path> --json
+#
+# Bundle paths must live under ~/warp/spinners/ or ~/Cells/spinners/.
+# The Loom validates manifest schema, required files, digest
+# computability, and quality heuristics (doc length, capability
+# schemas, license recognition). Findings are tagged error / warning
+# / info. The CLI gates on error-severity; warnings are advisory.
+#
+# Auth: same /login pattern as tools/audit and tools/webspinner.
+#
+# Exit codes:
+#   0  lint passed (warnings OK)
+#   1  lint reported error findings (would gate sign / install)
+#   2  setup error (missing creds, bad arguments)
+#   3  auth failed
+#   4  server-side error
+
+set -euo pipefail
+
+LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
+if [ -n "${WARP_BOOTSTRAP_DIR:-}" ]; then
+  BOOTSTRAP_DIR="$WARP_BOOTSTRAP_DIR"
+elif [ -r "$HOME/.warp/bootstrap/pb-email" ]; then
+  BOOTSTRAP_DIR="$HOME/.warp/bootstrap"
+elif [ -r "$HOME/.si-native/bootstrap/pb-email" ]; then
+  BOOTSTRAP_DIR="$HOME/.si-native/bootstrap"
+else
+  BOOTSTRAP_DIR="$HOME/.warp/bootstrap"
+fi
+COOKIE_JAR="$(mktemp -t spinner-lint-cookies-XXXXXX)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+bundle_path=''
+output='pretty'
+
+usage() {
+  sed -n '4,18p' "$0"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) output='json'; shift;;
+    -h|--help) usage; exit 0;;
+    -*) echo "unknown flag: $1" >&2; exit 2;;
+    *)
+      if [ -z "$bundle_path" ]; then bundle_path="$1"; shift
+      else echo "error: extra argument: $1" >&2; exit 2; fi;;
+  esac
+done
+
+if [ -z "$bundle_path" ]; then usage; exit 2; fi
+
+# Resolve to absolute path.
+case "$bundle_path" in
+  /*) ;;
+  *) bundle_path="$(cd "$(dirname "$bundle_path")" 2>/dev/null && pwd)/$(basename "$bundle_path")";;
+esac
+
+require_creds() {
+  if [ ! -r "$BOOTSTRAP_DIR/pb-email" ] || [ ! -r "$BOOTSTRAP_DIR/pb-password" ]; then
+    echo "error: missing $BOOTSTRAP_DIR/pb-email or pb-password" >&2
+    exit 2
+  fi
+}
+
+login() {
+  local email pass body status
+  email="$(cat "$BOOTSTRAP_DIR/pb-email")"
+  pass="$(cat "$BOOTSTRAP_DIR/pb-password")"
+  body=$(curl -sS -c "$COOKIE_JAR" -w "\n%{http_code}" \
+    -H "Origin: $LOOM_BASE" \
+    --data-urlencode "wizard_id=$email" \
+    --data-urlencode "passphrase=$pass" \
+    "$LOOM_BASE/login" 2>/dev/null || echo $'\n000')
+  status="${body##*$'\n'}"
+  body="${body%$'\n'*}"
+  if [ "$status" != "200" ]; then
+    echo "error: login failed (HTTP $status)" >&2
+    exit 3
+  fi
+  is_success=$(echo "$body" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+except Exception:
+  print('0:could-not-parse'); sys.exit(0)
+if d.get('type') == 'redirect' and '/admin' in d.get('location', ''):
+  print('1'); sys.exit(0)
+data = d.get('data', '')
+if isinstance(data, str):
+  try:
+    parsed = json.loads(data)
+    if isinstance(parsed, list) and len(parsed) > 1:
+      print('0:' + str(parsed[1])); sys.exit(0)
+  except Exception:
+    pass
+  print('0:' + data)
+elif isinstance(data, dict):
+  print('0:' + str(data.get('error', data)))
+else:
+  print('0:unknown-shape')
+" 2>/dev/null || echo '0:parse-failed')
+  if [ "${is_success%%:*}" != "1" ]; then
+    echo "error: login rejected — ${is_success#*:}" >&2
+    exit 3
+  fi
+}
+
+require_creds
+login
+
+endpoint="$LOOM_BASE/admin/spinners/lint"
+payload=$(python3 -c "
+import json, sys
+print(json.dumps({'bundlePath': sys.argv[1]}))
+" "$bundle_path")
+
+http_response=$(curl -sS -b "$COOKIE_JAR" -w "\n%{http_code}" -X POST \
+  -H "Content-Type: application/json" \
+  -H "Origin: $LOOM_BASE" \
+  -d "$payload" \
+  "$endpoint" 2>/dev/null || echo $'\n000')
+http_status="${http_response##*$'\n'}"
+response="${http_response%$'\n'*}"
+
+if [ "$http_status" != "200" ] && [ "$http_status" != "400" ]; then
+  echo "error: HTTP $http_status from Loom" >&2
+  echo "$response" >&2
+  exit 4
+fi
+
+if [ "$output" = 'json' ]; then
+  echo "$response" | python3 -m json.tool
+  if [ "$http_status" = "200" ]; then exit 0; else exit 1; fi
+fi
+
+# Pretty-print.
+echo "$response" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+if not r.get('ok'):
+  err = r.get('error', {})
+  print(f\"  ✗ lint failed: {err.get('kind', 'unknown')}\", file=sys.stderr)
+  detail = err.get('detail') or err.get('path')
+  if detail: print(f\"    detail: {detail}\", file=sys.stderr)
+  sys.exit(1)
+v = r.get('value', {})
+
+digest = v.get('digest', '(not computed)')
+stats = v.get('bundleStats', {})
+cap_count = stats.get('capabilityCount', 0)
+doc_count = stats.get('declaredDocCount', 0)
+size = stats.get('bundleSizeBytes', 0)
+err_count = v.get('errorCount', 0)
+warn_count = v.get('warningCount', 0)
+findings = v.get('findings', [])
+op_id = v.get('opId', '')
+
+print(f\"  {cap_count} capabilities · {doc_count} docs · {size} bytes\")
+print(f\"  digest:  {digest}\")
+print(f\"  status:  {'CLEAN' if err_count == 0 and warn_count == 0 else ('PASSED (warnings)' if err_count == 0 else 'FAILED')}\")
+print()
+
+if findings:
+  print(f\"  findings ({err_count} error{'s' if err_count != 1 else ''}, {warn_count} warning{'s' if warn_count != 1 else ''}):\")
+  print()
+  glyph = {'error': '[ERR]', 'warning': '[WRN]', 'info': '[INF]'}
+  for f in findings:
+    sev = f.get('severity', 'info')
+    rule = f.get('rule', '?')
+    field = f.get('field', '')
+    msg = f.get('message', '')
+    print(f\"    {glyph.get(sev, '[?  ]')} {rule}{('  ' + field) if field else ''}\")
+    print(f\"           {msg}\")
+    print()
+
+print(f\"  opId: {op_id}\")
+sys.exit(0 if err_count == 0 else 1)
+"

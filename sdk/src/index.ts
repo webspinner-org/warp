@@ -74,6 +74,11 @@ export type {
 } from './provenance.js';
 export { writeProvenance, readProvenance, verifyProvenance } from './provenance.js';
 
+export type { LintFinding, LintBundleStats, LintResult } from './lint.js';
+export { lintSpinnerBundle } from './lint.js';
+
+export { spinnerManifestSchema } from './spinner-manifest-schema.js';
+
 export type {
   WarpThreadManifest,
   WarpThreadName,

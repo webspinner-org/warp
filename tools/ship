@@ -289,6 +289,78 @@ print(len(warns))
   fi
 fi
 
+# ── spinner-lint ──────────────────────────────────────────────────────
+# Detect bundle directories touched by this batch (any change under
+# spinners/*/) and lint each via tools/spinner-lint. Errors gate;
+# warnings advise. Same soft-fail-on-Loom-unreachable pattern.
+
+lint_warnings=0
+lint_failed_loom='false'
+changed_bundle_dirs=$(git status --porcelain=v1 \
+  | awk '$1 ~ /[AM?]/ {print $NF}' \
+  | grep -E '^spinners/[^/]+/' \
+  | awk -F/ '{print $1 "/" $2}' \
+  | sort -u || true)
+if [ -n "$changed_bundle_dirs" ]; then
+  echo
+  echo "▸ spinner-lint (tools/spinner-lint per changed bundle)"
+  while IFS= read -r bundle; do
+    [ -z "$bundle" ] && continue
+    bundle_abs="$(pwd)/$bundle"
+    echo "  · $bundle"
+    if ! lint_out=$(tools/spinner-lint --json "$bundle_abs" 2>&1); then
+      if echo "$lint_out" | grep -q "login failed\|login rejected\|HTTP 000\|missing.*pb-email"; then
+        lint_failed_loom='true'
+        break
+      fi
+      # If the JSON parses with ok:false (lint had errors), the script
+      # exits 1 but still emits valid JSON. Parse below.
+      :
+    fi
+    # Parse the result.
+    err_count=$(echo "$lint_out" | python3 -c "
+import json, sys
+try: r = json.load(sys.stdin)
+except: print(-1); sys.exit(0)
+if r.get('ok'):
+  v = r.get('value', {})
+  print(v.get('errorCount', 0))
+else:
+  print(-1)
+" 2>/dev/null || echo -1)
+    warn_count=$(echo "$lint_out" | python3 -c "
+import json, sys
+try: r = json.load(sys.stdin)
+except: print(0); sys.exit(0)
+if r.get('ok'):
+  v = r.get('value', {})
+  print(v.get('warningCount', 0))
+else:
+  print(0)
+" 2>/dev/null || echo 0)
+    if [ "$err_count" = "-1" ]; then
+      echo "    [ERR] op-level failure (see JSON):"
+      echo "$lint_out" | python3 -m json.tool >&2 || echo "$lint_out" >&2
+      echo "✗ spinner-lint failed on $bundle — not shipping" >&2
+      exit 1
+    fi
+    if [ "$err_count" -gt 0 ]; then
+      echo "    [ERR] $err_count error finding(s) — not shipping"
+      echo "$lint_out" | python3 -m json.tool >&2
+      exit 1
+    fi
+    if [ "$warn_count" -gt 0 ]; then
+      echo "    [WRN] $warn_count warning(s) (shipping anyway)"
+      lint_warnings=$((lint_warnings + warn_count))
+    else
+      echo "    ✓ clean"
+    fi
+  done <<< "$changed_bundle_dirs"
+  if [ "$lint_failed_loom" = 'true' ]; then
+    echo "  ⚠ Loom unreachable — spinner-lint skipped (reconcile on Kepler)"
+  fi
+fi
+
 # ── compose commit ────────────────────────────────────────────────────
 
 if [ -n "$message_file" ]; then
@@ -395,6 +467,8 @@ echo "  commit:       $short"
 [ "$push" = 'true' ]   && echo "  pushed:       $([ "$push_failed" = 'false' ] && echo yes || echo NO — RETRY)"
 [ "$audit_warnings" -gt 0 ] && echo "  audit:        $audit_warnings warning(s)"
 [ "$audit_failed_loom" = 'true' ] && echo "  audit:        skipped (Loom unreachable — reconcile)"
+[ "$lint_warnings" -gt 0 ] && echo "  spinner-lint: $lint_warnings warning(s)"
+[ "$lint_failed_loom" = 'true' ] && echo "  spinner-lint: skipped (Loom unreachable — reconcile)"
 [ "$journal" = 'true' ] && echo "  journal:      $([ "$journal_failed" = 'false' ] && echo recorded || echo PENDING — RECONCILE)"
 [ "$bootstrap_refresh" = 'true' ] && [ "$journal" = 'true' ] && [ "$journal_failed" = 'false' ] \
   && echo "  bootstrap:    $([ "$bootstrap_failed" = 'false' ] && echo refreshed || echo PENDING)"
@@ -402,5 +476,5 @@ echo "────────────────────────�
 
 # Exit code priority: push failure > Loom warnings > clean.
 if [ "$push_failed" = 'true' ]; then exit 4; fi
-if [ "$audit_failed_loom" = 'true' ] || [ "$journal_failed" = 'true' ]; then exit 3; fi
+if [ "$audit_failed_loom" = 'true' ] || [ "$lint_failed_loom" = 'true' ] || [ "$journal_failed" = 'true' ]; then exit 3; fi
 exit 0
