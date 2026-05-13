@@ -305,7 +305,7 @@ Mender is v2.
 Two bugs the Wizard surfaced after my "passes e2e twice" report. The
 e2e harness misses both because it auths as `wizard@webspinner.foundation`
 (a `_superusers` token); the Wizard testing in Safari auths as
-`johndavidmarx@gmail.com` (a `users` token). Pattern: **the harness
+a user-collection account (a `users` token). Pattern: **the harness
 must exercise the user-token path, not only the superuser path**.
 
 ### Bug 1 — install op fails with `identity-failed` / `{"kind":"auth"}` under a user-token session

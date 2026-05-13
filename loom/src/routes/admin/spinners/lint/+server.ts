@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session.js';
-import { refreshSuperuser } from '$lib/server/pocketbase.js';
+import { refreshSuperuser, loomPbToken } from '$lib/server/pocketbase.js';
 import { refreshUser } from '$lib/server/users.js';
 import { lintSpinnerBundleOp } from '$lib/server/spinner-lint-op.js';
 import type { OperationActor } from '$lib/server/operations.js';
@@ -32,11 +32,17 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     throw error(400, 'bundlePath required');
   }
 
+  // Bearer = Loom superuser, not session.token. See sign/+server.ts.
+  const pbToken = await loomPbToken(fetch);
+  if (!pbToken) {
+    throw error(500, 'Loom PB credentials missing — set WARP_PB_EMAIL/PASSWORD.');
+  }
+
   const result = await lintSpinnerBundleOp({
     bundlePath: body.bundlePath,
     actor: { kind: actorKind, id: actorId, email: actorEmail },
     fetch,
-    pbToken: session.token,
+    pbToken,
   });
 
   if (!result.ok) {

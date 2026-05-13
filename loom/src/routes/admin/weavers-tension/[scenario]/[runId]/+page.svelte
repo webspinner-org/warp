@@ -245,6 +245,17 @@
           onEscalate: async (step, reason, evidence) => {
             escalation = { stepKey: step.key, reason, evidence };
             runStatus = 'failed';
+            // Persist the terminal state so the index list doesn't
+            // show a phantom "in-progress" until the staleness reaper
+            // catches it. Best-effort: if the server call fails the
+            // UI still shows failed and the reaper handles the rest.
+            try {
+              const fd = new FormData();
+              fd.set('reason', reason);
+              await callAction('markFailed', fd);
+            } catch (e) {
+              console.error('markFailed call failed', e);
+            }
           },
           onFinish: async () => {
             runStatus = 'completed';

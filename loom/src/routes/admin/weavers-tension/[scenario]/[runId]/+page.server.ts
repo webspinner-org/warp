@@ -222,6 +222,37 @@ export const actions: Actions = {
     return { ok: true };
   },
 
+  // Mark the run failed (escalation surfaced; patron paused or
+  // stopped reacting). Persists the terminal state to wp_weavers_tension_runs
+  // so the index doesn't show a phantom "in-progress" until the
+  // staleness reaper picks it up. Distinct from `abort` in that
+  // it doesn't redirect — the patron stays on the player to
+  // review evidence + decide what to do next.
+  markFailed: async ({ params, request, fetch, cookies }) => {
+    const session = getSession(cookies);
+    if (!session) throw error(401, 'Not authenticated.');
+    const pbToken = await loomPbToken(fetch);
+    if (!pbToken) return fail(500, { error: 'no-pb-token' });
+    const loaded = await getScenario(params.scenario);
+    if (!loaded.ok) return fail(404, { error: 'scenario-not-found' });
+    const found = await getRun(fetch, pbToken, params.runId);
+    if (!found.ok || !found.run) return fail(404, { error: 'run-not-found' });
+    const fd = await request.formData();
+    const reason = String(fd.get('reason') ?? 'verifier escalation');
+    const actor = await actorFromSession(fetch, session);
+    const r = await abortRun(
+      { fetch, pbToken, actor },
+      {
+        run: found.run,
+        scenario: loaded.value,
+        atStepIndex: found.run.currentStepIndex,
+        reason,
+      },
+    );
+    if (!r.ok) return fail(500, { error: r.error.kind });
+    return { ok: true };
+  },
+
   finish: async ({ params, fetch, cookies }) => {
     const session = getSession(cookies);
     if (!session) throw error(401, 'Not authenticated.');

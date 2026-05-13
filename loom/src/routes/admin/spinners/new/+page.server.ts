@@ -248,11 +248,17 @@ export const actions: Actions = {
       });
     }
 
+    // Bearer for Loom-privileged operations (vault, identity, audit,
+    // operations, skein) is the Loom's superuser token from
+    // loomPbToken — NOT session.token. User-collection JWTs don't
+    // bypass PB collection rules and would 403 on wp_cell_identity.
+    // Actor identity stays session-derived (the wizard or webspinner
+    // initiating the request); only the bearer is uplifted.
     const installResult = await installSpinnerBundle({
       bundlePath: destDir,
       actor: { kind: actorKind, id: actorId, email: actorEmail },
       fetch,
-      pbToken: session.token,
+      pbToken,
       masterKey,
     });
     if (!installResult.ok) {

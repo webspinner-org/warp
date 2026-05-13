@@ -62,10 +62,11 @@ gate accepts a verified user.
 **2.1** After verification, you're at `/admin`. Look at the hero.
 
 > Expect:
->   - Title "Webspinner Foundation Cell" in manuscript serif.
->   - "Signed in as <your-email>" italic underneath.
->   - Five stat tiles on the right: Release (`v0.6.0`), commit (`baab449` or
->     similar 7-char hash), Spinners (`4`), Journal entries (`?`), Loom up (e.g. `2m`).
+>
+> - Title "Webspinner Foundation Cell" in manuscript serif.
+> - "Signed in as <your-email>" italic underneath.
+> - Five stat tiles on the right: Release (`v0.6.0`), commit (`baab449` or
+>   similar 7-char hash), Spinners (`4`), Journal entries (`?`), Loom up (e.g. `2m`).
 
 **2.2** Look at the three action cards.
 
@@ -96,12 +97,13 @@ the cyan "Review this page" pill in the ribbon.
 **3.2** When the panel populates:
 
 > Expect:
->   - Verdict pill: `passes`, `concerns`, or `fails`.
->   - One-sentence plain verdict line.
->   - "Pablo's voice" blockquote in italic serif — theatrical French painter register.
->   - 0-5 findings as severity-bordered cards. Each has a category chip, a source path
->     (e.g. `library/contrast.md`), the offending finding, the verbatim evidence in
->     monospace, and a `Fix:` line.
+>
+> - Verdict pill: `passes`, `concerns`, or `fails`.
+> - One-sentence plain verdict line.
+> - "Pablo's voice" blockquote in italic serif — theatrical French painter register.
+> - 0-5 findings as severity-bordered cards. Each has a category chip, a source path
+>   (e.g. `library/contrast.md`), the offending finding, the verbatim evidence in
+>   monospace, and a `Fix:` line.
 
 **3.3** Press **ESC** to close the panel.
 
@@ -152,13 +154,15 @@ test of the record capability. Why: validates the format.` Leave Supersedes empt
 **4.3.2** Run.
 
 > Expect: instant (no LLM). A drafted DECISIONS.md entry rendered in monospace:
->   ```
->   ## 2026-05-11 — Test entry from the walkthrough
 >
->   **Decision:** This is a test of the record capability.
+> ```
+> ## 2026-05-11 — Test entry from the walkthrough
 >
->   **Why:** validates the format.
->   ```
+> **Decision:** This is a test of the record capability.
+>
+> **Why:** validates the format.
+> ```
+>
 > Plus a "Copy" button that copies to your clipboard.
 
 ### 4.4 — `surface`
@@ -222,9 +226,10 @@ On Kepler:
 ```
 
 > Expect:
->   - First command: `recorded · action · First terminal entry` + id + timestamp.
->   - Second: 2-3 entries with cosine similarity scores.
->   - Third: full markdown context printed, plus `wrote: /Users/johndavidmarx/warp/BOOTSTRAP.md`.
+>
+> - First command: `recorded · action · First terminal entry` + id + timestamp.
+> - Second: 2-3 entries with cosine similarity scores.
+> - Third: full markdown context printed, plus `wrote: ~/warp/BOOTSTRAP.md`.
 
 Verify `~/warp/BOOTSTRAP.md` exists and has the markdown context.
 
@@ -241,10 +246,11 @@ HTTP path, the `writeTo` file write.
 ```
 
 > Expect:
->   - First: "No drift found. The Foundation blesses this artifact." (mission-lock
->     is canon-aligned).
->   - Second: drift findings — "AI" should be flagged (SI not AI), "tenants" should
->     be flagged (Cell not tenant), "accounts" likely flagged.
+>
+> - First: "No drift found. The Foundation blesses this artifact." (mission-lock
+>   is canon-aligned).
+> - Second: drift findings — "AI" should be flagged (SI not AI), "tenants" should
+>   be flagged (Cell not tenant), "accounts" likely flagged.
 
 **Validates:** the Bootstrap.audit capability via CLI; retrieval + Quiet Loom +
 evidence discipline.
@@ -290,19 +296,20 @@ write capabilities.
 Click **Provision Toolchain** tab. Run.
 
 > Expect: ~5-10s. JSON result (fallback rendering for Genesis):
->   ```json
->   {
->     "host": { "platform": "darwin", "uname": "Darwin Johns-Mac-Studio …", "macosVersion": "ProductVersion: …" },
->     "tools": {
->       "brew": { "present": true, "version": "Homebrew …", "path": "/opt/homebrew/bin/brew" },
->       "node": { "present": true, "version": "vXX.X.X", "path": "/opt/homebrew/bin/node" },
->       …
->     },
->     "missing": [],
->     "ready": true,
->     "note": "Toolchain is ready. Genesis can proceed to deployGrimoire / deployLoom."
->   }
->   ```
+>
+> ```json
+> {
+>   "host": { "platform": "darwin", "uname": "Darwin Johns-Mac-Studio …", "macosVersion": "ProductVersion: …" },
+>   "tools": {
+>     "brew": { "present": true, "version": "Homebrew …", "path": "/opt/homebrew/bin/brew" },
+>     "node": { "present": true, "version": "vXX.X.X", "path": "/opt/homebrew/bin/node" },
+>     …
+>   },
+>   "missing": [],
+>   "ready": true,
+>   "note": "Toolchain is ready. Genesis can proceed to deployGrimoire / deployLoom."
+> }
+> ```
 
 ### 9.2 — `verifyCell` (read-only)
 
@@ -374,9 +381,10 @@ Nav → Audit log.
 **11.1** Look at the page. Should show all the activity from §3 onward.
 
 > Expect:
->   - Header "Audit log" + lede saying "N entries total; showing the M most recent."
->   - Three filter dropdowns: event type, result, window.
->   - Wide table with When · Type · Source · Subject · Actor · Result · Reason.
+>
+> - Header "Audit log" + lede saying "N entries total; showing the M most recent."
+> - Three filter dropdowns: event type, result, window.
+> - Wide table with When · Type · Source · Subject · Actor · Result · Reason.
 
 **11.2** Use the "event type" dropdown → filter to `wp.spinner.invoke`. URL gains
 `?type=wp.spinner.invoke`. Page reloads.
@@ -456,11 +464,11 @@ user. You're back at `/admin`.
 
 Open `/admin/journal` and write the founding entry:
 
-  - kind: **decision**
-  - title: `Webspinner Foundation Cell — v0.7.0 functional test complete`
-  - body: `Walked TESTPLAN.md end-to-end. Gaps found: <list yours>. Next: <list yours>.`
-  - tags: `walkthrough, founding, v0.7`
-  - public: off
+- kind: **decision**
+- title: `Webspinner Foundation Cell — v0.7.0 functional test complete`
+- body: `Walked TESTPLAN.md end-to-end. Gaps found: <list yours>. Next: <list yours>.`
+- tags: `walkthrough, founding, v0.7`
+- public: off
 
 Run `tools/wj bootstrap --write` from terminal. The new entry becomes the current
 focus in the resume context.
@@ -470,7 +478,7 @@ becomes the next session's bootstrap; the next Claude session knows what shipped
 
 ---
 
-## What this test plan does *not* cover
+## What this test plan does _not_ cover
 
 - Genesis writes (`generateBootstrapState` with `force`, `seedVault`, `deployGrimoire`,
   `deployLoom`) — they touch live services and should run only against a fresh host
@@ -490,9 +498,9 @@ These are tracked in `OPEN_QUESTIONS.md` and stay there until they ship.
 
 If a step doesn't behave as expected:
 
-  - **`/` or `/admin` returns HTTP 500 with "Cannot find module '...chunks/<hash>.js'"** — stale build manifest. Run `~/warp/tools/deploy-loom` on Kepler (clean rebuild + bootout/bootstrap; the safe reload). `launchctl kickstart -k` alone is NOT enough after a rebuild that regenerates chunk hashes — it restarts the process but the on-disk manifest references chunks vite already deleted.
-  - **Loom unreachable (no response at all)** — `launchctl kickstart -k gui/$(id -u)/foundation.webspinner.loom` on Kepler. If kickstart doesn't help, run `~/warp/tools/deploy-loom` (full reload).
-  - **Quiet Loom slow / hanging** — `tail ~/Library/Logs/webspinner-mlx-server/stderr.log`; if the semaphore-leak signal appears (`OPEN_QUESTIONS.md` — *Quiet Loom — 14B model stability*), bootout/bootstrap the mlx-server.
-  - **PocketBase errors in the Loom log** — `tail ~/Library/Application Support/Webspinner Foundation/Loom/logs/loom.err.log`.
-  - **Pablo hallucinated CSS** — the in-browser button captures computed styles; the CLI path doesn't (yet). Use ⌘⇧P for accuracy.
-  - **A finding looks wrong** — write a journal entry tagged `pablo-feedback` with the surface name and the misread. The Mission Lock evolves from these.
+- **`/` or `/admin` returns HTTP 500 with "Cannot find module '...chunks/<hash>.js'"** — stale build manifest. Run `~/warp/tools/deploy-loom` on Kepler (clean rebuild + bootout/bootstrap; the safe reload). `launchctl kickstart -k` alone is NOT enough after a rebuild that regenerates chunk hashes — it restarts the process but the on-disk manifest references chunks vite already deleted.
+- **Loom unreachable (no response at all)** — `launchctl kickstart -k gui/$(id -u)/foundation.webspinner.loom` on Kepler. If kickstart doesn't help, run `~/warp/tools/deploy-loom` (full reload).
+- **Quiet Loom slow / hanging** — `tail ~/Library/Logs/webspinner-mlx-server/stderr.log`; if the semaphore-leak signal appears (`OPEN_QUESTIONS.md` — _Quiet Loom — 14B model stability_), bootout/bootstrap the mlx-server.
+- **PocketBase errors in the Loom log** — `tail ~/Library/Application Support/Webspinner Foundation/Loom/logs/loom.err.log`.
+- **Pablo hallucinated CSS** — the in-browser button captures computed styles; the CLI path doesn't (yet). Use ⌘⇧P for accuracy.
+- **A finding looks wrong** — write a journal entry tagged `pablo-feedback` with the surface name and the misread. The Mission Lock evolves from these.

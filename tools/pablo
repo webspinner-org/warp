@@ -24,8 +24,8 @@ LABEL="${2:-${ROUTE}}"
 TOPIC="${3:-Walk this surface and tell me what is wrong.}"
 
 LOOM_BASE="${WARP_LOOM_BASE:-http://johns-mac-studio.local:3000}"
-PABLO_DIR="${WARP_PABLO_DIR:-/Users/johndavidmarx/warp/spinners/pablo}"
-TOKEN_FILE="${WARP_DEV_BYPASS_TOKEN_FILE:-/Users/johndavidmarx/.warp/bootstrap/dev-bypass-token}"
+PABLO_DIR="${WARP_PABLO_DIR:-$HOME/warp/spinners/pablo}"
+TOKEN_FILE="${WARP_DEV_BYPASS_TOKEN_FILE:-$HOME/.warp/bootstrap/dev-bypass-token}"
 MLX="${WARP_QUIET_LOOM_URL:-http://127.0.0.1:11445}"
 MODEL="${WARP_PABLO_MODEL:-mlx-community/Qwen2.5-14B-Instruct-4bit}"
 
