@@ -267,3 +267,33 @@ when the first non-trivial Cell-authored Spinner is built.
 **Trigger to land:** the first Spinner template (`weave-website`,
 `weave-form`, `weave-app-package` from `VISION.md`) that actually
 calls into the SDK at runtime.
+
+---
+
+## 2026-05-12 — Agentic build loop (next pillar)
+
+**Question:** Can the Webspinner architecture host a cluster of
+cooperating Spinners that close the build loop — author code,
+verify behaviour, critique drift, heal failures — without the
+Wizard in every iteration? Human-in-the-loop retreats to **release
+gating** only. Strategic direction and Pledge enforcement remain
+human-in-the-loop; the iteration itself becomes the cluster's job.
+
+**Why it matters:** Today Claude Code is one undifferentiated lump
+trying to be author + tester + critic + chat-partner. The roles
+fight each other; the chat-partner role bottlenecks the rest.
+Pablo proved a fit-for-purpose SI can iterate without the Wizard.
+This question asks whether that proof generalises to the full
+build loop.
+
+**Where the thinking lives:** `AGENTIC-BUILD-LOOP.md` at the repo
+root — proposed roles (Author / Witness / Pablo / Mender), MVP cut,
+open sub-questions on coordination, deployment, brief format,
+test-pattern simplification.
+
+**Trigger to land:** the next Spinner the Wizard wants authored.
+Build it through the loop instead of through Claude Code.
+
+**Status:** Open. Note captured at end of v2 Weaver's Tension
+iteration. Author v0 + Witness v0 is the smallest closed loop;
+Mender is v2.
