@@ -61,7 +61,7 @@ A successful run produces:
 | **2** | `wp_skein` writer + reader                                     | 3, 10, 13 — install records + integrity badges   | ✓ shipped |
 | **3** | `spinner.install` meta-runtime op + `tools/webspinner install` | 7 — the install pipeline writes a `wp_skein` row | ✓ shipped |
 | **4** | First template: `hello-spinner` + scaffold helper              | 5, 6 — the scaffold the form copies from         | ✓ shipped |
-| **5** | Weaver dynamic dispatch for Cell-authored Spinners             | 9 — invoking the newly-authored Spinner          | pending   |
+| **5** | Weaver dynamic dispatch for Cell-authored Spinners             | 9 — invoking the newly-authored Spinner          | ✓ shipped |
 | **6** | `/admin/spinners/new` UI                                       | 4, 6, 7 — the Webspinner-facing form             | pending   |
 
 Each batch is a separate LLD + approval + build cycle.

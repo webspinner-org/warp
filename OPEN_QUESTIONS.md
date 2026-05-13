@@ -228,3 +228,42 @@ evaluating drift. Updating that list to use "Webspinner" instead of
 "Patron" would propagate the correction through every future audit
 run; that's the highest-leverage single edit for this debt, if
 prioritized.
+
+## Cells/spinners workspace resolution
+
+**Question:** Cell-authored Spinners at `~/Cells/spinners/<slug>/` cannot resolve `@webspinner-foundation/sdk` (or any other workspace package) when their entrypoint is dynamically imported by the Weaver. The current pnpm workspace at `~/warp/` only includes `sdk`, `loom`, `spinners/*`. `~/Cells/spinners/*` is outside the workspace.
+
+**Today's limitation:**
+
+- Hello-spinner template + every Spinner scaffolded from it: works,
+  because the entrypoint has zero external imports (just plain TS
+  functions exported as default + named).
+- Any Spinner that imports from `@webspinner-foundation/sdk`, `ajv`,
+  or anything else: fails at `import()` time with module-not-found.
+
+**Two paths to land:**
+
+1. **Add `~/Cells/spinners/*` to `pnpm-workspace.yaml`.** Then every
+   Cell-authored Spinner's `package.json` (which declares
+   `@webspinner-foundation/sdk: workspace:*`) auto-resolves via the
+   pnpm symlink graph. Side effect: every Cell-authored Spinner
+   contributes to the workspace `pnpm install` and its tests would
+   be discovered by `pnpm -r test`. Acceptable during bootstrap;
+   might need filtering at scale.
+
+2. **The install op runs `pnpm install` in the bundle directory.**
+   Each bundle gets its own `node_modules/`. Heavier on disk; works
+   even when bundles aren't workspace members. Closer to how the
+   federation epoch will need to work (when peer Cells install
+   foreign bundles).
+
+**Recommendation:** start with (1) for bootstrap; migrate to (2) when
+federation-recognized Spinners arrive (those must be self-contained,
+not workspace-linked).
+
+**Status:** Open. Hello-spinner doesn't need this; the gap surfaces
+when the first non-trivial Cell-authored Spinner is built.
+
+**Trigger to land:** the first Spinner template (`weave-website`,
+`weave-form`, `weave-app-package` from `VISION.md`) that actually
+calls into the SDK at runtime.

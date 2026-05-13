@@ -12,19 +12,18 @@ import type {
   AuditResult,
   SpinnerManifest,
   SpinnerName,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   SpoolName,
   SpoolPassage,
 } from '@webspinner-foundation/sdk';
 import { authSuperuser } from './pocketbase.js';
 import { decryptValue, type EncryptedValue } from './crypto.js';
-import {
-  callAnthropic,
-  resolveAnthropicModel,
-  AnthropicCallError,
-} from './anthropic.js';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { callAnthropic, resolveAnthropicModel, AnthropicCallError } from './anthropic.js';
 import { quietLoomChat, resolveKeplerModel, KeplerCallError } from './kepler.js';
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
 import { readSpool, knownSpools } from './spools.js';
+import { dispatchCellAuthored } from './weaver-cell-dispatch.js';
 import {
   ensureJournalCollection,
   createEntry,
@@ -32,6 +31,7 @@ import {
   listRecent,
   countEntries,
   type EntryKind,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   type JournalEntry,
 } from './journal.js';
 import { createShellRunner, ShellPermissionError, type ShellRunResult } from './shell.js';
@@ -40,11 +40,7 @@ import { readFile, writeFile, mkdir, chmod, stat as fsStat } from 'node:fs/promi
 import { join, resolve as resolvePath } from 'node:path';
 import { platform as osPlatform, hostname as osHostname } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import {
-  ensureAuditCollection,
-  writeAuditEvent,
-  type AuditWriteRequest,
-} from './audit.js';
+import { ensureAuditCollection, writeAuditEvent, type AuditWriteRequest } from './audit.js';
 import {
   appendSilkPattern,
   ensureSilkPatternCollection,
@@ -74,7 +70,15 @@ export interface InvokeSuccess {
 
 export interface InvokeFailure {
   readonly ok: false;
-  readonly kind: 'unknown-spinner' | 'unknown-capability' | 'integrity-gated' | 'pending' | 'config' | 'vault' | 'model' | 'internal';
+  readonly kind:
+    | 'unknown-spinner'
+    | 'unknown-capability'
+    | 'integrity-gated'
+    | 'pending'
+    | 'config'
+    | 'vault'
+    | 'model'
+    | 'internal';
   readonly message: string;
   readonly auditEventId?: string;
   readonly silkEntryId?: string;
@@ -83,17 +87,53 @@ export interface InvokeFailure {
 export type InvokeResult = InvokeSuccess | InvokeFailure;
 
 const DISPATCH = new Map<SpinnerName, Set<string>>([
-  ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
+  [
+    '@webspinner-foundation/bootstrap' as SpinnerName,
+    new Set(['consult', 'audit', 'record', 'surface']),
+  ],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
-  ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
-  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'generateBootstrapState', 'deployGrimoire', 'seedVault', 'deployLoom', 'verifyCell'])],
+  [
+    '@webspinner-foundation/wizards-journal' as SpinnerName,
+    new Set(['record', 'recall', 'bootstrap']),
+  ],
+  [
+    '@webspinner-foundation/genesis' as SpinnerName,
+    new Set([
+      'provisionToolchain',
+      'syncRepo',
+      'buildWorkspace',
+      'generateBootstrapState',
+      'deployGrimoire',
+      'seedVault',
+      'deployLoom',
+      'verifyCell',
+    ]),
+  ],
 ]);
 
 const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
-  ['@webspinner-foundation/bootstrap' as SpinnerName, new Set(['consult', 'audit', 'record', 'surface'])],
+  [
+    '@webspinner-foundation/bootstrap' as SpinnerName,
+    new Set(['consult', 'audit', 'record', 'surface']),
+  ],
   ['@webspinner-foundation/pablo' as SpinnerName, new Set(['review'])],
-  ['@webspinner-foundation/wizards-journal' as SpinnerName, new Set(['record', 'recall', 'bootstrap'])],
-  ['@webspinner-foundation/genesis' as SpinnerName, new Set(['provisionToolchain', 'syncRepo', 'buildWorkspace', 'verifyCell', 'generateBootstrapState', 'seedVault', 'deployGrimoire', 'deployLoom'])],
+  [
+    '@webspinner-foundation/wizards-journal' as SpinnerName,
+    new Set(['record', 'recall', 'bootstrap']),
+  ],
+  [
+    '@webspinner-foundation/genesis' as SpinnerName,
+    new Set([
+      'provisionToolchain',
+      'syncRepo',
+      'buildWorkspace',
+      'verifyCell',
+      'generateBootstrapState',
+      'seedVault',
+      'deployGrimoire',
+      'deployLoom',
+    ]),
+  ],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -133,20 +173,26 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
     };
   }
   const dispatchSet = DISPATCH.get(manifest.name);
-  if (!dispatchSet || !dispatchSet.has(req.capability)) {
-    return {
-      ok: false,
-      kind: 'unknown-spinner',
-      message: `Bootstrap Weaver has no dispatch for "${manifest.name}". Future Spinners route through dynamic-import (canon §19, open work).`,
-    };
-  }
-  const implementedSet = IMPLEMENTED.get(manifest.name);
-  if (!implementedSet || !implementedSet.has(req.capability)) {
-    return {
-      ok: false,
-      kind: 'pending',
-      message: `Capability "${req.capability}" on "${manifest.name}" is registered but not yet wired in the bootstrap Weaver. See OPEN_QUESTIONS.md — *Bootstrap Spinner runtime — when does the Weaver pipeline land?* The contract is fixed; the implementation queues here.`,
-    };
+  const isGenesisSlug = dispatchSet !== undefined;
+  // Genesis Spinners gate on the DISPATCH + IMPLEMENTED maps. Cell-
+  // authored Spinners fall through to dynamic dispatch; the capability
+  // existence was already validated against the manifest above.
+  if (isGenesisSlug) {
+    if (!dispatchSet.has(req.capability)) {
+      return {
+        ok: false,
+        kind: 'unknown-spinner',
+        message: `Genesis Spinner "${manifest.name}" has no dispatch for "${req.capability}".`,
+      };
+    }
+    const implementedSet = IMPLEMENTED.get(manifest.name);
+    if (!implementedSet || !implementedSet.has(req.capability)) {
+      return {
+        ok: false,
+        kind: 'pending',
+        message: `Capability "${req.capability}" on "${manifest.name}" is registered but not yet wired in the bootstrap Weaver. See OPEN_QUESTIONS.md — *Bootstrap Spinner runtime — when does the Weaver pipeline land?* The contract is fixed; the implementation queues here.`,
+      };
+    }
   }
 
   // 4. Authenticate against PocketBase as superuser (bootstrap auth)
@@ -156,7 +202,8 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
     return {
       ok: false,
       kind: 'config',
-      message: 'WARP_PB_EMAIL / WARP_PB_PASSWORD env vars missing. Bootstrap Weaver needs PocketBase superuser auth to read the vault and write audit.',
+      message:
+        'WARP_PB_EMAIL / WARP_PB_PASSWORD env vars missing. Bootstrap Weaver needs PocketBase superuser auth to read the vault and write audit.',
     };
   }
   const auth = await authSuperuser(fetch, pbEmail, pbPassword);
@@ -258,7 +305,25 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
       output = handled.output;
       modelTokens = handled.modelTokens;
     } else {
-      throw new Error('unreachable: dispatch table allowed but no handler matched');
+      // Cell-authored Spinner: dynamic-import dispatch fallback.
+      // Genesis Spinners have hardcoded dispatchers; everything else
+      // loads its entrypoint and calls the named capability.
+      const cellResult = await dispatchCellAuthored({
+        bundlePath: bundleDir,
+        capability: req.capability,
+        input: req.input,
+      });
+      if (!cellResult.ok) {
+        result = 'error';
+        errorMessage = `Cell-authored dispatch failed: ${cellResult.error.kind}${
+          'detail' in cellResult.error ? ` — ${cellResult.error.detail}` : ''
+        }`;
+        output = { error: errorMessage };
+      } else {
+        output = cellResult.value.output;
+        // Cell-authored Spinners don't consume model tokens (they're
+        // pure handlers); leave modelTokens at the initial zero.
+      }
     }
   } catch (e) {
     result = 'error';
@@ -278,7 +343,12 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
   const audit: AuditWriteRequest = {
     type: 'wp.spinner.invoke',
     source: manifest.audit.source,
-    actor: { kind: 'human', id: req.actorId, displayName: req.actorEmail, authMethod: 'pb-superuser' },
+    actor: {
+      kind: 'human',
+      id: req.actorId,
+      displayName: req.actorEmail,
+      authMethod: 'pb-superuser',
+    },
     result,
     reason: `Spinner "${manifest.displayName}" capability "${req.capability}" invoked by ${req.actorEmail}.`,
     subject: `${manifest.name}#${req.capability}`,
@@ -296,7 +366,8 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
     auditEventId = written.id;
   } catch (e) {
     auditEventId = '';
-    errorMessage = (errorMessage ?? '') + ` (audit write failed: ${e instanceof Error ? e.message : String(e)})`;
+    errorMessage =
+      (errorMessage ?? '') + ` (audit write failed: ${e instanceof Error ? e.message : String(e)})`;
   }
 
   // 11. Append Silk Pattern entry
@@ -406,8 +477,9 @@ async function bootstrapConsult(
 
   let groundBlock = '';
   if (retrieval.passages.length > 0) {
-    const sections = retrieval.passages.map((p: RetrievedPassage) =>
-      `### Passage ${p.rank} — ${p.source}  (similarity ${p.score.toFixed(3)})\n\n${p.content}`,
+    const sections = retrieval.passages.map(
+      (p: RetrievedPassage) =>
+        `### Passage ${p.rank} — ${p.source}  (similarity ${p.score.toFixed(3)})\n\n${p.content}`,
     );
     groundBlock = `\n\n# Operative ground (Pablo top-${retrieval.passages.length} of ${retrieval.totalChunks} chunks)\n\n${sections.join('\n\n')}`;
   }
@@ -445,7 +517,8 @@ async function bootstrapConsult(
   };
 }
 
-const CITATION_RE = /(WARP-CANON\.md\s§[\d.]+|DECISIONS\.md\s[\d-]+|OPEN_QUESTIONS\.md\s—\s\*[^*]+\*|ch\.\s\d+)/g;
+const CITATION_RE =
+  /(WARP-CANON\.md\s§[\d.]+|DECISIONS\.md\s[\d-]+|OPEN_QUESTIONS\.md\s—\s\*[^*]+\*|ch\.\s\d+)/g;
 
 function extractCitations(text: string): readonly string[] {
   const matches = text.match(CITATION_RE) ?? [];
@@ -499,7 +572,9 @@ async function bootstrapAudit(
     try {
       body = await readFile(absPath, 'utf8');
     } catch (e) {
-      throw new Error(`Failed to read ${relPath}: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Failed to read ${relPath}: ${e instanceof Error ? e.message : String(e)}`, {
+        cause: e,
+      });
     }
     displaySubject = relPath;
   } else {
@@ -531,7 +606,10 @@ async function bootstrapAudit(
 
   const groundBlock = retrieval.passages.length
     ? retrieval.passages
-        .map((p, i) => `## Canon passage ${i + 1} — ${p.source} (score ${p.score.toFixed(3)})\n\n${p.content}`)
+        .map(
+          (p, i) =>
+            `## Canon passage ${i + 1} — ${p.source} (score ${p.score.toFixed(3)})\n\n${p.content}`,
+        )
         .join('\n\n')
     : '_(no canon passages retrieved)_';
 
@@ -982,7 +1060,8 @@ async function pabloReview(
       const trimmed = p.content.trim();
       const headerLen = `## ${p.source}\n\n`.length;
       const allowed = Math.min(PER_FILE_CAP, LIBRARY_BUDGET_CHARS - runningTotal - headerLen);
-      const slice = trimmed.length > allowed ? trimmed.slice(0, allowed) + '\n\n_[trimmed]_' : trimmed;
+      const slice =
+        trimmed.length > allowed ? trimmed.slice(0, allowed) + '\n\n_[trimmed]_' : trimmed;
       sections.push(`## ${p.source}\n\n${slice}`);
       runningTotal += headerLen + slice.length + 6;
     }
@@ -1056,8 +1135,7 @@ function trimHtmlForReview(html: string): string {
   const headEndIdx = html.indexOf('</head>');
   const headEnd = headEndIdx > 0 ? Math.min(headEndIdx + 7, 2_000) : 2_000;
   const head = html.slice(0, Math.max(headEnd, 1_500));
-  const bodySlice =
-    headEnd > 0 ? html.slice(headEnd, headEnd + 4_000) : html.slice(2_000, 6_000);
+  const bodySlice = headEnd > 0 ? html.slice(headEnd, headEnd + 4_000) : html.slice(2_000, 6_000);
   return head + '\n<!-- … (body truncated for review) … -->\n' + bodySlice;
 }
 
@@ -1217,9 +1295,7 @@ async function journalRecord(
         `Embedding sidecar failed during record: ${result.error.message}`,
       );
     }
-    throw new Error(
-      `Failed to write journal entry: ${result.error.status} — ${result.error.body}`,
-    );
+    throw new Error(`Failed to write journal entry: ${result.error.status} — ${result.error.body}`);
   }
 
   const row = result.value;
@@ -1270,7 +1346,9 @@ async function journalRecall(
         `Embedding sidecar failed during recall: ${result.error.message}`,
       );
     }
-    throw new Error(`Failed to recall journal entries: ${result.error.status} — ${result.error.body}`);
+    throw new Error(
+      `Failed to recall journal entries: ${result.error.status} — ${result.error.body}`,
+    );
   }
   return {
     output: result.value,
@@ -1288,8 +1366,11 @@ async function journalBootstrap(
     writeTo?: unknown;
   };
   const horizonDays =
-    typeof input.horizonDays === 'number' && input.horizonDays > 0 ? Math.min(365, input.horizonDays) : 14;
-  const scope = typeof input.scope === 'string' && input.scope.trim().length > 0 ? input.scope : undefined;
+    typeof input.horizonDays === 'number' && input.horizonDays > 0
+      ? Math.min(365, input.horizonDays)
+      : 14;
+  const scope =
+    typeof input.scope === 'string' && input.scope.trim().length > 0 ? input.scope : undefined;
   // Optional repo-relative path to write the context markdown to.
   // The Wizard sets `writeTo: "BOOTSTRAP.md"` to drop the context where
   // the next Claude Code session in `~/warp/` will pick it up.
@@ -1364,12 +1445,14 @@ async function journalBootstrap(
   const problems = recentByKind('problem').slice(0, 3);
   if (learnings.length > 0) {
     context += `## Recent learnings\n\n`;
-    for (const l of learnings) context += `- _${l.timestamp.slice(0, 10)}_ — **${l.title}**: ${truncateBody(l.body, 240)}\n`;
+    for (const l of learnings)
+      context += `- _${l.timestamp.slice(0, 10)}_ — **${l.title}**: ${truncateBody(l.body, 240)}\n`;
     context += `\n`;
   }
   if (problems.length > 0) {
     context += `## Open problems\n\n`;
-    for (const p of problems) context += `- _${p.timestamp.slice(0, 10)}_ — **${p.title}**: ${truncateBody(p.body, 240)}\n`;
+    for (const p of problems)
+      context += `- _${p.timestamp.slice(0, 10)}_ — **${p.title}**: ${truncateBody(p.body, 240)}\n`;
     context += `\n`;
   }
 
@@ -1679,9 +1762,7 @@ async function genesisSyncRepo(
     };
   }
 
-  throw new Error(
-    `syncRepo: unknown source "${source}". Use "local-rsync" or "git-remote".`,
-  );
+  throw new Error(`syncRepo: unknown source "${source}". Use "local-rsync" or "git-remote".`);
 }
 
 function resolveTargetPath(rawValue: unknown, fallback: string): string {
@@ -1714,7 +1795,7 @@ async function genesisBuildWorkspace(
     timeoutMs: 300_000,
   });
 
-  const steps: Array<Record<string, unknown>> = [
+  const steps: Record<string, unknown>[] = [
     {
       step: 'pnpm install',
       cwd: targetPath,
@@ -1787,9 +1868,7 @@ interface BootstrapStateFile {
   readonly mode: string;
 }
 
-async function genesisGenerateBootstrapState(
-  rawInput: unknown,
-): Promise<DispatchOutput> {
+async function genesisGenerateBootstrapState(rawInput: unknown): Promise<DispatchOutput> {
   const input = (rawInput ?? {}) as GenerateBootstrapStateInput;
   const force = input.force === true;
   const emailDomain =
@@ -1811,6 +1890,7 @@ async function genesisGenerateBootstrapState(
 
   for (const t of targets) {
     const fullPath = join(dir, t.name);
+    // eslint-disable-next-line no-useless-assignment
     let exists = false;
     try {
       await fsStat(fullPath);
@@ -1836,8 +1916,7 @@ async function genesisGenerateBootstrapState(
     output: {
       directory: dir,
       files: results,
-      hint:
-        'Values are never returned in the output. Read them via `cat ~/.warp/bootstrap/<file>` only when needed; treat the directory as the operator-trusted root of the Cell.',
+      hint: 'Values are never returned in the output. Read them via `cat ~/.warp/bootstrap/<file>` only when needed; treat the directory as the operator-trusted root of the Cell.',
     },
     modelTokens: { input: 0, output: 0 },
   };
@@ -1893,7 +1972,7 @@ async function genesisSeedVault(
   const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
   if (!masterKey) {
     throw new Error(
-      'seedVault: WARP_VAULT_MASTER_KEY is not set in the Loom\'s env. Run generateBootstrapState first and reload the Loom plist.',
+      "seedVault: WARP_VAULT_MASTER_KEY is not set in the Loom's env. Run generateBootstrapState first and reload the Loom plist.",
     );
   }
   await ensureVaultCollection(fetch, ctx.pbToken);
@@ -1912,7 +1991,11 @@ async function genesisSeedVault(
       if (r.ok) {
         results.push({ name: s.name, state: 'created' });
       } else if (r.error.kind === 'duplicate-name') {
-        results.push({ name: s.name, state: 'duplicate', note: 'a secret with this name already exists' });
+        results.push({
+          name: s.name,
+          state: 'duplicate',
+          note: 'a secret with this name already exists',
+        });
       } else if (r.error.kind === 'invalid-name') {
         results.push({ name: s.name, state: 'invalid', note: 'name must match [a-zA-Z0-9_./-]+' });
       } else {
@@ -1923,7 +2006,11 @@ async function genesisSeedVault(
         });
       }
     } catch (e) {
-      results.push({ name: s.name, state: 'error', note: e instanceof Error ? e.message : String(e) });
+      results.push({
+        name: s.name,
+        state: 'error',
+        note: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -1980,7 +2067,11 @@ async function writeAndLoadPlist(
   const unchanged = prior !== undefined && prior === args.content;
   if (unchanged) {
     // Verify it's loaded.
-    const list = await shell.run({ command: 'launchctl', args: ['list', args.label], timeoutMs: 3_000 });
+    const list = await shell.run({
+      command: 'launchctl',
+      args: ['list', args.label],
+      timeoutMs: 3_000,
+    });
     const loaded = list.exitCode === 0;
     return { plistPath: args.plistPath, state: 'existed-unchanged', loaded };
   }
@@ -1999,7 +2090,9 @@ async function writeAndLoadPlist(
 
   // bootout (best-effort), then bootstrap.
   const uid = process.getuid?.() ?? 501;
-  await shell.run({ command: 'launchctl', args: ['bootout', `gui/${uid}/${args.label}`], timeoutMs: 3_000 }).catch(() => undefined);
+  await shell
+    .run({ command: 'launchctl', args: ['bootout', `gui/${uid}/${args.label}`], timeoutMs: 3_000 })
+    .catch(() => undefined);
   const boot = await shell.run({
     command: 'launchctl',
     args: ['bootstrap', `gui/${uid}`, args.plistPath],
@@ -2043,11 +2136,25 @@ async function genesisDeployGrimoire(
   const dataDir =
     typeof input.dataDir === 'string' && input.dataDir.length > 0
       ? input.dataDir
-      : join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Grimoire', 'pb_data');
+      : join(
+          HOME_DIR,
+          'Library',
+          'Application Support',
+          'Webspinner Foundation',
+          'Grimoire',
+          'pb_data',
+        );
   const port = typeof input.port === 'number' && input.port > 0 ? input.port : 8090;
 
   await mkdir(dataDir, { recursive: true });
-  const logDir = join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Grimoire', 'logs');
+  const logDir = join(
+    HOME_DIR,
+    'Library',
+    'Application Support',
+    'Webspinner Foundation',
+    'Grimoire',
+    'logs',
+  );
   await mkdir(logDir, { recursive: true });
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
@@ -2108,9 +2215,7 @@ async function genesisDeployLoom(
   shell: ReturnType<typeof createShellRunner>,
 ): Promise<DispatchOutput> {
   if (osPlatform() !== 'darwin') {
-    throw new Error(
-      'deployLoom v0.2 is macOS-only (launchd). Linux systemd path is open work.',
-    );
+    throw new Error('deployLoom v0.2 is macOS-only (launchd). Linux systemd path is open work.');
   }
   const input = (rawInput ?? {}) as DeployLoomInput;
   const force = input.force === true;
@@ -2132,7 +2237,14 @@ async function genesisDeployLoom(
     typeof input.origin === 'string' && input.origin.length > 0
       ? input.origin
       : `http://${osHostname()}:${port}`;
-  const logDir = join(HOME_DIR, 'Library', 'Application Support', 'Webspinner Foundation', 'Loom', 'logs');
+  const logDir = join(
+    HOME_DIR,
+    'Library',
+    'Application Support',
+    'Webspinner Foundation',
+    'Loom',
+    'logs',
+  );
   await mkdir(logDir, { recursive: true });
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
@@ -2208,7 +2320,7 @@ async function genesisVerifyCell(rawInput: unknown): Promise<DispatchOutput> {
   const grimoireUrl =
     typeof input.grimoireUrl === 'string' && input.grimoireUrl.length > 0
       ? input.grimoireUrl
-      : process.env['WARP_PB_URL'] ?? 'http://127.0.0.1:8090';
+      : (process.env['WARP_PB_URL'] ?? 'http://127.0.0.1:8090');
 
   async function probe(check: string, target: string, expectStatus?: number): Promise<ProbeResult> {
     const t0 = Date.now();
@@ -2281,7 +2393,10 @@ async function genesisVerifyCell(rawInput: unknown): Promise<DispatchOutput> {
   const ready = checks.every((c) => c.ok);
   const summary = ready
     ? 'Cell is reachable. Loom, Grimoire, and the vault collection respond.'
-    : `Cell is partially reachable. Failing checks: ${checks.filter((c) => !c.ok).map((c) => c.check).join(', ')}.`;
+    : `Cell is partially reachable. Failing checks: ${checks
+        .filter((c) => !c.ok)
+        .map((c) => c.check)
+        .join(', ')}.`;
 
   return {
     output: { loomUrl, grimoireUrl, ready, summary, checks },
