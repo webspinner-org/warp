@@ -38,7 +38,41 @@ function log(level: 'info' | 'ok' | 'fail' | 'step', msg: string): void {
   process.stdout.write(`${marker} ${msg}\n`);
 }
 
-async function loginViaCookie(ctx: BrowserContext): Promise<void> {
+async function cleanupPriorSpinner(pbToken: string): Promise<void> {
+  // The webspinner-author scenario installs `tension-demo`. If a prior
+  // run left it behind in wp_skein + on disk, the slug-uniqueness check
+  // on /admin/spinners/new rejects the new install. Wipe both.
+  const pbUrl = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
+  const headers = { Authorization: pbToken, 'Content-Type': 'application/json' };
+
+  // Find any wp_skein row for tension-demo.
+  const params = new URLSearchParams();
+  params.set('filter', 'slug = "tension-demo"');
+  const listRes = await fetch(`${pbUrl}/api/collections/wp_skein/records?${params.toString()}`, {
+    headers,
+  });
+  if (listRes.ok) {
+    const body = (await listRes.json()) as { items: { id: string }[] };
+    for (const row of body.items) {
+      await fetch(`${pbUrl}/api/collections/wp_skein/records/${row.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      log('info', `cleanup: deleted wp_skein row ${row.id}`);
+    }
+  }
+  // Delete bundle dir if present.
+  const bundlePath = join(homedir(), 'Cells', 'spinners', 'tension-demo');
+  try {
+    const { rm } = await import('node:fs/promises');
+    await rm(bundlePath, { recursive: true, force: true });
+    log('info', `cleanup: removed ${bundlePath}`);
+  } catch {
+    // best-effort
+  }
+}
+
+async function loginViaCookie(ctx: BrowserContext): Promise<{ pbToken: string }> {
   // Bypass the login UI entirely. Authenticate directly with
   // PocketBase, get the superuser token, and install it as the
   // session cookie that the Loom's getSession() reads.
@@ -66,6 +100,7 @@ async function loginViaCookie(ctx: BrowserContext): Promise<void> {
     },
   ]);
   log('ok', `session cookie installed`);
+  return { pbToken: body.token };
 }
 
 async function openWeaversTensionIndex(page: Page): Promise<void> {
@@ -200,7 +235,8 @@ async function main(): Promise<void> {
   page.on('pageerror', (e: Error) => log('info', `[pageerror] ${e.message}`));
 
   try {
-    await loginViaCookie(ctx);
+    const { pbToken } = await loginViaCookie(ctx);
+    await cleanupPriorSpinner(pbToken);
     await openWeaversTensionIndex(page);
     const runId = await startRun(page);
     await pressStart(page);
