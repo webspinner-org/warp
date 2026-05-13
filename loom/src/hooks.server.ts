@@ -46,7 +46,12 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Always-on security headers — cheap, broadly compatible.
   response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   response.headers.set('x-content-type-options', 'nosniff');
-  response.headers.set('x-frame-options', 'DENY');
+  // SAMEORIGIN (not DENY) so Weaver's Tension can embed admin routes
+  // in its same-origin player iframe. Third-party origins are still
+  // blocked from framing the Loom (clickjacking defence intact).
+  response.headers.set('x-frame-options', 'SAMEORIGIN');
+  // Modern equivalent — supersedes XFO when both are sent. Same policy.
+  response.headers.set('content-security-policy', "frame-ancestors 'self'");
 
   return response;
 };
@@ -54,8 +59,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
   // Log full detail server-side. The launchd LaunchAgent funnels stderr
   // to ~/Library/Application Support/Webspinner Foundation/Loom/logs/loom.err.log.
-  const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
-  console.error(`[loom-error] status=${status} path=${event.url.pathname} method=${event.request.method}\n${detail}`);
+  const detail =
+    error instanceof Error
+      ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+      : String(error);
+  console.error(
+    `[loom-error] status=${status} path=${event.url.pathname} method=${event.request.method}\n${detail}`,
+  );
 
   // Return only what the +error.svelte page can render — never leak stack traces.
   return {
