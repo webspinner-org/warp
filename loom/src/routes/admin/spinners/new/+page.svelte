@@ -4,11 +4,21 @@
 
   let { data, form } = $props();
 
+  // Initial-value precedence: a prior form submission's posted fields
+  // (so validation errors don't wipe the user's input), then any
+  // prefill from query params (Weaver's Tension routes through here
+  // with ?slug=…&displayName=…&description=… so the form lands
+  // pre-populated for a co-walked run), then empty / defaults.
   let template = $state(data.templates[0]?.name ?? '');
-  let slug = $state(form?.fields?.slug ?? '');
-  let displayName = $state(form?.fields?.displayName ?? '');
-  let description = $state(form?.fields?.description ?? '');
-  let scope = $state(form?.fields?.scope ?? data.defaults.scope);
+  let slug = $state(form?.fields?.slug ?? data.prefill?.slug ?? '');
+  let displayName = $state(form?.fields?.displayName ?? data.prefill?.displayName ?? '');
+  let description = $state(form?.fields?.description ?? data.prefill?.description ?? '');
+  let scope = $state(
+    form?.fields?.scope ??
+      (data.prefill?.scope && data.prefill.scope.length > 0
+        ? data.prefill.scope
+        : data.defaults.scope),
+  );
   let advancedOpen = $state(false);
   let submitting = $state(false);
   let slugCheckState = $state<'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'unknown'>(
@@ -20,8 +30,9 @@
   );
 
   // Auto-suggest displayName from slug while displayName is empty.
-  // Once the Webspinner has typed something into displayName, stop.
-  let displayNameTouched = $state(false);
+  // Once the Webspinner has typed (or the prefill arrived non-empty),
+  // stop auto-suggesting so user/prefill intent isn't overwritten.
+  let displayNameTouched = $state(displayName.length > 0);
   $effect(() => {
     if (!displayNameTouched && slug.length > 0) {
       displayName = slug

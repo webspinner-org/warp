@@ -80,7 +80,7 @@
     {
       "key": "fill-form",
       "title": "Name your Spinner",
-      "observation": "The slug is the URL-safe identifier — kebab-case, lowercase, no spaces. It becomes the directory name and the URL segment. It can't be changed later. The display name is what shows up in the Skein. The description is one paragraph about what this Spinner does.\n\nTake your time. The slug you pick is what the next steps will look for.",
+      "observation": "The slug is the URL-safe identifier — kebab-case, lowercase, no spaces. It becomes the directory name and the URL segment. It can't be changed later. The display name is what shows up in the Skein. The description is one paragraph about what this Spinner does.\n\nType your three answers here on the right. When you click Save & continue, the player passes these values into the iframe on the next step so the authoring form lands pre-populated — you won't have to re-type them.",
       "iframeRoute": "/admin/spinners/new",
       "question": {
         "kind": "prompt-input",
@@ -111,8 +111,8 @@
     {
       "key": "save-and-install",
       "title": "Save — the install runs",
-      "observation": "Click Save. The Loom: scaffolds the bundle from the template into ~/Cells/spinners/<slug>, lints it, signs it with this Cell's identity key, records the digest, and writes a row to the Skein with status 'verified'. About five seconds, all in.\n\nThe install op envelope and the wp.spinner.install audit event are both written before the page redirects. The verifier on this step will check both — once you've clicked Save and landed on the detail page, gate this step.",
-      "iframeRoute": "/admin/spinners/new",
+      "observation": "The authoring form on the left is now pre-populated with what you typed on the previous step. Edit anything you want, then click Save inside the iframe.\n\nThe Loom: scaffolds the bundle from the template into ~/Cells/spinners/<slug>, lints it, signs it with this Cell's identity key, records the digest, and writes a row to the Skein with status 'verified'. About five seconds, all in.\n\nThe install op envelope and the wp.spinner.install audit event are both written before the page redirects. The verifier on this step checks the Skein for your slug — once you've clicked Save and landed on the detail page, gate this step.",
+      "iframeRoute": "/admin/spinners/new?slug={{answer.newSpinner.slug}}&displayName={{answer.newSpinner.displayName}}&description={{answer.newSpinner.description}}",
       "verifier": {
         "kind": "pb-row-exists",
         "collection": "wp_skein",

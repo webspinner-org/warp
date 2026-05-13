@@ -19,9 +19,23 @@ const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,62}$/;
 const SCOPE_PATTERN = /^@[a-z0-9-]+$/;
 const DEFAULT_SCOPE = '@local';
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, url }) => {
   const layoutData = await parent();
   const templates = await listTemplates();
+  // Query-param prefill: when the page is opened from Weaver's Tension
+  // (or any caller that knows the values up-front), it can pass
+  // ?slug=...&displayName=...&description=...&scope=... and the form
+  // initializes with those values. The user remains free to edit.
+  // Length caps mirror the action-side validation so a hostile URL
+  // can't render unbounded text into the form.
+  const cap = (s: string | null, max: number): string =>
+    typeof s === 'string' ? s.slice(0, max) : '';
+  const prefill = {
+    slug: cap(url.searchParams.get('slug'), 63),
+    displayName: cap(url.searchParams.get('displayName'), 64),
+    description: cap(url.searchParams.get('description'), 2048),
+    scope: cap(url.searchParams.get('scope'), 64),
+  };
   return {
     user: layoutData.user,
     templates: templates.map((t) => ({
@@ -33,6 +47,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     defaults: {
       scope: DEFAULT_SCOPE,
     },
+    prefill,
   };
 };
 
