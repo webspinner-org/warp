@@ -116,17 +116,11 @@
       "title": "Generate a session-resume context",
       "narration": "Scrolling to Session context. Clicking Generate. The bootstrap capability gathers recent actions, decisions, open questions, and synthesises the markdown context block a new Claude session needs to pick up where the last one left off. The entry we just recorded will be among the recent learnings.",
       "actions": [
+        { "kind": "wait-for-selector", "selector": "section.bootstrap button.generate" },
+        { "kind": "click", "selector": "section.bootstrap button.generate" },
         {
           "kind": "wait-for-selector",
-          "selector": "section.bootstrap button[type='submit'], section.bootstrap button:not([type])"
-        },
-        {
-          "kind": "click",
-          "selector": "section.bootstrap button[type='submit'], section.bootstrap button:not([type])"
-        },
-        {
-          "kind": "wait-for-selector",
-          "selector": "section.bootstrap pre, section.bootstrap .bootstrap-context, section.bootstrap article",
+          "selector": "section.bootstrap .bootstrap-viewer pre",
           "timeoutMs": 30000
         },
         { "kind": "sleep", "ms": 800 }
