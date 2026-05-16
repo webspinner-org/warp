@@ -417,3 +417,27 @@ Related to #2. `launchctl bootstrap gui/<uid> <plist>` returned exit 0 even thou
 **Future:** every Foundation platform-engineering script that bootstraps a launchd service should follow this pattern — bootstrap, then poll a service-identifying endpoint with a bounded timeout, fail loudly otherwise.
 
 **Status:** Resolved for `demo-cell-up`. Convention to spread to other Foundation provisioners (`tools/deploy-loom`, the tenant `deploy-from-admin.sh` scripts).
+
+## 2026-05-16 — Demo Cell session retention + opt-in 30-day save
+
+**Question:** The Demo Cell at `try.webspinner.ai` is open to anyone; by default a patron's session is ephemeral and purgeable. But patrons may want to come back to their work — the Database Application schema they've drafted, the bookkeeping they've started building. The Wizard's directive: allow opt-in 30-day retention, gated by patron-provided + verified email. Resend.com is already wired for verification mail.
+
+**Why it matters:** Three things have to hold together:
+
+1. **Anything persisted on behalf of a session can be purged when no longer active.** Today's `wp_spinner_sessions` row plus any future `wp_database_applications` row plus the patron-app's generated PB collections must all be deletable in one operation. Sweep tooling is part of the architecture, not an afterthought.
+2. **30-day opt-in retention.** The patron's session row gains a `retained_until: datetime` field; the sweep skips rows where `retained_until > now()`. When the patron opts in, the field is set to `now() + 30 days`. They can extend it by returning + re-opting-in.
+3. **Email verification gate.** The opt-in flow: patron clicks "save my work" → enters email → Resend.com sends a verification link → patron clicks → the session's `retained_until` is set + the email is bound to the session (so the patron can return via the email's link).
+
+**What it implies for the architecture:**
+
+- `wp_spinner_sessions` gains `retained_until: datetime?`, `verified_email: text?`, `email_verify_token: text?`, `email_verified_at: datetime?`.
+- A `tools/demo-sweep` cron-style script that runs (probably daily): deletes every `wp_spinner_sessions` row where `status != 'active'` AND (`retained_until IS NULL OR retained_until < now()`). Cascades to: any `wp_database_applications` row scoped to the session id; any PB collections the `build` capability created for the session; any audit events scoped to demo sessions older than 30 days (or: audit events stay forever; sweep is for spinner-session-scoped data only).
+- An opt-in UX in the patron's chat: a follow-up bubble at session-end ("save your work for 30 days?") with an email input. POST to `/api/session/save-request` triggers the Resend mail.
+- A verify route at `try.webspinner.ai/save/<token>` that flips the session's retention flag.
+- A cancel route so the patron can revoke (in the verification email + on any subsequent return).
+
+**Privacy posture:** the verified email is **only** for save-link delivery + return access. Per the Foundation Pledge, no marketing, no behavioural targeting, no third-party sharing. The email lives in `wp_spinner_sessions.verified_email` in the demo PB and is deleted along with the session when retention expires or the patron revokes.
+
+**Status:** Open. **Not blocking** R0–R4 of `DEMO-RUNTIME-PLAN.md`; lands as R5 once the propose/refine/build loop is validated end-to-end. The DEMO-RUNTIME-PLAN.md gains an R5 entry pointing here.
+
+**Trigger to land:** as soon as the first patron asks to come back to their work. Until then, ephemeral default with a one-line sweep script is sufficient.

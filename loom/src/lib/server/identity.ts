@@ -22,6 +22,7 @@
  */
 
 import { encryptValue, decryptValue, type EncryptedValue } from './crypto.js';
+import { ensureCollection as ensureVaultCollection } from './secrets.js';
 import {
   generateKeypair,
   keypairFromPrivateHex,
@@ -229,6 +230,31 @@ export async function ensureCellIdentity(
 ): Promise<IdentityResult<{ readonly identity: CellIdentityPublic; readonly created: boolean }>> {
   const ensure = await ensureIdentityCollection(fetchFn, token);
   if (!ensure.ok) return ensure;
+
+  // Ensure the vault collection exists before any write to it. On the
+  // operator's Cell this collection was bootstrapped by Genesis's
+  // `seedVault` step before identity provisioning; on a fresh Cell
+  // (e.g. the Demo Cell), no prior step has created it, and the first
+  // `writeVaultRow` below would 404 with "Missing or invalid collection
+  // context." Idempotent: returns `{ ok: true }` if already present.
+  const vaultEnsure = await ensureVaultCollection(fetchFn, token);
+  if (!vaultEnsure.ok) {
+    // SecretError narrows to either 'auth' or 'backend' on ensure;
+    // 'duplicate-name' and 'invalid-name' aren't produced by the
+    // collection-ensure path. Either shape maps cleanly into our
+    // IdentityError union.
+    const e = vaultEnsure.error;
+    if (e.kind === 'auth') return { ok: false, error: { kind: 'auth' } };
+    if (e.kind === 'backend') {
+      return { ok: false, error: { kind: 'backend', status: e.status, body: e.body } };
+    }
+    // 'duplicate-name' / 'invalid-name' aren't produced by ensure-collection,
+    // but the union forces us to handle them. Map to corrupt-state.
+    return {
+      ok: false,
+      error: { kind: 'corrupt-state', detail: `vault ensure returned ${e.kind}` },
+    };
+  }
 
   const existing = await readIdentityRow(fetchFn, token);
   if (existing) {
