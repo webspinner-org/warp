@@ -263,7 +263,11 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
       capability: 'verifyScenario',
       input: {
         scenarioSlug,
-        cleanupSpinnerSlug: input.slug,
+        // Deliberately omit cleanupSpinnerSlug — the Author-generated
+        // scenario verifies an *existing* install (the one Author just
+        // produced), it doesn't install again. Cleanup would wipe the
+        // row we just created and the scenario's first verifier
+        // (pb-row-exists wp_skein) would fail.
       },
     }),
   });
