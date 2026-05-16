@@ -1,0 +1,208 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/database-application",
+  "displayName": "Database Application",
+  "version": "0.1.0",
+  "description": "Takes a Webspinner's plain-English description of what they want to keep track of, researches the domain from credible public references, proposes a database schema in patron-readable language, iterates through clarifying questions, and builds the working web application — list views, detail forms, the canonical reports — backed by a collection in the patron's Cell. Bookkeeping, plant tracking, donor logging, customer records: same Spinner, different domain. Narrates each step as it works.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/database-application",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "model": "kepler/qwen-2.5-14b-instruct",
+  "vault": [],
+  "spools": [],
+  "env": [],
+  "dependsOn": [],
+  "outboundAllowlist": ["en.wikipedia.org"],
+  "capabilities": [
+    {
+      "name": "propose",
+      "displayName": "Propose",
+      "description": "First turn — the Spinner reads the patron's sentence, researches the domain from credible references, and proposes a starting database schema with focused clarifying questions. Saves session state at phase 'proposed'.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:propose:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["patronSentence"],
+        "properties": {
+          "patronSentence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The Webspinner's plain-English description of what they want to keep track of."
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:propose:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "clarifications", "phase"],
+        "properties": {
+          "narration": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Patron-readable Markdown — what the Spinner consulted (with source URLs), what it sketched, and why."
+          },
+          "domain": {
+            "type": "string",
+            "description": "The Spinner's identification of the domain (e.g. 'small-business bookkeeping', 'home gardening')."
+          },
+          "schemaDraft": {
+            "type": "object",
+            "description": "The draft schema in Spinner-defined shape — entities with patron-named fields. Inspectable but not yet built."
+          },
+          "clarifications": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "Focused questions the Loom renders as a form. Three or four is the target.",
+            "items": {
+              "type": "object",
+              "required": ["id", "question", "kind"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                  "description": "Stable identifier the next call references in its `answers` array."
+                },
+                "question": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "kind": {
+                  "type": "string",
+                  "enum": ["single-choice", "multi-choice", "free-text", "yes-no"]
+                },
+                "options": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+                }
+              }
+            }
+          },
+          "phase": { "const": "proposed" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.outbound.fetch", "wp.spinner.session.save"]
+    },
+    {
+      "name": "refine",
+      "displayName": "Refine",
+      "description": "Subsequent turns — applies the patron's answers to the prior draft, updates the schema, and either asks the next set of focused questions or marks the schema ready to build. Saves session state at phase 'refining' or 'ready'.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:refine:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["answers"],
+        "properties": {
+          "answers": {
+            "type": "array",
+            "description": "The patron's answers to the prior turn's clarifications. Each answer references a clarification id and carries the patron's response.",
+            "items": {
+              "type": "object",
+              "required": ["id", "answer"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
+                "answer": {
+                  "oneOf": [
+                    { "type": "string", "maxLength": 1024 },
+                    { "type": "array", "items": { "type": "string", "maxLength": 128 } },
+                    { "type": "boolean" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:refine:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "clarifications", "readyToBuild", "phase"],
+        "properties": {
+          "narration": { "type": "string", "minLength": 1 },
+          "schemaDraft": { "type": "object" },
+          "clarifications": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": ["id", "question", "kind"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
+                "question": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "kind": {
+                  "type": "string",
+                  "enum": ["single-choice", "multi-choice", "free-text", "yes-no"]
+                },
+                "options": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+                }
+              }
+            }
+          },
+          "readyToBuild": {
+            "type": "boolean",
+            "description": "True when the schema is settled and the next call should be `build`. False while clarifications remain."
+          },
+          "phase": { "type": "string", "enum": ["refining", "ready"] }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.outbound.fetch", "wp.spinner.session.save"]
+    },
+    {
+      "name": "build",
+      "displayName": "Build",
+      "description": "Final turn — reads the settled schema from session state, creates the Cell-side collections, registers the application with the Loom's database-application renderer, and returns the surface URL the patron lands on. Saves session state at phase 'built' with status 'completed'.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:build:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:build:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "deployedSurfaceUrl", "artifacts", "phase"],
+        "properties": {
+          "narration": { "type": "string", "minLength": 1 },
+          "deployedSurfaceUrl": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The route inside the Loom where the patron's application is reachable."
+          },
+          "artifacts": {
+            "type": "array",
+            "description": "The concrete things the Spinner produced — collections, view bindings, report definitions.",
+            "items": {
+              "type": "object",
+              "required": ["kind", "name", "location"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["collection", "view", "report", "binding"]
+                },
+                "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "location": { "type": "string", "minLength": 1, "maxLength": 256 }
+              }
+            }
+          },
+          "phase": { "const": "built" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.session.save"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/database-application"
+  }
+}

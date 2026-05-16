@@ -1,0 +1,12 @@
+{
+  "name": "@webspinner-foundation/database-application",
+  "version": "0.1.0",
+  "description": "Database Application Spinner — turns a Webspinner's plain-English description of what they track into a working web application backed by a Cell collection.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@webspinner-foundation/sdk": "workspace:*"
+  }
+}

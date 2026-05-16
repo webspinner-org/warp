@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Database Application — Webspinner Foundation">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="78%">
+      <stop offset="0%" stop-color="#1a1410"/>
+      <stop offset="60%" stop-color="#0e0a06"/>
+      <stop offset="100%" stop-color="#070503"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c9a96a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#c9a96a" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="ledger" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#15110b"/>
+      <stop offset="100%" stop-color="#0a0805"/>
+    </linearGradient>
+    <linearGradient id="bind" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c9a96a" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#c9a96a" stop-opacity="0.20"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#bg)"/>
+
+  <!-- soft brushwork on the canvas, echoing Pablo's house style -->
+  <g opacity="0.16">
+    <path d="M0 320 Q140 282 240 318 T400 308" stroke="#c9a96a" stroke-width="0.6" fill="none"/>
+    <path d="M0 350 Q160 318 260 348 T400 340" stroke="#c9a96a" stroke-width="0.5" fill="none"/>
+    <path d="M0 380 Q180 358 280 378 T400 372" stroke="#c9a96a" stroke-width="0.5" fill="none"/>
+  </g>
+
+  <!-- the ledger: open book on a dark surface, evoking a maître d's reservation register -->
+  <g transform="translate(200 210)">
+    <!-- left page -->
+    <path d="M-148 -78 L-6 -78 L-6 94 L-148 94 Z" fill="url(#ledger)" stroke="url(#rim)" stroke-width="1.2"/>
+    <!-- right page -->
+    <path d="M6 -78 L148 -78 L148 94 L6 94 Z" fill="url(#ledger)" stroke="url(#rim)" stroke-width="1.2"/>
+    <!-- spine -->
+    <rect x="-6" y="-78" width="12" height="172" fill="url(#bind)"/>
+
+    <!-- header rule -->
+    <line x1="-138" y1="-56" x2="-16" y2="-56" stroke="#c9a96a" stroke-width="1.1" opacity="0.55"/>
+    <line x1="16" y1="-56" x2="138" y2="-56" stroke="#c9a96a" stroke-width="1.1" opacity="0.55"/>
+
+    <!-- left page: three entries -->
+    <g opacity="0.85">
+      <!-- entry 1 -->
+      <circle cx="-128" cy="-30" r="3.6" fill="#5fcfe0"/>
+      <line x1="-118" y1="-30" x2="-22" y2="-30" stroke="#c9a96a" stroke-width="1.1"/>
+      <!-- entry 2 -->
+      <circle cx="-128" cy="-2" r="3.6" fill="#5fcfe0"/>
+      <line x1="-118" y1="-2" x2="-22" y2="-2" stroke="#c9a96a" stroke-width="1.1"/>
+      <!-- entry 3 -->
+      <circle cx="-128" cy="26" r="3.6" fill="#5fcfe0"/>
+      <line x1="-118" y1="26" x2="-22" y2="26" stroke="#c9a96a" stroke-width="1.1"/>
+      <!-- entry 4 — half-written, the next one to land -->
+      <circle cx="-128" cy="54" r="3.6" fill="#5fcfe0" opacity="0.4"/>
+      <line x1="-118" y1="54" x2="-58" y2="54" stroke="#c9a96a" stroke-width="1.1" opacity="0.55"/>
+    </g>
+
+    <!-- right page: a small linked-entity sketch — three nodes joined by lines, the schema the Spinner draws -->
+    <g transform="translate(78 18)">
+      <!-- top node -->
+      <rect x="-22" y="-58" width="44" height="22" rx="3" fill="none" stroke="#c9a96a" stroke-width="1.3"/>
+      <line x1="-12" y1="-48" x2="12" y2="-48" stroke="#c9a96a" stroke-width="0.7" opacity="0.6"/>
+      <!-- left node -->
+      <rect x="-58" y="2" width="44" height="22" rx="3" fill="none" stroke="#c9a96a" stroke-width="1.3"/>
+      <line x1="-48" y1="12" x2="-24" y2="12" stroke="#c9a96a" stroke-width="0.7" opacity="0.6"/>
+      <!-- right node -->
+      <rect x="14" y="2" width="44" height="22" rx="3" fill="none" stroke="#c9a96a" stroke-width="1.3"/>
+      <line x1="24" y1="12" x2="48" y2="12" stroke="#c9a96a" stroke-width="0.7" opacity="0.6"/>
+      <!-- links -->
+      <line x1="-6" y1="-36" x2="-30" y2="2" stroke="#5fcfe0" stroke-width="1.2" opacity="0.8"/>
+      <line x1="6" y1="-36" x2="30" y2="2" stroke="#5fcfe0" stroke-width="1.2" opacity="0.8"/>
+      <line x1="-14" y1="13" x2="14" y2="13" stroke="#5fcfe0" stroke-width="1.2" opacity="0.55" stroke-dasharray="2 2"/>
+    </g>
+  </g>
+
+  <!-- name plaque -->
+  <g opacity="0.9">
+    <text x="200" y="382" fill="#c9a96a" font-family="'Iowan Old Style','Hoefler Text',Georgia,serif" font-size="13" letter-spacing="6" text-anchor="middle">DATABASE APPLICATION</text>
+  </g>
+</svg>

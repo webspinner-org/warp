@@ -113,6 +113,12 @@ importers:
         specifier: workspace:*
         version: link:../../sdk
 
+  spinners/database-application:
+    dependencies:
+      '@webspinner-foundation/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+
   spinners/genesis:
     dependencies:
       '@webspinner-foundation/sdk':
