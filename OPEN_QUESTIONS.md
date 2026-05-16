@@ -441,3 +441,36 @@ Related to #2. `launchctl bootstrap gui/<uid> <plist>` returned exit 0 even thou
 **Status:** Open. **Not blocking** R0–R4 of `DEMO-RUNTIME-PLAN.md`; lands as R5 once the propose/refine/build loop is validated end-to-end. The DEMO-RUNTIME-PLAN.md gains an R5 entry pointing here.
 
 **Trigger to land:** as soon as the first patron asks to come back to their work. Until then, ephemeral default with a one-line sweep script is sufficient.
+
+## 2026-05-16 — Database Application runtime — v0 limits + tech debt
+
+Logged so they don't fall through. Each is real but not blocking the next test; the Wizard will provide feedback after the bookkeeping + non-bookkeeping generality tests close.
+
+### Edit / delete affordances on patron's records
+
+v0 lets the patron add records but not edit or delete from the table. The Loom routes only expose GET (list) + POST (create). PATCH + DELETE land when a Spinner or the renderer needs them — probably alongside R9 (retention) since the same flow gates "I want to keep this; let me clean it up first."
+
+### Schema-link rendering as searchable picker
+
+Schema entities can declare `links: [{to: <entity>, describes: ...}]`. The current renderer shows links as a description note on the entity card and ignores them in the form (text input). Future: render link fields as a select/typeahead that searches the linked entity's collection so the patron picks a real row, and store the resulting PB record-id as a relation field instead of free text. Needs the `createEntityCollection` helper to support PB `relation` fields with `collectionId` references.
+
+### Sweep policy for `wp_database_applications` rows + their per-entity collections
+
+When R9 (retention) lands, the sweep job needs to know that wiping a session-scoped `wp_spinner_sessions` row also requires:
+
+1. Dropping the `wp_database_applications` row for that session.
+2. Dropping each `app_<appId>_<entitySlug>` PB collection.
+
+`tools/demo-reset` already wipes everything by dropping the demo `pb_data` — fine for v0. A per-session cleanup (for the future retention-expiry sweep) needs to honour the cascade.
+
+### Multiple refines have no cap; no token budget enforcement
+
+The patron can answer clarifications → refine → answer more → refine → … with no upper bound. Each refine is one Quiet Loom call (~5-20s, ~1k tokens out). For a curious / adversarial patron, this is unbounded compute on Kepler. R9's rate-limit hooks need to grow a per-session refine cap (e.g., 8 turns) before opening the demo to untrusted public traffic.
+
+### `weaver.ts` is ~3,200 lines and growing
+
+Genesis-Spinner dispatchers stack inside one file: bootstrap, pablo, journal, genesis, database-application. Each is ~400-700 lines. As more Spinners land in the demo (the next archetypes — iPhone App, Website, Simple Game, Custom AI Spinner) this file gets unwieldy. A refactor extracts each dispatcher to its own module (`weaver-database-application.ts`, etc.) and the main `weaver.ts` becomes a routing shell. Defer until at least one more Spinner ships its dispatcher.
+
+### Foundation imagery for field kinds
+
+Field-kind chips in the schema cards are manuscript-text placeholders (`DATE`, `$`, `#`, `Y·N`, `TXT`). The Wizard plans to generate Foundation-disciplined imagery via OpenAI Image 2 (per DECISIONS 2026-05-12 — _Canonical cinematic-illustration generator_). When the imagery lands at `~/webspinner-try/site/brand/kinds/<kind>.svg` (or .png), swap the `kindMark()` function in `site/app.js` from text to `<img>` — one switch statement, ten lines. Same path for the entity-card hero if the Foundation wants illustrated entity types ("Transaction" / "Plant" / "Donor" etc.).

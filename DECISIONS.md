@@ -692,3 +692,35 @@ Per Operating Principle §17.3 (_Production-Candidate Quality Only_) and the Wiz
 **Operative plan:** `DEMO-RUNTIME-PLAN.md` at the repo root carries the four-piece execution plan (R0–R4), the open deployment decisions, the future-Spinner readiness checklist, and the resume instructions for a fresh Claude session. The plan is the live operational document; this entry is the durable architectural record.
 
 **Future state:** When the demo Cell needs to migrate off Kepler (Hetzner runner pool, or a dedicated demo host as patron load grows), only the demo Cell moves. The operator Cell stays on Kepler. The tunnel separation (per 2026-05-16) already isolates the demo's public surface. The roster + FastAPI proxy point at the new demo Loom's URL; nothing else changes.
+
+## 2026-05-16 — Schema-driven Database Application runtime — patron's app lives in the Observatory
+
+**Decision:** The Database Application Spinner's `build` capability creates **real PocketBase collections** in the demo Grimoire (one per schema entity, named `app_<8hex>_<entitySlug>`) and writes a metadata row to `wp_database_applications` binding the schema to the per-entity collection map. The patron's working application is rendered **inside the same `try.webspinner.ai` page** they've been talking on — the Observatory transitions to a third mode (`app`) showing entity tabs, a table view, and an Add-record modal with input types driven by field kinds. No separate route family, no separate public hostname, no separate auth surface for v0.
+
+**Generality is in the Spinner + the renderer, not the data layer.** The build dispatcher loops `session.state.schemaDraft.entities` with zero domain-specific code. Field kinds (`text|number|date|money|yes-no|...`) map deterministically to PB field types. The renderer reads the same schema and walks it. The Spinner's mission lock instructs the LLM to draft entities + fields + clarifying questions for any domain — bookkeeping, gardening, donor tracking, customer service records, gradebooks, inventories. Same code path; the schema is the data.
+
+**Why "live app in the Observatory" instead of a separate `/db-app/<id>` route family:**
+
+1. **Cohesive UX.** The patron never leaves the page they've been talking on. Splash → intro → sentence → schema → clarify → refine → build → live app all in one visual frame. The Observatory was already established as the SI's working surface; extending it to host the patron's working artifact reads as continuity, not navigation.
+2. **No new public hostname required.** The demo Loom stays loopback-only on `:3010`; the FastAPI proxy adds `/api/app/<sessionId>/...` routes that authenticate to the demo Loom with the cached PB-superuser cookie. The patron's surface is just `try.webspinner.ai` — one tunnel, one trust boundary.
+3. **Ephemeral by default.** Per the Wizard's standing rule, the demo Cell is open to anyone and sessions are wipeable. Keeping the app in-page (sessionId in localStorage) keeps the persistence story honest — no URL that suggests durability the demo doesn't guarantee.
+4. **"Bring it home" is the seam, not the default.** When R9 (opt-in 30-day retention via Resend-verified email) lands, the patron who wants to come back gets a real URL. That URL points at the same renderer; the architecture doesn't change. v0 keeps everything in one place.
+
+**Pieces shipped:**
+
+- `loom/src/lib/server/database-applications.ts` — `wp_database_applications` metadata collection (idempotent ensure), `createApp` (validates one-app-per-session, generates app id, sanitises entity names to PB-safe slugs, creates per-entity collections, writes the row), `listEntityRows` / `createEntityRow` CRUD helpers. Field-kind → PB-type mapping.
+- `loom/src/lib/server/weaver.ts` — `databaseAppBuild` dispatcher. Single progress phase (`building-collections`); deterministic narration (no Quiet Loom call for build — the schema is settled, the patron just needs the news).
+- `loom/src/routes/admin/db-app/[sessionId]/+server.ts` — metadata read.
+- `loom/src/routes/admin/db-app/[sessionId]/[entity]/+server.ts` — list rows + create row, with server-side field whitelist + type coercion.
+- `~/webspinner-try/app/main.py` — proxy routes for the patron's app.
+- `~/webspinner-try/site/app.js` — Observatory `app` mode + App module (tabs, table, Add modal) + RecordForm module (per-kind input rendering).
+
+**Trade-offs accepted for v0:**
+
+- **No edit/delete from the table.** The patron can add rows; the renderer doesn't expose update/delete affordances. Next iteration.
+- **Links shown as text inputs.** Schema can declare entity-to-entity links; the form renders them as text. Future: searchable picker over the linked entity's rows.
+- **No reports.** List view is the only view. Reports/aggregations come when a Spinner ships that declares them.
+- **One app per session.** `build` is idempotent — re-calling returns the existing app. Schema migrations land when a real need surfaces.
+- **No row-level access control.** The proxy authenticates as PB superuser; rows are scoped only by the per-entity collection name being derived from the metadata row (the patron can't guess at other patrons' collection names from URLs). When R9 lands and patrons can return, row-level ACLs gain weight.
+
+**Future state:** When the Wizard validates the architecture's generality (the next test is a non-bookkeeping domain — "plants in my garden" / "donors for my church" / etc.), the same code path produces a different schema and a different app, validating the Spinner-as-the-only-domain-aware-piece claim.
