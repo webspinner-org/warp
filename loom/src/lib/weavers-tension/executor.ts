@@ -195,19 +195,22 @@ async function executeAction(
       await driver.waitForRoute(sub(action.path), action.timeoutMs ?? 8000);
       return;
     case 'wait-for-selector':
-      await driver.waitForSelector(action.selector, action.timeoutMs ?? 8000);
+      // Selectors can carry placeholders too (a scenario may want
+      // to wait for `input[value='{{fixture.slug}}']` to confirm a
+      // fill; or a `[data-id='{{answer.X.Y}}']`). Substitute everywhere.
+      await driver.waitForSelector(sub(action.selector), action.timeoutMs ?? 8000);
       return;
     case 'fill':
-      await driver.fill(action.selector, sub(action.value));
+      await driver.fill(sub(action.selector), sub(action.value));
       return;
     case 'click':
-      await driver.click(action.selector, {
+      await driver.click(sub(action.selector), {
         ...(action.waitForRoute !== undefined ? { waitForRoute: sub(action.waitForRoute) } : {}),
         ...(action.timeoutMs !== undefined ? { timeoutMs: action.timeoutMs } : {}),
       });
       return;
     case 'submit':
-      await driver.submit(action.formSelector, {
+      await driver.submit(sub(action.formSelector), {
         ...(action.waitForRoute !== undefined ? { waitForRoute: sub(action.waitForRoute) } : {}),
         ...(action.timeoutMs !== undefined ? { timeoutMs: action.timeoutMs } : {}),
       });
@@ -247,36 +250,33 @@ async function runIframeElementVerifier(
   const sub = (s: string) => subst(s, scenario, answers);
   const expected = verifier.equals !== undefined ? sub(verifier.equals) : undefined;
   const contains = verifier.contains !== undefined ? sub(verifier.contains) : undefined;
-  const read = await driver.readElement(
-    verifier.selector,
-    verifier.read,
-    verifier.timeoutMs ?? 4000,
-  );
+  const selector = sub(verifier.selector);
+  const read = await driver.readElement(selector, verifier.read, verifier.timeoutMs ?? 4000);
   if (!read.ok) {
     return {
       ok: false,
-      observation: `Could not read ${verifier.read} on "${verifier.selector}": ${read.reason}`,
-      evidence: { selector: verifier.selector, read: verifier.read, reason: read.reason },
+      observation: `Could not read ${verifier.read} on "${selector}": ${read.reason}`,
+      evidence: { selector: selector, read: verifier.read, reason: read.reason },
     };
   }
   if (expected !== undefined && read.value !== expected) {
     return {
       ok: false,
-      observation: `${verifier.selector}.${verifier.read} = "${read.value}", expected "${expected}"`,
-      evidence: { selector: verifier.selector, read: verifier.read, expected, actual: read.value },
+      observation: `${selector}.${verifier.read} = "${read.value}", expected "${expected}"`,
+      evidence: { selector: selector, read: verifier.read, expected, actual: read.value },
     };
   }
   if (contains !== undefined && !read.value.includes(contains)) {
     return {
       ok: false,
-      observation: `${verifier.selector}.${verifier.read} = "${read.value}" — does not contain "${contains}"`,
-      evidence: { selector: verifier.selector, read: verifier.read, contains, actual: read.value },
+      observation: `${selector}.${verifier.read} = "${read.value}" — does not contain "${contains}"`,
+      evidence: { selector: selector, read: verifier.read, contains, actual: read.value },
     };
   }
   return {
     ok: true,
-    observation: `${verifier.selector}.${verifier.read} matched.`,
-    evidence: { selector: verifier.selector, read: verifier.read, value: read.value },
+    observation: `${selector}.${verifier.read} matched.`,
+    evidence: { selector: selector, read: verifier.read, value: read.value },
   };
 }
 
