@@ -38,7 +38,7 @@ err() { echo "ERROR: $*" >&2; exit 2; }
 WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
 ROSTER="$WARP_DIR/demo-roster.json"
 BOOTSTRAP_DEMO="$HOME/.warp/bootstrap-demo"
-DEMO_LOOM_BASE="${DEMO_LOOM_BASE:-http://127.0.0.1:3001}"
+DEMO_LOOM_BASE="${DEMO_LOOM_BASE:-http://127.0.0.1:3010}"
 
 [ -f "$ROSTER" ]                          || err "roster file not found at $ROSTER"
 [ -d "$BOOTSTRAP_DEMO" ]                  || err "$BOOTSTRAP_DEMO not found — run tools/demo-cell-up first"

@@ -381,3 +381,39 @@ Path 1 is cleaner. Not urgent — the record is inert.
 **Trigger to land:** R0 (Demo Cell infrastructure) is the next piece. Once the four sub-decisions are confirmed (PB data dir, env source, identity-key generation, plist location), R0–R4 execute in order. R3 + R4 are the visible-to-patron pieces; R0–R2 are the infrastructure underneath.
 
 **Resume:** A fresh Claude session reads `DEMO-RUNTIME-PLAN.md` and continues from the first piece marked **not started** in its Status column.
+
+## 2026-05-16 — Kepler platform engineering — issues surfaced during Demo Cell provisioning
+
+Three engineering issues encountered bringing up the Demo Cell on Kepler. Logged here so they don't fall through the cracks. Per the Wizard's standing rule — do not paper over platform issues.
+
+### 1. Homebrew Python 3.14 on Kepler has broken `plistlib`
+
+`/opt/homebrew/bin/python3` is Python 3.14.4. `plistlib` imports `xml.parsers.expat → pyexpat`, which fails at load with `Symbol not found: _XML_SetAllocTrackerActivationThreshold` — a libexpat ABI mismatch between Homebrew's pyexpat extension and macOS-system `/usr/lib/libexpat.1.dylib`. Workaround applied in `tools/demo-cell-up`: write the launchd plist via plain XML heredoc + a Bash `xml_escape` helper. **Root cause:** Homebrew's python@3.14 was compiled against a newer libexpat than the system provides.
+
+**Fix paths (pick one):**
+
+- `brew reinstall python@3.14` (after `brew upgrade expat`) so pyexpat re-links against Homebrew's libexpat.
+- Pin Homebrew Python to 3.13 (`brew install python@3.13`) on Kepler until 3.14's libexpat shim is stable.
+- Switch repo-level scripts that need `plistlib` to `/usr/bin/python3` (macOS system Python).
+
+**Status:** Open. Tools that touched plistlib (`demo-cell-up`) now use heredoc + shell escaping, which is acceptable but increases future maintenance surface. When a Spinner or tool genuinely needs `plistlib`, fix the Homebrew Python first.
+
+### 2. `tools/demo-cell-up` initially tried port 3001, conflicted with `com.webspinner.uptime-kuma`
+
+Uptime Kuma is bound to `127.0.0.1:3001` on Kepler. My initial draft of `tools/demo-cell-up` picked 3001 without checking the listening ports. The demo Loom crashed with `EADDRINUSE` on bind; the launchctl `bootstrap` returned 0 anyway (launchd doesn't report post-start crashes); the smoke check probed `/` and got 200 from **Uptime Kuma**, not our Loom. Real bug: the smoke check didn't verify it was talking to the Loom.
+
+**Fix applied:** moved demo Loom to `:3010`; added Loom-identity probes to the smoke (`/admin → 303` + POST `/login` → 200/400/401; a squatter without those routes fails the check loudly). Reflected in `DEMO-RUNTIME-PLAN.md`.
+
+**Engineering lesson:** any "is the service up" smoke check needs to verify it's the **right** service, not just "something is listening." Future provisioners should probe a service-identifying endpoint, not the generic root.
+
+**Status:** Resolved. Convention recorded: demo-class Loom services live in the `30xx` range starting from `:3010`.
+
+### 3. `launchctl bootstrap` silently succeeds when the program crashes after start
+
+Related to #2. `launchctl bootstrap gui/<uid> <plist>` returned exit 0 even though the Loom process immediately crashed with `EADDRINUSE`. The plist was loaded; launchd's first `RunAtLoad` start failed; `KeepAlive` then kept retrying in the background but the script had already moved on.
+
+**Mitigation in `tools/demo-cell-up`:** the post-bootstrap wait loop now polls a Loom-identifying endpoint with a 15-second timeout. If the Loom isn't truly up, the wait fails loudly with a pointer to the err log.
+
+**Future:** every Foundation platform-engineering script that bootstraps a launchd service should follow this pattern — bootstrap, then poll a service-identifying endpoint with a bounded timeout, fail loudly otherwise.
+
+**Status:** Resolved for `demo-cell-up`. Convention to spread to other Foundation provisioners (`tools/deploy-loom`, the tenant `deploy-from-admin.sh` scripts).
