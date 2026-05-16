@@ -642,3 +642,16 @@ Out of scope, deferred:
 Trigger to land was met: a Wizard asked "what is next?" two days
 after Weaver's Tension v2 shipped. The answer was the loop, and the
 loop was built — and verified by itself, end to end.
+
+## 2026-05-16 — Production tunnel separation; webspinner.ai isolated from experimental subdomains
+
+**Decision:** Split the Cloudflare Tunnel topology on Kepler in two:
+
+- **`webspinner-prod`** (new tunnel) carries only production hostnames: `webspinner.ai`, `www.webspinner.ai`, and `try.webspinner.ai` (the public Webspinner demo). Daemon: `com.webspinner.cloudflared-prod` launchd plist. Config: `~/.cloudflared/config-prod.yml`. Credentials: `~/.cloudflared/<new-tunnel-id>.json`.
+- **`webspinner-kepler`** (existing tunnel, ID `9e96c768-9753-40a7-8870-899f0f438657`) continues to serve every experimental / PoC / tenant-site subdomain (`analyzer.webspinner.live`, `sovereign.webspinner.live`, `agent-loom.webspinner.work`, `webspinner.foundation`, `newsspinners.com`, `syntheticportal.com`, `sitoolmaker.com`, `iphloat.com`, `onesentencewebsite.com`, etc.). Daemon and config untouched apart from removing the two `webspinner.ai` ingresses moved to the new tunnel.
+
+**Why:** `webspinner.ai` is the production marketing apex; `try.webspinner.ai` will be the public, unauthenticated Webspinner demo. Every other hostname currently sharing the tunnel is experimental work feeding the Warp production-candidate effort. Production must be insulated from experimental blast radius — DDoS on the demo, credential leakage in a PoC, a wedged service holding the existing tunnel's connection slots, or a misconfigured ingress cannot be allowed to take down the production apex. The new tunnel has a narrow ingress list (slow-changing, audited), narrow credentials blast radius, and an independent kill switch. The operational cost (a second cloudflared daemon and launchd plist on Kepler) is bounded and justified.
+
+**Cutover discipline:** `webspinner.ai` moves to the new tunnel _before_ being removed from the old one — the new tunnel daemon serves the apex; DNS for `webspinner.ai` is repointed (CF API) to the new tunnel ID; old tunnel is reloaded only after verification. Zero-downtime cutover; no rollback drama.
+
+**Future state:** When the demo Cell migrates off Kepler (Hetzner or otherwise), only the `webspinner-prod` tunnel moves — `webspinner-kepler` stays put with its experimental load. Tunnel separation makes that future migration a daemon-relocation, not a topology rebuild.

@@ -356,3 +356,16 @@ run the scenario as a regular user (after creating one) to catch
 privilege-boundary bugs like Bug 1 before they reach the Wizard.
 
 These three live in the morning queue, not tonight's.
+
+## Cleanup: dangling `try.webspinner.ai.webspinner.work` CNAME
+
+A `cloudflared tunnel route dns webspinner-prod try.webspinner.ai` invocation on 2026-05-16 mis-rooted the hostname against the `cert.pem` zone (`webspinner.work`) and the prefix-matched `webspinner-kepler` tunnel instead of `webspinner-prod`. Result: a CNAME `try.webspinner.ai.webspinner.work` exists in the `webspinner.work` zone, pointing to the old tunnel. It has no matching ingress so no traffic flows through it, but it is leftover.
+
+The `webspinner-ai-try` vault token is scoped to `webspinner.ai` only and cannot delete records in `webspinner.work`. Two paths to clean up:
+
+1. Mint a one-shot `webspinner.work` Zone → DNS Edit token, delete the record, discard the token.
+2. Re-run `cloudflared tunnel login` to refresh `cert.pem` with the broader zone set, then `cloudflared tunnel route ip delete` (verify subcommand exists) or hit the CF API.
+
+Path 1 is cleaner. Not urgent — the record is inert.
+
+**Lesson for future tunnel DNS work in this repo:** `cloudflared tunnel route dns` is unreliable when the cert's zone differs from the target hostname's zone, and unreliable when tunnel names share a prefix. Prefer direct CF API CNAME PATCH with a zone-scoped token + the tunnel UUID. See `DECISIONS.md` 2026-05-16 — Production tunnel separation.
