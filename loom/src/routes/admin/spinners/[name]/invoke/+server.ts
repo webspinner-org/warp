@@ -27,6 +27,7 @@ export const POST: RequestHandler = async ({ request, params, cookies, fetch }) 
   const body = (await request.json()) as {
     capability?: string;
     input?: unknown;
+    sessionId?: string;
   };
 
   if (typeof body.capability !== 'string' || body.capability.length === 0) {
@@ -39,6 +40,13 @@ export const POST: RequestHandler = async ({ request, params, cookies, fetch }) 
     input: body.input,
     actorEmail,
     actorId,
+    // Multi-turn Spinners (e.g. Database Application's propose →
+    // refine → build) need the same sessionId across calls so the
+    // `wp_spinner_sessions` row is reused. The Weaver mints a fresh
+    // UUID when this is absent (single-turn use).
+    ...(typeof body.sessionId === 'string' && body.sessionId.length > 0
+      ? { sessionId: body.sessionId }
+      : {}),
   });
 
   if (!result.ok) {

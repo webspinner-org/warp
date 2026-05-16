@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+#
+# tools/demo-reset — wipe the Demo Cell's state and re-install the
+# roster.
+#
+# The one-command cleanup per `DEMO-RUNTIME-PLAN.md` R2 and
+# `DECISIONS.md` 2026-05-16 — *Demo Cell pattern*. Stops the demo
+# Loom, drops the demo PocketBase data directory, restarts the
+# Grimoire-demo (which initialises a fresh schema), recreates the
+# superuser, restarts the demo Loom, and re-installs every Spinner
+# declared in `demo-roster.json`.
+#
+# Operator state is structurally untouched: only services with the
+# `-demo` label are bouted/booted; only the
+# `Grimoire-Demo/pb_data` directory is removed; the operator's
+# Grimoire on :8090, the operator's Loom on :3000, the shared Quiet
+# Loom + embeddings sidecar are all unaffected.
+#
+# Runs ON KEPLER. From Spindle:
+#
+#   ssh johns-mac-studio.local 'cd ~/warp && tools/demo-reset'
+#
+# Flags:
+#   --yes      skip the confirmation prompt
+#   --quiet    less chatter
+#
+# Exit codes:
+#   0  reset complete; roster Spinners installed
+#   1  step failed; previous lines say which
+#   2  setup error (wrong host, etc.)
+
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin"
+
+YES=0
+QUIET=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes)   YES=1; shift;;
+    --quiet) QUIET=1; shift;;
+    -h|--help) sed -n '3,30p' "$0"; exit 0;;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac
+done
+
+say() { [ "$QUIET" = "1" ] || echo "$@"; }
+err() { echo "ERROR: $*" >&2; exit 1; }
+
+USER_HOME="$HOME"
+WARP_DIR="${WARP_REPO_DIR:-$USER_HOME/warp}"
+DEMO_DATA_ROOT="$USER_HOME/Library/Application Support/Webspinner Foundation"
+DEMO_GRIMOIRE_PB_DATA="$DEMO_DATA_ROOT/Grimoire-Demo/pb_data"
+BOOTSTRAP_DEMO="$USER_HOME/.warp/bootstrap-demo"
+
+GRIMOIRE_LABEL="foundation.webspinner.grimoire-demo"
+LOOM_LABEL="foundation.webspinner.loom-demo"
+GRIMOIRE_PLIST="$USER_HOME/Library/LaunchAgents/$GRIMOIRE_LABEL.plist"
+LOOM_PLIST="$USER_HOME/Library/LaunchAgents/$LOOM_LABEL.plist"
+
+GRIMOIRE_PORT=8091
+LOOM_PORT=3010
+PB_BIN="/opt/homebrew/bin/pocketbase"
+
+[ -f "$GRIMOIRE_PLIST" ] || err "Demo Cell not provisioned. Run tools/demo-cell-up first."
+[ -f "$LOOM_PLIST" ]     || err "Demo Cell not provisioned. Run tools/demo-cell-up first."
+[ -d "$BOOTSTRAP_DEMO" ] || err "$BOOTSTRAP_DEMO missing. Run tools/demo-cell-up first."
+
+if [ "$YES" = "0" ]; then
+  say ""
+  say "This will WIPE the Demo Cell's state:"
+  say "   $DEMO_GRIMOIRE_PB_DATA"
+  say ""
+  say "Operator Cell is unaffected (different PB instance, different ports)."
+  printf "Proceed? [y/N]: "
+  read -r ANS
+  case "$ANS" in
+    [yY]|[yY][eE][sS]) ;;
+    *) say "aborted."; exit 0;;
+  esac
+fi
+
+UID_=$(id -u)
+
+# ── 1. Bootout demo services ────────────────────────────────────────
+say "→ launchctl bootout $LOOM_LABEL"
+launchctl bootout "gui/$UID_/$LOOM_LABEL" 2>&1 || true
+sleep 1
+say "→ launchctl bootout $GRIMOIRE_LABEL"
+launchctl bootout "gui/$UID_/$GRIMOIRE_LABEL" 2>&1 || true
+sleep 1
+
+# ── 2. Wipe demo PB data ────────────────────────────────────────────
+say "→ wiping demo pb_data ($DEMO_GRIMOIRE_PB_DATA)"
+rm -rf "$DEMO_GRIMOIRE_PB_DATA"
+mkdir -p "$DEMO_GRIMOIRE_PB_DATA"
+
+# ── 3. Restart Grimoire-demo ────────────────────────────────────────
+say "→ launchctl bootstrap $GRIMOIRE_LABEL"
+launchctl bootstrap "gui/$UID_" "$GRIMOIRE_PLIST"
+say "→ waiting for Grimoire-demo on :$GRIMOIRE_PORT"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -sS -m 2 "http://127.0.0.1:$GRIMOIRE_PORT/api/health" >/dev/null 2>&1; then
+    say "   ready after ${i}s"
+    break
+  fi
+  sleep 1
+  [ "$i" = "10" ] && err "Grimoire-demo did not respond on :$GRIMOIRE_PORT within 10s"
+done
+
+# ── 4. Re-create PB superuser ───────────────────────────────────────
+PB_EMAIL=$(cat "$BOOTSTRAP_DEMO/pb-email")
+PB_PASSWORD=$(cat "$BOOTSTRAP_DEMO/pb-password")
+say "→ re-creating demo Grimoire superuser ($PB_EMAIL)"
+"$PB_BIN" --dir "$DEMO_GRIMOIRE_PB_DATA" superuser upsert "$PB_EMAIL" "$PB_PASSWORD" >/dev/null 2>&1 \
+  || err "pocketbase superuser upsert failed"
+
+# ── 5. Restart Loom-demo ────────────────────────────────────────────
+say "→ launchctl bootstrap $LOOM_LABEL"
+launchctl bootstrap "gui/$UID_" "$LOOM_PLIST"
+say "→ waiting for Loom-demo on :$LOOM_PORT"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:$LOOM_PORT/admin" 2>/dev/null || echo "000")
+  if [ "$code" = "303" ]; then
+    say "   ready after ${i}s (/admin → 303, Loom-identifying)"
+    break
+  fi
+  sleep 1
+  [ "$i" = "15" ] && err "Loom-demo did not respond 303 on /admin within 15s (last code: $code)"
+done
+
+# ── 6. Re-install roster ────────────────────────────────────────────
+say "→ re-installing roster Spinners"
+"$WARP_DIR/tools/demo-install-roster" ${QUIET:+--quiet} 2>&1
+
+say ""
+say "Demo Cell reset complete. Fresh state at:"
+say "   Grimoire-demo: http://127.0.0.1:$GRIMOIRE_PORT"
+say "   Loom-demo:     http://127.0.0.1:$LOOM_PORT"
