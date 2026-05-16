@@ -1,0 +1,108 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/author",
+  "displayName": "Author",
+  "version": "0.1.0",
+  "description": "The authoring Spinner of the Warp build loop. Takes a brief — slug, display name, description, intent — and scaffolds a new Spinner bundle from a template, generates a Weaver's Tension scenario that exercises it, installs the bundle, and invokes Witness to verify the install end-to-end. Returns a structured report the Wizard reviews before merging. v0 is template-driven (no LLM); v1 adds Quiet Loom for intent → code translation.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/author",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "vault": [],
+  "spools": [],
+  "env": [
+    "WARP_LOOM_BASE",
+    "WARP_PB_URL",
+    "WARP_PB_EMAIL",
+    "WARP_PB_PASSWORD",
+    "WARP_VAULT_MASTER_KEY",
+    "WARP_SCENARIOS_DIR"
+  ],
+  "dependsOn": ["@webspinner-foundation/witness"],
+  "capabilities": [
+    {
+      "name": "authorSpinner",
+      "displayName": "Author a Spinner",
+      "description": "Scaffold a new Spinner from a template, generate a verifying scenario, install the bundle, and run Witness on the scenario. Returns a structured report the Wizard reviews. The closed loop: brief in, runnable-and-verified Spinner out.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,62}$",
+            "description": "Kebab-case identifier. Becomes the directory name and the URL segment."
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Human-readable name shown in the Skein and on the Spinner detail page."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "description": "One paragraph about what this Spinner does."
+          },
+          "intent": {
+            "type": "string",
+            "description": "Optional. A sentence of intent. v0 ignores this and uses the hello-spinner template; v1 will use it to drive LLM-assisted scaffold variations."
+          },
+          "template": {
+            "type": "string",
+            "default": "hello-spinner",
+            "description": "Template to scaffold from. v0 supports 'hello-spinner' only."
+          },
+          "scope": {
+            "type": "string",
+            "default": "@local"
+          }
+        },
+        "required": ["slug", "displayName", "description"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "True iff scaffold + install + scenario-generation + Witness all reported green."
+          },
+          "slug": { "type": "string" },
+          "scenarioSlug": {
+            "type": "string",
+            "description": "The slug of the auto-generated scenario file at ~/warp/scenarios/<slug>-install.json."
+          },
+          "bundlePath": {
+            "type": "string",
+            "description": "Filesystem path to the scaffolded bundle (under ~/Cells/spinners/)."
+          },
+          "skeinName": {
+            "type": "string",
+            "description": "The fully-qualified Spinner name (scope/slug) as registered in the Skein."
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["scaffolded", "scenario-written", "installed", "verified", "failed"],
+            "description": "How far the loop got. Useful for partial-failure diagnosis."
+          },
+          "witnessReport": {
+            "type": "object",
+            "description": "Witness's verifyScenario report on the generated scenario. Read this to see if the authored Spinner actually works."
+          },
+          "errorKind": { "type": "string" },
+          "errorDetail": { "type": "string" }
+        },
+        "required": ["ok", "slug", "phase"]
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.install"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/author"
+  }
+}

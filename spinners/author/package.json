@@ -1,0 +1,12 @@
+{
+  "name": "@webspinner-foundation/author",
+  "version": "0.1.0",
+  "description": "Author Spinner — the authoring role of the Warp build loop.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@webspinner-foundation/sdk": "workspace:*"
+  }
+}

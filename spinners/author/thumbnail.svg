@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Wizard's Journal — the Cell's operational diary">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="78%">
+      <stop offset="0%" stop-color="#16140e"/>
+      <stop offset="60%" stop-color="#0c0a07"/>
+      <stop offset="100%" stop-color="#060503"/>
+    </radialGradient>
+    <linearGradient id="leather" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a2a18"/>
+      <stop offset="50%" stop-color="#2a1f12"/>
+      <stop offset="100%" stop-color="#1a1208"/>
+    </linearGradient>
+    <linearGradient id="leather-edge" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c9a96a" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#c9a96a" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#c9a96a" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0e6cf"/>
+      <stop offset="100%" stop-color="#d8c8a4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#bg)"/>
+
+  <!-- desk surface hint -->
+  <g opacity="0.18">
+    <line x1="0" y1="320" x2="400" y2="320" stroke="#c9a96a" stroke-width="0.4"/>
+    <line x1="0" y1="328" x2="400" y2="328" stroke="#c9a96a" stroke-width="0.3"/>
+    <line x1="0" y1="338" x2="400" y2="338" stroke="#c9a96a" stroke-width="0.25"/>
+  </g>
+
+  <!-- the leather-bound journal, open and lying flat -->
+  <g transform="translate(40, 110) rotate(-3 160 80)">
+    <!-- back cover shadow -->
+    <rect x="-2" y="-2" width="324" height="184" rx="6" fill="#0a0703" opacity="0.6"/>
+    <!-- leather covers (open book — left and right) -->
+    <path d="M0 0 L160 6 L160 174 L0 180 Z" fill="url(#leather)" stroke="url(#leather-edge)" stroke-width="1.2"/>
+    <path d="M320 0 L160 6 L160 174 L320 180 Z" fill="url(#leather)" stroke="url(#leather-edge)" stroke-width="1.2"/>
+
+    <!-- pages on each side, slightly inset -->
+    <path d="M10 8 L156 12 L156 168 L10 172 Z" fill="url(#page)" stroke="#a8895c" stroke-width="0.4"/>
+    <path d="M310 8 L164 12 L164 168 L310 172 Z" fill="url(#page)" stroke="#a8895c" stroke-width="0.4"/>
+
+    <!-- gutter shadow -->
+    <path d="M155 6 L155 174 L165 174 L165 6 Z" fill="#0a0703" opacity="0.35"/>
+
+    <!-- ruled lines on left page -->
+    <g stroke="#7d5c2e" stroke-width="0.35" opacity="0.55">
+      <line x1="20" y1="32" x2="148" y2="34"/>
+      <line x1="20" y1="48" x2="148" y2="50"/>
+      <line x1="20" y1="64" x2="148" y2="66"/>
+      <line x1="20" y1="80" x2="148" y2="82"/>
+      <line x1="20" y1="96" x2="148" y2="98"/>
+      <line x1="20" y1="112" x2="148" y2="114"/>
+      <line x1="20" y1="128" x2="148" y2="130"/>
+      <line x1="20" y1="144" x2="148" y2="146"/>
+    </g>
+
+    <!-- handwriting on the left page — irregular ink strokes -->
+    <g stroke="#2a1810" stroke-width="0.9" fill="none" stroke-linecap="round" opacity="0.85">
+      <path d="M22 28 q4 -2 9 0 t10 1 q3 -2 6 0 t8 -1 q5 1 9 -1"/>
+      <path d="M22 44 q5 -2 11 1 t12 -1 q3 1 7 -1 t10 1 q4 1 8 -1"/>
+      <path d="M22 60 q6 -2 13 0 t14 0 q3 0 6 -1 q5 1 11 -1 t12 1"/>
+      <path d="M22 76 q7 -3 15 1 q4 -2 9 0 t11 0 q3 -1 5 0"/>
+      <path d="M22 92 q5 -2 11 1 t12 -1 q4 1 8 -1"/>
+      <path d="M22 108 q6 -1 12 1 t14 0 q3 -1 6 0 t10 0"/>
+    </g>
+
+    <!-- a date header on the right page in serif -->
+    <text x="186" y="34" fill="#5a3f1a" font-family="'Iowan Old Style','Hoefler Text',Georgia,serif" font-size="9" font-weight="600" letter-spacing="0.5" opacity="0.85">2026 — MAY</text>
+    <line x1="186" y1="40" x2="296" y2="40" stroke="#7d5c2e" stroke-width="0.5" opacity="0.6"/>
+
+    <!-- ruled lines on right page -->
+    <g stroke="#7d5c2e" stroke-width="0.35" opacity="0.5">
+      <line x1="184" y1="52" x2="298" y2="54"/>
+      <line x1="184" y1="68" x2="298" y2="70"/>
+      <line x1="184" y1="84" x2="298" y2="86"/>
+      <line x1="184" y1="100" x2="298" y2="102"/>
+      <line x1="184" y1="116" x2="298" y2="118"/>
+      <line x1="184" y1="132" x2="298" y2="134"/>
+      <line x1="184" y1="148" x2="298" y2="150"/>
+    </g>
+
+    <!-- a bullet entry on the right page -->
+    <g fill="#2a1810" opacity="0.85">
+      <circle cx="190" cy="63" r="1.5"/>
+      <circle cx="190" cy="79" r="1.5"/>
+      <circle cx="190" cy="95" r="1.5"/>
+    </g>
+    <g stroke="#2a1810" stroke-width="0.9" fill="none" stroke-linecap="round" opacity="0.85">
+      <path d="M196 64 q6 -2 12 0 t14 -1 q4 1 8 0 t11 0 q3 -1 6 0"/>
+      <path d="M196 80 q7 -1 14 1 t12 0 q5 0 9 -1 q3 0 6 0"/>
+      <path d="M196 96 q5 -2 11 1 t13 -1 q4 1 7 0 q3 0 6 0 t9 0"/>
+    </g>
+  </g>
+
+  <!-- the quill, resting across the top edge -->
+  <g transform="translate(70, 80) rotate(18 130 16)">
+    <!-- shaft -->
+    <path d="M0 16 L240 4" stroke="#c9a96a" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+    <!-- feather plume -->
+    <path d="M180 6 q12 -8 28 -4 q-4 6 -14 8 q12 0 18 -6 q-4 8 -14 12 q10 0 14 -4 q-4 8 -16 12 q8 0 12 -4 q-4 8 -16 12 q8 0 14 -6 l-8 8 z" fill="#c9a96a" opacity="0.6" stroke="#c9a96a" stroke-width="0.4"/>
+    <!-- nib -->
+    <path d="M-2 18 L8 14 L4 22 Z" fill="#0a0703" stroke="#c9a96a" stroke-width="0.6"/>
+  </g>
+
+  <!-- name plaque at the bottom -->
+  <g opacity="0.92">
+    <text x="200" y="384" fill="#c9a96a" font-family="'Iowan Old Style','Hoefler Text',Georgia,serif" font-size="12" letter-spacing="3" text-anchor="middle">THE WIZARD'S JOURNAL</text>
+  </g>
+</svg>
