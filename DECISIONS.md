@@ -577,3 +577,68 @@ co-walked session with full visibility + gating + chat; (b) every future
 Spinner can ship a `demo.scenario.json` and get a patron-facing walkthrough
 for free; (c) it composes with the meta-runtime (each step = op envelope + audit
 events) so design feedback is structurally recoverable, not lost in chat.
+
+## 2026-05-16 — The build loop closes: Author + Witness MVP
+
+**Decision:** The Webspinner Architecture's MVP build loop is operative.
+Two new Genesis Spinners ship: `Witness` (the verification role —
+drives Weaver's Tension scenarios via headless Chromium and returns a
+structured report) and `Author` (the authoring role — takes a brief,
+scaffolds from a template, generates a verifying scenario, installs,
+and invokes Witness on the result). Combined with the pre-existing
+Pablo (design critic), the AGENTIC-BUILD-LOOP.md proposed cluster has
+its v0 cut in place: Author → Witness → Pablo, with the Wizard as the
+release gate.
+
+**Why:** The proof point landed 2026-05-16. A single Author invocation
+with input `{ slug: 'loop-demo', displayName: 'Loop Demo', description: ... }`
+produced: a scaffolded bundle at `~/Cells/spinners/loop-demo/`, an
+auto-generated scenario at `~/warp/scenarios/loop-demo-install.json`,
+an installed wp_skein row with `integrity_status: verified`, and a
+WitnessReport with `ok: true, completedSteps: 4 / 4`. The wall-clock
+for the full loop end-to-end was ~12 seconds (scaffold + scenario +
+install + 4-step Witness verification). No Wizard in the iteration.
+
+Along the way, Witness empirically caught four bugs and surfaced each
+as structured evidence: selectors missing placeholder substitution
+(fixed in `executor.ts`), `process.cwd()` not anchoring at warp root
+(switched to `homedir()`), Loom-internal `.js`-extension chained
+imports unresolvable from outside the workspace (switched Author's
+install path to the HTTP endpoint), and the `cleanupSpinnerSlug`
+parameter colliding with Author-generated scenarios that test an
+existing install (omitted that param when Author calls Witness). Each
+fix was a direct response to a Witness report — never a guess.
+
+Architectural shape:
+
+Author runs in-process inside the Loom (via weaver-cell-dispatch).
+Author imports `scaffoldFromTemplate` directly from the Loom's
+templates module (a leaf module with no chained internal imports);
+Author calls `/admin/spinners/install` and
+`/admin/spinners/witness/invoke` over HTTP for the install and
+verification phases (so the audit + op envelope chain flows through
+the same surfaces a Wizard would use). Witness also runs in-process
+but launches its own headless Chromium subprocess for browser driving.
+
+What this enables:
+
+- Every future Spinner can be authored through this loop instead of
+  through Claude Code. The brief becomes the SOLE Wizard input.
+- Failures land as structured WitnessReports with `escalation.reason`
+  - `evidenceText` — actionable by an SI consumer, not just a human.
+- The test-cost-equals-code-cost problem from the
+  AGENTIC-BUILD-LOOP.md note is now actually solvable: Witness
+  scenarios become the integration-verification primitive; unit
+  tests retreat to tight algorithms.
+
+Out of scope, deferred:
+
+- LLM-driven scaffolding in Author (v0 uses hello-spinner verbatim;
+  the `intent` field is recorded but not yet consumed). v1.
+- Mender Spinner (auto-corrects on Witness red). v2.
+- Multi-template support. v1 when Author needs to choose.
+- Self-healing of Author's own bugs via Mender's report-reading loop.
+
+Trigger to land was met: a Wizard asked "what is next?" two days
+after Weaver's Tension v2 shipped. The answer was the loop, and the
+loop was built — and verified by itself, end to end.
