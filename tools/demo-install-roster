@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# tools/demo-install-roster — install every Spinner declared in
+# `demo-roster.json` into the Demo Cell.
+#
+# Per `DEMO-RUNTIME-PLAN.md` R0.2: this is the install-on-boot flow.
+# Idempotent — `tools/webspinner install` itself PATCHes an existing
+# wp_skein row; re-running this script keeps the Demo Cell aligned
+# with the roster.
+#
+# Runs ON KEPLER. Reads the roster + the bootstrap-demo creds; talks
+# to the demo Loom on loopback (127.0.0.1:3001).
+#
+# Flags:
+#   --quiet         less chatter
+#
+# Exit codes:
+#   0  every Spinner installed
+#   1  one or more installs failed (the rest still attempted)
+#   2  setup error
+
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin"
+
+QUIET=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quiet) QUIET=1; shift;;
+    -h|--help) sed -n '3,20p' "$0"; exit 0;;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac
+done
+
+say() { [ "$QUIET" = "1" ] || echo "$@"; }
+err() { echo "ERROR: $*" >&2; exit 2; }
+
+WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
+ROSTER="$WARP_DIR/demo-roster.json"
+BOOTSTRAP_DEMO="$HOME/.warp/bootstrap-demo"
+DEMO_LOOM_BASE="${DEMO_LOOM_BASE:-http://127.0.0.1:3001}"
+
+[ -f "$ROSTER" ]                          || err "roster file not found at $ROSTER"
+[ -d "$BOOTSTRAP_DEMO" ]                  || err "$BOOTSTRAP_DEMO not found — run tools/demo-cell-up first"
+[ -f "$WARP_DIR/tools/webspinner" ]       || err "$WARP_DIR/tools/webspinner missing"
+
+# Pull every slug + bundleRelativePath pair from the roster.
+SLUGS_AND_PATHS=$(python3 - "$ROSTER" <<'PYEOF'
+import json, sys, pathlib
+roster = json.loads(pathlib.Path(sys.argv[1]).read_text())
+for s in roster.get("spinners", []):
+    slug = s.get("slug", "")
+    path = s.get("bundleRelativePath", "")
+    if slug and path:
+        print(f"{slug}\t{path}")
+PYEOF
+)
+[ -n "$SLUGS_AND_PATHS" ] || err "roster declares no Spinners"
+
+fail_count=0
+success_count=0
+
+while IFS=$'\t' read -r slug bundle; do
+  [ -z "$slug" ] && continue
+  say "→ installing $slug (bundle: $bundle)"
+  if WARP_LOOM_BASE="$DEMO_LOOM_BASE" \
+     WARP_BOOTSTRAP_DIR="$BOOTSTRAP_DEMO" \
+     "$WARP_DIR/tools/webspinner" install "$bundle" >/tmp/demo-install-$$.log 2>&1; then
+    success_count=$((success_count + 1))
+    say "   ✓ installed"
+  else
+    fail_count=$((fail_count + 1))
+    say "   ✗ failed (log: /tmp/demo-install-$$.log)"
+    tail -5 /tmp/demo-install-$$.log | sed 's/^/     /'
+  fi
+done <<< "$SLUGS_AND_PATHS"
+
+rm -f /tmp/demo-install-$$.log
+
+say ""
+say "Roster install summary:"
+say "   succeeded: $success_count"
+say "   failed:    $fail_count"
+
+[ "$fail_count" -eq 0 ] || exit 1

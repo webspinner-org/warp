@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+#
+# tools/demo-cell-up — provision the Demo Cell on Kepler.
+#
+# The patron-facing Spinner runtime per `DECISIONS.md` 2026-05-16 —
+# *Demo Cell pattern* and `DEMO-RUNTIME-PLAN.md` R0. A second Loom +
+# second Grimoire parallel to the operator's, sharing only the
+# stateless Kepler Quiet Loom + embeddings sidecar. Isolation by
+# construction: separate PB data, separate bootstrap creds, separate
+# Cell identity key, loopback-only network surface.
+#
+# Idempotent — running twice is safe. Existing secrets at
+# ~/.warp/bootstrap-demo/ are reused; missing ones are generated.
+# Existing plists are overwritten only on --force; otherwise the
+# script bails when one is already in place (the assumption is the
+# Wizard wants to inspect before clobbering).
+#
+# Runs ON KEPLER (the Loom host). From Spindle:
+#
+#   rsync -a ~/warp/ johns-mac-studio.local:warp/ --exclude=...
+#   ssh johns-mac-studio.local 'cd ~/warp && tools/demo-cell-up'
+#
+# Flags:
+#   --force         overwrite plists even if present
+#   --skip-build    don't pnpm build the Loom (assume it's already built)
+#   --quiet         less chatter
+#
+# Exit codes:
+#   0  success — Demo Cell up, both services running, smoke green
+#   1  step failed; previous lines say which
+#   2  setup error (wrong host, missing binary, etc.)
+
+set -euo pipefail
+
+# ── PATH for non-interactive shells ────────────────────────────────
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# ── Args ────────────────────────────────────────────────────────────
+FORCE=0
+SKIP_BUILD=0
+QUIET=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force)      FORCE=1; shift;;
+    --skip-build) SKIP_BUILD=1; shift;;
+    --quiet)      QUIET=1; shift;;
+    -h|--help)    sed -n '3,30p' "$0"; exit 0;;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac
+done
+
+say() { [ "$QUIET" = "1" ] || echo "$@"; }
+err() { echo "ERROR: $*" >&2; exit 1; }
+
+# ── Constants ───────────────────────────────────────────────────────
+USER_HOME="$HOME"
+WARP_DIR="${WARP_REPO_DIR:-$USER_HOME/warp}"
+DEMO_DATA_ROOT="$USER_HOME/Library/Application Support/Webspinner Foundation"
+DEMO_GRIMOIRE_DIR="$DEMO_DATA_ROOT/Grimoire-Demo"
+DEMO_GRIMOIRE_PB_DATA="$DEMO_GRIMOIRE_DIR/pb_data"
+DEMO_GRIMOIRE_LOGS="$DEMO_GRIMOIRE_DIR/logs"
+DEMO_LOOM_DIR="$DEMO_DATA_ROOT/Loom-Demo"
+DEMO_LOOM_LOGS="$DEMO_LOOM_DIR/logs"
+BOOTSTRAP_DEMO="$USER_HOME/.warp/bootstrap-demo"
+
+GRIMOIRE_LABEL="foundation.webspinner.grimoire-demo"
+LOOM_LABEL="foundation.webspinner.loom-demo"
+GRIMOIRE_PLIST="$USER_HOME/Library/LaunchAgents/$GRIMOIRE_LABEL.plist"
+LOOM_PLIST="$USER_HOME/Library/LaunchAgents/$LOOM_LABEL.plist"
+
+GRIMOIRE_PORT=8091
+LOOM_PORT=3001
+QUIET_LOOM_URL="http://127.0.0.1:11445"
+QUIET_LOOM_MODEL="mlx-community/Qwen2.5-14B-Instruct-4bit"
+EMBEDDINGS_URL="http://127.0.0.1:11446"
+
+PB_BIN="/opt/homebrew/bin/pocketbase"
+NODE_BIN="/opt/homebrew/bin/node"
+
+[ -x "$PB_BIN" ]   || err "$PB_BIN not found"
+[ -x "$NODE_BIN" ] || err "$NODE_BIN not found"
+[ -d "$WARP_DIR" ] || err "warp repo not at $WARP_DIR"
+[ -f "$WARP_DIR/loom/build/index.js" ] || [ "$SKIP_BUILD" = "1" ] || {
+  say "→ pnpm build (loom build artifact missing)"
+  cd "$WARP_DIR" && pnpm -r --if-present build >/dev/null 2>&1 || err "pnpm build failed"
+}
+
+UID_=$(id -u)
+
+# ── 1. Bootstrap creds (generate if absent) ─────────────────────────
+say "→ ensuring bootstrap creds at $BOOTSTRAP_DEMO"
+mkdir -p "$BOOTSTRAP_DEMO"
+chmod 700 "$BOOTSTRAP_DEMO"
+
+if [ ! -s "$BOOTSTRAP_DEMO/pb-email" ]; then
+  echo "wizard-demo@webspinner.foundation" > "$BOOTSTRAP_DEMO/pb-email"
+  chmod 600 "$BOOTSTRAP_DEMO/pb-email"
+  say "   generated pb-email"
+fi
+if [ ! -s "$BOOTSTRAP_DEMO/pb-password" ]; then
+  # 32 bytes → base64 → 43+ chars of high-entropy password
+  openssl rand -base64 32 | tr -d '\n=' | head -c 40 > "$BOOTSTRAP_DEMO/pb-password"
+  chmod 600 "$BOOTSTRAP_DEMO/pb-password"
+  say "   generated pb-password"
+fi
+if [ ! -s "$BOOTSTRAP_DEMO/vault-master-key" ]; then
+  # 32 bytes raw → base64 — matches operator format
+  openssl rand -base64 32 > "$BOOTSTRAP_DEMO/vault-master-key"
+  chmod 600 "$BOOTSTRAP_DEMO/vault-master-key"
+  say "   generated vault-master-key"
+fi
+if [ ! -s "$BOOTSTRAP_DEMO/dev-bypass-token" ]; then
+  openssl rand -hex 32 > "$BOOTSTRAP_DEMO/dev-bypass-token"
+  chmod 600 "$BOOTSTRAP_DEMO/dev-bypass-token"
+  say "   generated dev-bypass-token"
+fi
+
+PB_EMAIL=$(cat "$BOOTSTRAP_DEMO/pb-email")
+PB_PASSWORD=$(cat "$BOOTSTRAP_DEMO/pb-password")
+VAULT_MASTER_KEY=$(cat "$BOOTSTRAP_DEMO/vault-master-key")
+DEV_BYPASS_TOKEN=$(cat "$BOOTSTRAP_DEMO/dev-bypass-token")
+
+# ── 2. Data + log directories ───────────────────────────────────────
+say "→ ensuring data directories"
+mkdir -p "$DEMO_GRIMOIRE_PB_DATA" "$DEMO_GRIMOIRE_LOGS" "$DEMO_LOOM_LOGS"
+
+# ── 3. Grimoire-demo plist ──────────────────────────────────────────
+write_grimoire_plist() {
+  cat > "$GRIMOIRE_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$GRIMOIRE_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$PB_BIN</string>
+    <string>serve</string>
+    <string>--http</string><string>127.0.0.1:$GRIMOIRE_PORT</string>
+    <string>--dir</string><string>$DEMO_GRIMOIRE_PB_DATA</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$DEMO_GRIMOIRE_LOGS/grimoire.out.log</string>
+  <key>StandardErrorPath</key><string>$DEMO_GRIMOIRE_LOGS/grimoire.err.log</string>
+  <key>WorkingDirectory</key><string>$DEMO_GRIMOIRE_DIR</string>
+</dict>
+</plist>
+EOF
+  chmod 644 "$GRIMOIRE_PLIST"
+}
+
+if [ -f "$GRIMOIRE_PLIST" ] && [ "$FORCE" = "0" ]; then
+  say "→ $GRIMOIRE_LABEL plist already present (use --force to overwrite)"
+else
+  say "→ writing $GRIMOIRE_LABEL plist"
+  write_grimoire_plist
+fi
+
+# ── 4. Boot Grimoire-demo ───────────────────────────────────────────
+say "→ launchctl bootout $GRIMOIRE_LABEL (best effort)"
+launchctl bootout "gui/$UID_/$GRIMOIRE_LABEL" 2>&1 || true
+sleep 1
+say "→ launchctl bootstrap $GRIMOIRE_LABEL"
+launchctl bootstrap "gui/$UID_" "$GRIMOIRE_PLIST"
+
+# Wait for PB to be reachable
+say "→ waiting for Grimoire-demo on :$GRIMOIRE_PORT"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -sS -m 2 "http://127.0.0.1:$GRIMOIRE_PORT/api/health" >/dev/null 2>&1; then
+    say "   ready after ${i}s"
+    break
+  fi
+  sleep 1
+  [ "$i" = "10" ] && err "Grimoire-demo did not respond on :$GRIMOIRE_PORT within 10s"
+done
+
+# ── 5. Initialise PB superuser ──────────────────────────────────────
+# Idempotent: pocketbase superuser upsert sets the password whether or
+# not the superuser already exists.
+say "→ initialising demo Grimoire superuser ($PB_EMAIL)"
+"$PB_BIN" --dir "$DEMO_GRIMOIRE_PB_DATA" superuser upsert "$PB_EMAIL" "$PB_PASSWORD" >/dev/null 2>&1 \
+  || err "pocketbase superuser upsert failed (PB version may differ — check $DEMO_GRIMOIRE_LOGS/grimoire.err.log)"
+
+# Sanity: authenticate against the running instance with the credentials.
+AUTH_RESP=$(curl -sS -X POST \
+  "http://127.0.0.1:$GRIMOIRE_PORT/api/collections/_superusers/auth-with-password" \
+  -H "Content-Type: application/json" \
+  -d "{\"identity\":\"$PB_EMAIL\",\"password\":\"$PB_PASSWORD\"}")
+echo "$AUTH_RESP" | grep -q '"token"' || err "demo PB superuser auth check failed: $AUTH_RESP"
+say "   superuser auth verified"
+
+# ── 6. Loom-demo plist ──────────────────────────────────────────────
+# Loopback-only (HOST=127.0.0.1). FastAPI proxy on the same host is
+# the only legitimate caller; the demo Loom never gets a public
+# hostname per DEMO-RUNTIME-PLAN.md.
+write_loom_plist() {
+  # Use a Python helper for XML safety so the secrets land verbatim
+  # even when they contain `<`, `>`, `&`, or `"` characters.
+  python3 - "$LOOM_PLIST" <<PYEOF
+import sys, plistlib, os
+
+plist_path = sys.argv[1]
+plist = {
+    "Label": "$LOOM_LABEL",
+    "ProgramArguments": ["$NODE_BIN", "$WARP_DIR/loom/build/index.js"],
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "StandardOutPath": "$DEMO_LOOM_LOGS/loom.out.log",
+    "StandardErrorPath": "$DEMO_LOOM_LOGS/loom.err.log",
+    "WorkingDirectory": "$WARP_DIR/loom",
+    "EnvironmentVariables": {
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin",
+        "HOST": "127.0.0.1",
+        "PORT": "$LOOM_PORT",
+        "ORIGIN": "http://127.0.0.1:$LOOM_PORT",
+        "HOST_HEADER": "x-forwarded-host",
+        "PROTOCOL_HEADER": "x-forwarded-proto",
+        "WARP_PB_URL": "http://127.0.0.1:$GRIMOIRE_PORT",
+        "WARP_PB_EMAIL": """$PB_EMAIL""",
+        "WARP_PB_PASSWORD": """$PB_PASSWORD""",
+        "WARP_VAULT_MASTER_KEY": """$VAULT_MASTER_KEY""",
+        "WARP_DEV_BYPASS_TOKEN": """$DEV_BYPASS_TOKEN""",
+        "WARP_QUIET_LOOM_URL": "$QUIET_LOOM_URL",
+        "WARP_QUIET_LOOM_MODEL": "$QUIET_LOOM_MODEL",
+        "WARP_EMBEDDINGS_URL": "$EMBEDDINGS_URL",
+        "WARP_REPO_DIR": "$WARP_DIR",
+        "WARP_SPINNERS_DIR": "$WARP_DIR/spinners",
+    },
+}
+with open(plist_path, "wb") as f:
+    plistlib.dump(plist, f)
+os.chmod(plist_path, 0o644)
+PYEOF
+}
+
+if [ -f "$LOOM_PLIST" ] && [ "$FORCE" = "0" ]; then
+  say "→ $LOOM_LABEL plist already present (use --force to overwrite)"
+else
+  say "→ writing $LOOM_LABEL plist"
+  write_loom_plist
+fi
+
+# ── 7. Boot Loom-demo ───────────────────────────────────────────────
+say "→ launchctl bootout $LOOM_LABEL (best effort)"
+launchctl bootout "gui/$UID_/$LOOM_LABEL" 2>&1 || true
+sleep 1
+say "→ launchctl bootstrap $LOOM_LABEL"
+launchctl bootstrap "gui/$UID_" "$LOOM_PLIST"
+
+# Wait for Loom to be reachable
+say "→ waiting for Loom-demo on :$LOOM_PORT"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:$LOOM_PORT/" 2>/dev/null || echo "000")
+  if [ "$code" = "200" ]; then
+    say "   ready after ${i}s (HTTP $code)"
+    break
+  fi
+  sleep 1
+  [ "$i" = "15" ] && err "Loom-demo did not respond 200 on :$LOOM_PORT within 15s (last code: $code)"
+done
+
+# ── 8. Smoke test ───────────────────────────────────────────────────
+say ""
+say "→ smoke"
+for p in / /login /admin; do
+  code=$(curl -sS -m 3 -o /dev/null -w "%{http_code}" "http://127.0.0.1:$LOOM_PORT$p" 2>/dev/null || echo "000")
+  case "$p:$code" in
+    /:200|/login:200|/admin:303) ok='✓';;
+    *) ok='✗';;
+  esac
+  say "   $ok  $p → HTTP $code"
+done
+
+say ""
+say "Demo Cell up:"
+say "   Grimoire-demo: http://127.0.0.1:$GRIMOIRE_PORT (PB superuser: $PB_EMAIL)"
+say "   Loom-demo:     http://127.0.0.1:$LOOM_PORT (loopback only)"
+say "   Bootstrap:     $BOOTSTRAP_DEMO"
+say ""
+say "Next: install roster Spinners. The roster lives at:"
+say "   $WARP_DIR/demo-roster.json"
+say "Use \`tools/demo-install-roster\` to install everything declared there."

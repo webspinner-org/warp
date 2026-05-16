@@ -1,0 +1,14 @@
+{
+  "rosterVersion": "1.0",
+  "description": "Spinners installed in the Demo Cell on Kepler. Read by `tools/demo-cell-up`, `tools/demo-install-roster`, `tools/demo-reset`, and the FastAPI proxy at try.webspinner.ai. Adding a Spinner here + running demo-reset is the entire deployment path for the public demo. Per DEMO-RUNTIME-PLAN.md.",
+  "spinners": [
+    {
+      "slug": "database-application",
+      "bundleRelativePath": "spinners/database-application",
+      "exposeAs": "Database Application",
+      "menuTile": "available",
+      "introPrompt": "Tell me what you'd like to keep track of.",
+      "notes": "First Webspinner-facing Spinner. v0 wires `propose`; `refine` and `build` are stubbed pending end-to-end validation of propose."
+    }
+  ]
+}
