@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     actorKind = 'wizard';
   }
 
-  const body = (await request.json()) as { bundlePath?: string };
+  const body = (await request.json()) as { bundlePath?: string; isDemo?: boolean };
   if (typeof body.bundlePath !== 'string' || body.bundlePath.length === 0) {
     throw error(400, 'bundlePath required');
   }
@@ -49,6 +49,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     fetch,
     pbToken,
     masterKey,
+    ...(body.isDemo === true ? { isDemo: true } : {}),
   });
 
   if (!result.ok) {

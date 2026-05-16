@@ -27,6 +27,13 @@ export interface AuthorInput {
   readonly intent?: string;
   readonly template?: string;
   readonly scope?: string;
+  /**
+   * Default true (current Author callers are build-loop test runs;
+   * outputs are marked isDemo and hidden from the default Skein view
+   * + swept on TTL). A patron-facing UI invocation sets testRun:false
+   * to install a real, persistent Spinner.
+   */
+  readonly testRun?: boolean;
 }
 
 export type AuthorPhase =
@@ -229,7 +236,12 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
       'Content-Type': 'application/json',
       Cookie: `wp_session=_superusers::${pbToken}`,
     },
-    body: JSON.stringify({ bundlePath: destDir }),
+    body: JSON.stringify({
+      bundlePath: destDir,
+      // Pass isDemo through. Author's default is testRun:true, so by
+      // default outputs are demo-flagged.
+      isDemo: input.testRun !== false,
+    }),
   });
   if (!installRes.ok) {
     const text = await installRes.text();

@@ -55,6 +55,11 @@
           "scope": {
             "type": "string",
             "default": "@local"
+          },
+          "testRun": {
+            "type": "boolean",
+            "default": true,
+            "description": "When true (default), the Skein row is flagged isDemo and hidden from the default view + auto-swept on TTL. Set to false for a real, persistent Spinner install."
           }
         },
         "required": ["slug", "displayName", "description"]

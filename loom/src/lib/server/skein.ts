@@ -62,6 +62,14 @@ export interface SkeinRow {
   readonly installOpId?: string;
   readonly lastInvokedAt?: string;
   readonly invocationCount: number;
+  /**
+   * True when this row was produced by an Author-Spinner test run
+   * (or any other ephemeral build-loop invocation). Demo rows are
+   * hidden from the default Skein view, swept on a TTL, and don't
+   * contribute to patron-facing counts. Authentic patron-installed
+   * Spinners always have isDemo=false.
+   */
+  readonly isDemo: boolean;
 }
 
 export interface SkeinUpsert {
@@ -78,6 +86,7 @@ export interface SkeinUpsert {
   readonly installedAt: string;
   readonly installedBy: string;
   readonly installOpId?: string;
+  readonly isDemo?: boolean;
 }
 
 export interface ListSkeinRequest {
@@ -104,6 +113,7 @@ interface PBSkeinRow {
   readonly install_op_id?: string;
   readonly last_invoked_at?: string;
   readonly invocation_count?: number;
+  readonly is_demo?: boolean;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -132,6 +142,7 @@ function parseRow(row: PBSkeinRow): SkeinRow {
       ? { lastInvokedAt: row.last_invoked_at }
       : {}),
     invocationCount: row.invocation_count ?? 0,
+    isDemo: row.is_demo === true,
   };
 }
 
@@ -174,6 +185,7 @@ export async function ensureSkeinCollection(
         { name: 'install_op_id', type: 'text', required: false, max: 64 },
         { name: 'last_invoked_at', type: 'text', required: false, max: 32 },
         { name: 'invocation_count', type: 'number', required: false },
+        { name: 'is_demo', type: 'bool', required: false },
         { name: 'created', type: 'autodate', system: true, onCreate: true, onUpdate: false },
         { name: 'updated', type: 'autodate', system: true, onCreate: true, onUpdate: true },
       ],
@@ -271,6 +283,7 @@ export async function upsertSkeinRow(
     installed_at: upsert.installedAt,
     installed_by: upsert.installedBy,
     install_op_id: upsert.installOpId ?? '',
+    is_demo: upsert.isDemo === true,
   };
 
   if (existing.row) {

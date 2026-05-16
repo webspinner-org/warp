@@ -59,6 +59,12 @@ export interface InstallOperationInput {
   readonly pbToken: string;
   readonly masterKey: string;
   readonly now?: () => Date;
+  /**
+   * When true, the resulting wp_skein row is marked isDemo=true so it
+   * won't pollute the default Skein view and will be swept by TTL.
+   * Author defaults to true for test runs; UI installs default false.
+   */
+  readonly isDemo?: boolean;
 }
 
 export type InstallOperationError =
@@ -340,6 +346,7 @@ export async function installSpinnerBundle(
     lastIntegrityCheck: installedAt,
     installedAt,
     installedBy: input.actor.email ?? input.actor.id,
+    ...(input.isDemo === true ? { isDemo: true } : {}),
   });
   if (!upsert.ok) {
     return finish({

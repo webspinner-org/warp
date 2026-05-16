@@ -1,12 +1,23 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
+
   let { data } = $props();
 
   let q = $state('');
   let filter = $state<'all' | 'threadable' | 'verified' | 'pending'>('all');
+  // Demos (build-loop test artifacts) hidden by default. Patrons see
+  // canonical state. Wizard toggles to inspect / sweep.
+  let showDemos = $state(false);
+  let sweeping = $state(false);
+  let sweepMessage = $state('');
+
+  const demoCount = $derived(data.spinners.filter((s) => s.isDemo).length);
 
   const visible = $derived.by(() => {
     const needle = q.trim().toLowerCase();
     return data.spinners.filter((s) => {
+      if (!showDemos && s.isDemo) return false;
       if (needle.length > 0) {
         const hay = `${s.displayName} ${s.name} ${s.description ?? ''}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -18,7 +29,17 @@
     });
   });
 
-  function integrityLabel(status: string): string {
+  // Trust display = (source, integrity) considered together.
+  // Genesis Spinners with `unsigned` integrity are technically accurate
+  // (the Foundation release key doesn't exist during bootstrap) but
+  // UX-wrong: they ship in the canonical warp repo, which IS the
+  // Foundation's trust assertion for the bootstrap epoch. Present them
+  // as "Foundation" rather than as a warning. Same treatment for
+  // explicit foundation-recognized rows once those land post-federation.
+  function trustLabel(status: string, source: string): string {
+    if ((source === 'genesis' || source === 'foundation-recognized') && status === 'unsigned') {
+      return 'Foundation';
+    }
     switch (status) {
       case 'verified':
         return 'Verified';
@@ -35,6 +56,24 @@
     }
   }
 
+  function trustClass(status: string, source: string): string {
+    if ((source === 'genesis' || source === 'foundation-recognized') && status === 'unsigned') {
+      return 'foundation';
+    }
+    switch (status) {
+      case 'verified':
+        return 'ok';
+      case 'unsigned':
+      case 'pending-install':
+        return 'warn';
+      case 'digest-mismatch':
+      case 'signature-invalid':
+        return 'bad';
+      default:
+        return '';
+    }
+  }
+
   function sourceLabel(source: string): string {
     switch (source) {
       case 'genesis':
@@ -47,21 +86,6 @@
         return '3rd-party';
       default:
         return source;
-    }
-  }
-
-  function integrityClass(status: string): string {
-    switch (status) {
-      case 'verified':
-        return 'ok';
-      case 'unsigned':
-      case 'pending-install':
-        return 'warn';
-      case 'digest-mismatch':
-      case 'signature-invalid':
-        return 'bad';
-      default:
-        return '';
     }
   }
 </script>
@@ -139,6 +163,42 @@
   </span>
 </div>
 
+{#if demoCount > 0}
+  <div class="demos-bar">
+    <span class="demos-note">
+      {demoCount} demo{demoCount === 1 ? '' : 's'} hidden — build-loop test artifacts from Author runs.
+    </span>
+    <label class="demos-toggle">
+      <input type="checkbox" bind:checked={showDemos} />
+      <span>Show demos</span>
+    </label>
+    <form
+      method="POST"
+      action="?/sweepDemos"
+      use:enhance={() => {
+        sweeping = true;
+        sweepMessage = '';
+        return async ({ result, update }) => {
+          sweeping = false;
+          if (result.type === 'success' && result.data) {
+            const d = result.data as { swept?: number; errors?: number };
+            sweepMessage = `Swept ${d.swept ?? 0} demo${d.swept === 1 ? '' : 's'}${d.errors ? ` (${d.errors} errors — see logs)` : ''}.`;
+          }
+          await update();
+          await invalidateAll();
+        };
+      }}
+    >
+      <button type="submit" class="sweep-btn" disabled={sweeping}>
+        {sweeping ? 'Sweeping…' : 'Sweep demos'}
+      </button>
+    </form>
+    {#if sweepMessage}
+      <span class="sweep-msg">{sweepMessage}</span>
+    {/if}
+  </div>
+{/if}
+
 {#if data.spinners.length === 0}
   <p class="empty">
     No Spinners registered. Drop a bundle in <code>~/warp/spinners/&lt;name&gt;/</code> with a
@@ -149,7 +209,7 @@
 {:else}
   <ul class="list">
     {#each visible as s (s.slug)}
-      <li>
+      <li class:demo-row={s.isDemo}>
         <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
         <a href={`/admin/spinners/${s.slug}`} class="row">
           <span class="icon" aria-hidden="true">
@@ -163,10 +223,15 @@
           <span class="main">
             <span class="title-row">
               <strong>{s.displayName}</strong>
-              <span class={`pill ${integrityClass(s.integrityStatus)}`}
-                >{integrityLabel(s.integrityStatus)}</span
+              <span class={`pill ${trustClass(s.integrityStatus, s.source)}`}
+                >{trustLabel(s.integrityStatus, s.source)}</span
               >
               <span class="source-chip" title={`source: ${s.source}`}>{sourceLabel(s.source)}</span>
+              {#if s.isDemo}
+                <span class="demo-chip" title="Build-loop test artifact — Author testRun output"
+                  >demo</span
+                >
+              {/if}
             </span>
             <span class="meta">
               <code>{s.name}</code>
@@ -508,6 +573,82 @@
     color: #8fb88f;
     border-color: #2a4020;
     background: #0d1a0d;
+  }
+
+  /* Foundation pill — Genesis Spinners with no signature yet, OR
+     future foundation-recognized Spinners. Visually distinct from
+     both 'verified' (cell-authored green) and 'unsigned' (warn gold)
+     — patrons should read these as the canonical, trusted-by-publisher
+     entries, not as a warning. */
+  .pill.foundation {
+    color: #f0c850;
+    border-color: #5a4a18;
+    background: #1a1408;
+  }
+
+  .demo-chip {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    border: 1px dashed #4a3a18;
+    color: #c9a96a;
+    background: #14100a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  .demo-row {
+    opacity: 0.6;
+  }
+  .demo-row:hover {
+    opacity: 1;
+  }
+
+  .demos-bar {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    margin: 0.5rem 0 1rem;
+    padding: 0.4rem 0.7rem;
+    background: #0e0e08;
+    border: 1px dashed #2a2418;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    flex-wrap: wrap;
+  }
+  .demos-note {
+    color: #8a8a8a;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .demos-toggle {
+    color: #c9a96a;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .sweep-btn {
+    background: transparent;
+    color: #c9a96a;
+    border: 1px solid #3a3220;
+    padding: 0.25rem 0.7rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .sweep-btn:hover {
+    background: #1a160a;
+  }
+  .sweep-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+  .sweep-msg {
+    color: #88c878;
+    font-size: 0.8rem;
   }
 
   .pill.warn {
