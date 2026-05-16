@@ -1,0 +1,151 @@
+{
+  "slug": "wizards-journal-flow",
+  "title": "Recording, recalling, and resuming with the Wizard's Journal",
+  "summary": "The SI walks the Loom through the Wizard's Journal end-to-end. Type a journal entry from a fixture, record it, watch the success line. Then generate a session-resume bootstrap context. Then prove the entry is recallable. Six steps. The scenario doubles as the smallest reusable proof that Weaver's Tension scales beyond the Spinner-authoring flow.",
+  "version": 2,
+  "fixtures": {
+    "kind": "learning",
+    "title": "Weaver's Tension v2 — witnessed on both auth paths",
+    "body": "Witness Spinner invoked verifyScenario(webspinner-author) twice — once superuser, once webspinner. Both reported ok=true, 14/14 ribbon steps completed in ~15 seconds wall-clock. The build loop's verification primitive is live; Author can now ship diffs against an autonomous gate.",
+    "tags": "witness, weavers-tension, build-loop"
+  },
+  "steps": [
+    {
+      "key": "open-journal",
+      "title": "Open the Wizard's Journal",
+      "narration": "Navigating to the Journal — the Cell's operational diary. Action, decision, problem, learning, note. Everything the Wizard records here is embedded for semantic recall and surfaces in the next-session bootstrap context.",
+      "actions": [
+        { "kind": "navigate-iframe", "path": "/admin/journal", "waitForRoute": "/admin/journal" },
+        { "kind": "sleep", "ms": 600 }
+      ],
+      "verifications": [
+        {
+          "kind": "route-status",
+          "path": "/admin/journal",
+          "expectStatus": 200,
+          "bodyContains": ["New entry", "Session context"]
+        }
+      ]
+    },
+    {
+      "key": "pick-kind",
+      "title": "Pick the entry kind",
+      "narration": "Selecting 'learning' as the entry kind. Learnings are the entries that compound — the lived-experience layer alongside DECISIONS.md.",
+      "actions": [
+        {
+          "kind": "wait-for-selector",
+          "selector": "section.entry input[name='kind'][value='{{fixture.kind}}']"
+        },
+        {
+          "kind": "click",
+          "selector": "section.entry input[name='kind'][value='{{fixture.kind}}']"
+        },
+        { "kind": "sleep", "ms": 300 }
+      ],
+      "verifications": [
+        {
+          "kind": "iframe-element",
+          "selector": "section.entry input[name='kind'][value='{{fixture.kind}}']",
+          "read": "checked",
+          "equals": "true"
+        }
+      ]
+    },
+    {
+      "key": "fill-entry",
+      "title": "Fill the entry",
+      "narration": "Typing the title, the body, the tags. The body is a real diary entry — the SI describing what it just verified, with enough specificity that semantic recall on terms like 'witness' or 'auth path' will surface it later.",
+      "actions": [
+        {
+          "kind": "fill",
+          "selector": "section.entry input[placeholder='Short, present-tense']",
+          "value": "{{fixture.title}}"
+        },
+        {
+          "kind": "fill",
+          "selector": "section.entry textarea[placeholder*='happened']",
+          "value": "{{fixture.body}}"
+        },
+        {
+          "kind": "fill",
+          "selector": "section.entry input[placeholder*='focus']",
+          "value": "{{fixture.tags}}"
+        },
+        { "kind": "sleep", "ms": 400 }
+      ],
+      "verifications": [
+        {
+          "kind": "iframe-element",
+          "selector": "section.entry input[placeholder='Short, present-tense']",
+          "read": "value",
+          "equals": "{{fixture.title}}"
+        },
+        {
+          "kind": "iframe-element",
+          "selector": "section.entry textarea[placeholder*='happened']",
+          "read": "value",
+          "contains": "ok=true"
+        }
+      ]
+    },
+    {
+      "key": "submit-record",
+      "title": "Record the entry",
+      "narration": "Submitting the form. The Loom calls the Wizard's Journal Spinner's record capability, which embeds the body via the Cell's embedding sidecar and persists the entry to PocketBase. A wp.spinner.invoke audit event lands. The form's success line appears.",
+      "actions": [
+        { "kind": "click", "selector": "section.entry button[type='submit']" },
+        {
+          "kind": "wait-for-selector",
+          "selector": "section.entry p.ok, section.entry p.error.inline",
+          "timeoutMs": 15000
+        },
+        { "kind": "sleep", "ms": 600 }
+      ],
+      "verifications": [
+        {
+          "kind": "iframe-element",
+          "selector": "section.entry p.ok",
+          "read": "textContent",
+          "contains": "Recorded"
+        },
+        { "kind": "audit-event", "eventType": "wp.spinner.invoke", "windowSec": 60 }
+      ]
+    },
+    {
+      "key": "generate-bootstrap",
+      "title": "Generate a session-resume context",
+      "narration": "Scrolling to Session context. Clicking Generate. The bootstrap capability gathers recent actions, decisions, open questions, and synthesises the markdown context block a new Claude session needs to pick up where the last one left off. The entry we just recorded will be among the recent learnings.",
+      "actions": [
+        {
+          "kind": "wait-for-selector",
+          "selector": "section.bootstrap button[type='submit'], section.bootstrap button:not([type])"
+        },
+        {
+          "kind": "click",
+          "selector": "section.bootstrap button[type='submit'], section.bootstrap button:not([type])"
+        },
+        {
+          "kind": "wait-for-selector",
+          "selector": "section.bootstrap pre, section.bootstrap .bootstrap-context, section.bootstrap article",
+          "timeoutMs": 30000
+        },
+        { "kind": "sleep", "ms": 800 }
+      ],
+      "verifications": [
+        { "kind": "audit-event", "eventType": "wp.spinner.invoke", "windowSec": 60 }
+      ]
+    },
+    {
+      "key": "audit-confirmed",
+      "title": "Audit log — invoke events recorded",
+      "narration": "Sanity check against the audit log. The Journal Spinner's record + bootstrap capabilities each emitted a wp.spinner.invoke event. Trust without faith: every Spinner call audited forever.",
+      "actions": [
+        { "kind": "navigate-iframe", "path": "/admin/audit", "waitForRoute": "/admin/audit" },
+        { "kind": "sleep", "ms": 800 }
+      ],
+      "verifications": [
+        { "kind": "audit-event", "eventType": "wp.spinner.invoke", "windowSec": 300 }
+      ]
+    }
+  ]
+}
