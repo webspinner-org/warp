@@ -25,8 +25,14 @@
     {
       title: 'Spinners',
       items: [
-        { href: '/admin/spinners', label: 'Installed' },
-        { href: '/admin/skein', label: 'Skein' },
+        // Per WARP-CANON §19: the Skein IS the catalogue of every
+        // Spinner installed in this Cell. The /admin/spinners route
+        // is canonically the Skein; "Installed" was a misnomer that
+        // drifted from the canon. The separate /admin/skein
+        // placeholder talked about a future Foundation-published
+        // catalog — a different concept — and is removed until
+        // that lands as its own surface with its own honest name.
+        { href: '/admin/spinners', label: 'Skein' },
         { href: '/admin/spools', label: 'Spools' },
         { href: '/admin/threads', label: 'Warp Threads' },
       ],
