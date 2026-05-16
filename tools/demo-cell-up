@@ -278,14 +278,19 @@ launchctl bootstrap "gui/$UID_" "$LOOM_PLIST"
 # checked for 200 on /; the squatter returned 200 and the script
 # proceeded against the wrong service. Three-fold defence now.
 say "→ waiting for Loom-demo on :$LOOM_PORT"
+# /admin → 303 is the canonical Loom signature: the route exists and
+# redirects unauthenticated requests to /login. A squatter on the
+# port (e.g. uptime-kuma) would return 200 or 404 on /admin, never
+# 303. So this probe both confirms the service is responding AND
+# confirms it's the Loom.
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:$LOOM_PORT/healthz" 2>/dev/null || echo "000")
-  if [ "$code" = "200" ]; then
-    say "   ready after ${i}s (/healthz → 200)"
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:$LOOM_PORT/admin" 2>/dev/null || echo "000")
+  if [ "$code" = "303" ]; then
+    say "   ready after ${i}s (/admin → 303, Loom-identifying)"
     break
   fi
   sleep 1
-  [ "$i" = "15" ] && err "Loom-demo did not respond 200 on /healthz within 15s (last code: $code). Check $DEMO_LOOM_LOGS/loom.err.log."
+  [ "$i" = "15" ] && err "Loom-demo did not respond 303 on /admin within 15s (last code: $code). Either the Loom didn't start (check $DEMO_LOOM_LOGS/loom.err.log) or something else is bound on :$LOOM_PORT (run lsof -nP -iTCP:$LOOM_PORT -sTCP:LISTEN)."
 done
 
 # ── 8. Smoke test (Loom-identifying) ────────────────────────────────

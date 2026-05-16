@@ -2610,6 +2610,49 @@ async function databaseAppPropose(
   }
   const sentence = input.patronSentence.trim();
 
+  // ── Progress tracking ───────────────────────────────────────────
+  // Each phase boundary is a session.save() so the patron's browser
+  // can poll the session row for progress (per the Wizard's directive
+  // — pull, never push; the polling is also the heartbeat). The
+  // state's `progressLog` field is the append-only trail; the row's
+  // `phase` column is the current phase. Both update on every save().
+  const sessionStartedAt = new Date().toISOString();
+  interface ProgressEntry {
+    phase: string;
+    narration: string;
+    startedAt: string;
+    endedAt?: string;
+  }
+  const progressLog: ProgressEntry[] = [];
+
+  async function advance(
+    phase: string,
+    narration: string,
+    extraState: Record<string, unknown> = {},
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    if (progressLog.length > 0) {
+      const prev = progressLog[progressLog.length - 1]!;
+      if (!prev.endedAt) prev.endedAt = now;
+    }
+    progressLog.push({ phase, narration, startedAt: now });
+    await session.save({
+      state: {
+        version: 1,
+        patronSentence: sentence,
+        sessionStartedAt,
+        progressLog,
+        ...extraState,
+      },
+      phase,
+    });
+  }
+
+  await advance(
+    'identifying-domain',
+    'Thinking about what kind of work this is — bookkeeping, gardening, donor tracking, customer records, something else.',
+  );
+
   // ── Step 1: identify domain + wiki article slug ─────────────────
   const identifyResult = await quietLoomChat({
     system: ctx.missionLock,
@@ -2631,6 +2674,14 @@ async function databaseAppPropose(
       : '';
 
   // ── Step 2: fetch the Wikipedia article (best-effort) ───────────
+  await advance(
+    'fetching-reference',
+    wikiSlug.length > 0
+      ? `Reading the Wikipedia article on ${domain}.`
+      : 'No matching reference in the allowed sources for this domain — moving on with what I can reason about.',
+    { domain, wikipediaSlug: wikiSlug },
+  );
+
   let referenceUrl = '';
   let referenceText = '';
   if (wikiSlug.length > 0) {
@@ -2655,6 +2706,17 @@ async function databaseAppPropose(
   }
 
   // ── Step 3: draft schema + clarifying questions ─────────────────
+  await advance(
+    'drafting-schema',
+    `Drafting a starting schema in your domain's words and shaping a few focused questions. This is the slowest step — usually thirty to sixty seconds.`,
+    {
+      domain,
+      wikipediaSlug: wikiSlug,
+      referenceUrl: referenceUrl || null,
+      referenceBytesRead: referenceText.length,
+    },
+  );
+
   const draftResult = await quietLoomChat({
     system: ctx.missionLock,
     userMessage:
@@ -2696,15 +2758,30 @@ async function databaseAppPropose(
     ? (draftParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
 
-  // ── Step 4: save session state ──────────────────────────────────
+  // ── Step 4: save final session state ────────────────────────────
   const nowIso = new Date().toISOString();
+  // Close the in-flight progress entry.
+  if (progressLog.length > 0) {
+    const prev = progressLog[progressLog.length - 1]!;
+    if (!prev.endedAt) prev.endedAt = nowIso;
+  }
+  progressLog.push({
+    phase: 'proposed',
+    narration: 'Done — schema sketched, questions ready for you.',
+    startedAt: nowIso,
+    endedAt: nowIso,
+  });
   await session.save({
     state: {
       version: 1,
       patronSentence: sentence,
+      sessionStartedAt,
+      progressLog,
       domain,
       schemaDraft,
       sources: referenceUrl ? [referenceUrl] : [],
+      narration,
+      clarifications,
       turns: [
         {
           capability: 'propose',
