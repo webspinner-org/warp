@@ -90,3 +90,14 @@ export type {
 export type { SpoolManifest, SpoolName, SpoolRef, SpoolPassage } from './spool.js';
 
 export type { SilkPatternEntry, SilkPatternMetrics, SilkPattern } from './silk-pattern.js';
+
+export type {
+  SpinnerContext,
+  SpinnerAuditDraft,
+  SpinnerFetchRequest,
+  SpinnerFetchResponse,
+  SpinnerQuietLoomRequest,
+  SpinnerQuietLoomResponse,
+  SpinnerEmbedRequest,
+  SpinnerEmbedResponse,
+} from './spinner-context.js';

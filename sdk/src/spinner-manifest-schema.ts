@@ -133,6 +133,18 @@ export const spinnerManifestSchema = {
       type: 'array',
       items: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', maxLength: 64 },
     },
+    outboundAllowlist: {
+      type: 'array',
+      // DNS hostname per RFC 1035 §2.3.4 + RFC 1123: lowercase labels of
+      // alphanumerics + hyphens (no leading / trailing hyphen), separated by
+      // dots, at least two labels (rules out bare `localhost`). No schemes,
+      // paths, ports, or wildcards in v0.
+      items: {
+        type: 'string',
+        pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$',
+        maxLength: 253,
+      },
+    },
     documentation: {
       type: 'object',
       required: ['howItWorks'],

@@ -117,6 +117,19 @@ export interface SpinnerManifest {
    * access (the default). Per OPEN_QUESTIONS — *Cell provisioning*.
    */
   readonly shellAllowlist?: readonly string[];
+  /**
+   * Outbound hosts this Spinner may reach through the Weaver's gated
+   * `context.fetch({url, method?, headers?, body?, timeoutMs?})` helper.
+   * Each entry is a single fully-qualified DNS hostname (e.g.
+   * `"en.wikipedia.org"`, `"www.irs.gov"`); paths/methods/headers aren't
+   * restricted, hosts are. The Weaver refuses any URL whose host is not
+   * in this list and emits `wp.spinner.outbound.fetch` (result=denied)
+   * for the attempt. Empty / omitted = no outbound HTTP access (the
+   * default). Mirrors `shellAllowlist` discipline: every external
+   * dependency is declared in the manifest, audited per call, and
+   * enforceable by the Weaver.
+   */
+  readonly outboundAllowlist?: readonly string[];
   /** Documentation surfaced in the Loom — required. */
   readonly documentation: SpinnerDocumentation;
   /**

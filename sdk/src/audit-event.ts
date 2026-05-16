@@ -17,6 +17,7 @@ export type AuditEventType =
   | 'wp.spinner.verified'
   | 'wp.spinner.linted'
   | 'wp.spinner.integrity-checked'
+  | 'wp.spinner.outbound.fetch'
   | 'wp.thread.invoke'
   | 'wp.weavers-tension.started'
   | 'wp.weavers-tension.step-approved'
@@ -168,6 +169,25 @@ export interface AuditEventData {
     readonly digest?: string;
     readonly errorCount?: number;
     readonly warningCount?: number;
+    readonly errorKind?: string;
+  };
+  /**
+   * Emitted once per Spinner outbound HTTP fetch via the Weaver's gated
+   * `context.fetch` primitive. The audit chain captures *every* call —
+   * allowed (`wpresult: 'success'` with status + duration + responseBytes),
+   * denied by the manifest's `outboundAllowlist` (`wpresult: 'denied'`
+   * with `errorKind: 'host-not-allowlisted'`), or errored (`wpresult:
+   * 'error'` with the network / parse / timeout error kind). The response
+   * body is never logged; only its byte count.
+   */
+  'wp.spinner.outbound.fetch': {
+    readonly spinnerId: SpinnerName;
+    readonly url: string;
+    readonly host: string;
+    readonly method: string;
+    readonly status?: number;
+    readonly durationMs?: number;
+    readonly responseBytes?: number;
     readonly errorKind?: string;
   };
   'wp.thread.invoke': {
