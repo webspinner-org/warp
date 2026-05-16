@@ -207,14 +207,28 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
   writeFileSync(scenarioPath, JSON.stringify(scenarioJson, null, 2) + '\n', 'utf8');
 
   // ── Phase 3: Install ─────────────────────────────────────────
-  const { installSpinnerBundle } = (await import(
-    /* @vite-ignore */ `${warpRoot}/loom/src/lib/server/spinner-install-op.ts`
-  ).catch(() => ({
-    installSpinnerBundle: undefined,
-  }))) as typeof import('../../../loom/src/lib/server/spinner-install-op.js');
+  let installSpinnerBundle:
+    | (typeof import('../../../loom/src/lib/server/spinner-install-op.js'))['installSpinnerBundle']
+    | undefined;
+  let installImportError = '';
+  try {
+    const mod = (await import(
+      /* @vite-ignore */ `${warpRoot}/loom/src/lib/server/spinner-install-op.ts`
+    )) as typeof import('../../../loom/src/lib/server/spinner-install-op.js');
+    installSpinnerBundle = mod.installSpinnerBundle;
+  } catch (e) {
+    installImportError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  }
 
   if (typeof installSpinnerBundle !== 'function') {
-    return fail(input.slug, 'scaffolded', 'loom-module-not-resolvable', 'Cannot import install op');
+    return fail(
+      input.slug,
+      'scenario-written',
+      'loom-module-not-resolvable',
+      `Cannot import installSpinnerBundle: ${installImportError || 'symbol missing'}`,
+      scenarioSlug,
+      destDir,
+    );
   }
 
   const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
