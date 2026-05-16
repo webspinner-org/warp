@@ -104,18 +104,24 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
   }
 
   // We import the Loom's scaffold function dynamically — Author runs
-  // in the Loom's Node process so the module is resolvable. Same for
-  // the install op.
+  // in the Loom's Node process so the module is resolvable. Anchor at
+  // homedir() because process.cwd() under launchd may be elsewhere.
+  // After build, the Loom serves from build/server/chunks/, not from
+  // src/; use the same chunks via the workspace root path.
+  const warpRoot = process.env['WARP_ROOT'] ?? join(homedir(), 'warp');
   const { scaffoldFromTemplate } = (await import(
-    /* @vite-ignore */ `${process.cwd()}/loom/src/lib/server/templates.ts`
-  ).catch(() => ({}))) as typeof import('../../../loom/src/lib/server/templates.js');
+    /* @vite-ignore */ `${warpRoot}/loom/src/lib/server/templates.ts`
+  ).catch((e) => ({
+    scaffoldFromTemplate: undefined,
+    _err: String(e),
+  }))) as typeof import('../../../loom/src/lib/server/templates.js') & { _err?: string };
 
   if (typeof scaffoldFromTemplate !== 'function') {
     return fail(
       input.slug,
       'failed',
       'loom-module-not-resolvable',
-      'Cannot import templates from the Loom — Author must run in-process inside the Loom.',
+      `Cannot import templates from ${warpRoot}/loom/src/lib/server/templates.ts — Author must run in-process inside the Loom.`,
     );
   }
 
@@ -202,8 +208,10 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
 
   // ── Phase 3: Install ─────────────────────────────────────────
   const { installSpinnerBundle } = (await import(
-    /* @vite-ignore */ `${process.cwd()}/loom/src/lib/server/spinner-install-op.ts`
-  ).catch(() => ({}))) as typeof import('../../../loom/src/lib/server/spinner-install-op.js');
+    /* @vite-ignore */ `${warpRoot}/loom/src/lib/server/spinner-install-op.ts`
+  ).catch(() => ({
+    installSpinnerBundle: undefined,
+  }))) as typeof import('../../../loom/src/lib/server/spinner-install-op.js');
 
   if (typeof installSpinnerBundle !== 'function') {
     return fail(input.slug, 'scaffolded', 'loom-module-not-resolvable', 'Cannot import install op');
