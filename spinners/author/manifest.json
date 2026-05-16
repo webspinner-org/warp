@@ -81,12 +81,23 @@
           },
           "phase": {
             "type": "string",
-            "enum": ["scaffolded", "scenario-written", "installed", "verified", "failed"],
+            "enum": [
+              "scaffolded",
+              "scenario-written",
+              "installed",
+              "verified",
+              "critiqued",
+              "failed"
+            ],
             "description": "How far the loop got. Useful for partial-failure diagnosis."
           },
           "witnessReport": {
             "type": "object",
             "description": "Witness's verifyScenario report on the generated scenario. Read this to see if the authored Spinner actually works."
+          },
+          "pabloReport": {
+            "type": "object",
+            "description": "Pablo's design-quality verdict on the rendered detail page of the just-authored Spinner. { verdict, verdict_text, in_pablo_voice, findings[] }. Concerns do not fail ok; only verdict='fails' does."
           },
           "errorKind": { "type": "string" },
           "errorDetail": { "type": "string" }

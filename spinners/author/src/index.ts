@@ -29,7 +29,13 @@ export interface AuthorInput {
   readonly scope?: string;
 }
 
-export type AuthorPhase = 'scaffolded' | 'scenario-written' | 'installed' | 'verified' | 'failed';
+export type AuthorPhase =
+  | 'scaffolded'
+  | 'scenario-written'
+  | 'installed'
+  | 'verified'
+  | 'critiqued'
+  | 'failed';
 
 export interface AuthorOutput {
   readonly ok: boolean;
@@ -39,6 +45,7 @@ export interface AuthorOutput {
   readonly skeinName?: string;
   readonly phase: AuthorPhase;
   readonly witnessReport?: Record<string, unknown>;
+  readonly pabloReport?: Record<string, unknown>;
   readonly errorKind?: string;
   readonly errorDetail?: string;
 }
@@ -289,20 +296,88 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
   const witnessReport = witnessBody.output ?? {};
   const witnessOk = witnessBody.ok === true && witnessReport['ok'] === true;
 
+  if (!witnessOk) {
+    return {
+      ok: false,
+      slug: input.slug,
+      scenarioSlug,
+      bundlePath: destDir,
+      skeinName: `${scope}/${input.slug}`,
+      phase: 'failed',
+      witnessReport,
+      errorKind: 'witness-failed',
+      errorDetail: 'See witnessReport.escalation for the failing step + evidence.',
+    };
+  }
+
+  // ── Phase 5: Critique (Pablo) ────────────────────────────────
+  // Fetch the just-authored Spinner's rendered detail page and pass
+  // it to Pablo for design-quality review. Pablo's verdict joins the
+  // output. 'concerns' is non-fatal; only 'fails' flips ok→false.
+  let pabloReport: Record<string, unknown> | undefined;
+  let pabloVerdict: string | undefined;
+  try {
+    const detailRes = await fetch(`${DEFAULT_LOOM_BASE}/admin/spinners/${input.slug}`, {
+      headers: { Cookie: `wp_session=_superusers::${pbToken}` },
+    });
+    if (detailRes.ok) {
+      const html = await detailRes.text();
+      const pabloRes = await fetch(`${DEFAULT_LOOM_BASE}/admin/spinners/pablo/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `wp_session=_superusers::${pbToken}`,
+        },
+        body: JSON.stringify({
+          capability: 'review',
+          input: {
+            html,
+            label: `${input.displayName} (just authored)`,
+            topic:
+              input.intent ??
+              `Author scaffolded this Spinner from the hello-spinner template. Walk it as a Webspinner would see it after a successful authoring run.`,
+          },
+        }),
+      });
+      if (pabloRes.ok) {
+        const pabloBody = (await pabloRes.json()) as {
+          ok?: boolean;
+          output?: Record<string, unknown>;
+        };
+        pabloReport = pabloBody.output;
+        pabloVerdict =
+          typeof pabloReport?.['verdict'] === 'string'
+            ? (pabloReport['verdict'] as string)
+            : undefined;
+      } else {
+        pabloReport = {
+          _httpStatus: pabloRes.status,
+          _body: (await pabloRes.text()).slice(0, 300),
+        };
+      }
+    } else {
+      pabloReport = { _detailFetchFailed: detailRes.status };
+    }
+  } catch (e) {
+    pabloReport = { _error: e instanceof Error ? e.message : String(e) };
+  }
+
+  const pabloFails = pabloVerdict === 'fails';
   return {
-    ok: witnessOk,
+    ok: !pabloFails,
     slug: input.slug,
     scenarioSlug,
     bundlePath: destDir,
     skeinName: `${scope}/${input.slug}`,
-    phase: witnessOk ? 'verified' : 'failed',
+    phase: pabloFails ? 'failed' : 'critiqued',
     witnessReport,
-    ...(witnessOk
-      ? {}
-      : {
-          errorKind: 'witness-failed',
-          errorDetail: 'See witnessReport.escalation for the failing step + evidence.',
-        }),
+    ...(pabloReport !== undefined ? { pabloReport } : {}),
+    ...(pabloFails
+      ? {
+          errorKind: 'pablo-fails',
+          errorDetail: 'Pablo verdict was "fails"; see pabloReport.findings.',
+        }
+      : {}),
   };
 }
 
