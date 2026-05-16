@@ -119,6 +119,15 @@ importers:
         specifier: workspace:*
         version: link:../../sdk
 
+  spinners/witness:
+    dependencies:
+      '@webspinner-foundation/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      playwright:
+        specifier: ^1.59.1
+        version: 1.60.0
+
   spinners/wizards-journal:
     dependencies:
       '@webspinner-foundation/sdk':

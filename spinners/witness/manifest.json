@@ -1,0 +1,105 @@
+{
+  "manifestVersion": "1.0",
+  "name": "@webspinner-foundation/witness",
+  "displayName": "Witness",
+  "version": "0.1.0",
+  "description": "The verification Spinner of the Warp build loop. Drives a Weaver's Tension scenario end-to-end through the live Loom via a headless browser, then reports pass/fail per step with plain-English narration. Witness is the substrate that lets Author iterate on Spinner code without a Wizard in the loop — and the unit-of-verification that replaces brittle line-level unit tests with behavioural scenario truth.",
+  "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/witness",
+  "license": "Apache-2.0",
+  "entrypoint": "./src/index.ts",
+  "vault": [],
+  "spools": [],
+  "env": ["WARP_LOOM_BASE", "WARP_PB_URL", "WARP_PB_EMAIL", "WARP_PB_PASSWORD"],
+  "dependsOn": [],
+  "capabilities": [
+    {
+      "name": "verifyScenario",
+      "displayName": "Verify scenario",
+      "description": "Run a Weaver's Tension scenario end-to-end. Witness launches a headless Chromium against the Loom, authenticates (as superuser by default; user-collection on request), creates a fresh run, presses Start, watches every step's ribbon status and narration, and returns a structured report. Used by the Author Spinner as the autonomous verification gate; used by the Wizard for one-shot verification of an authored Spinner.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioSlug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Filename (without .json) of a scenario under ~/warp/scenarios/."
+          },
+          "loomBase": {
+            "type": "string",
+            "description": "Origin of the live Loom to drive. Default: WARP_LOOM_BASE env var or http://johns-mac-studio.local:3000."
+          },
+          "authMode": {
+            "type": "string",
+            "enum": ["superuser", "webspinner"],
+            "default": "superuser",
+            "description": "Which session-collection token to inject. 'superuser' uses the Loom's bootstrap PB creds; 'webspinner' creates/auths a verified test user and uses that token (catches privilege-boundary bugs)."
+          },
+          "cleanupSpinnerSlug": {
+            "type": "string",
+            "description": "Optional. If set, Witness deletes any wp_skein row + ~/Cells/spinners/<slug> bundle for this slug before running the scenario. Used when the scenario installs a Spinner and prior state would block it."
+          },
+          "runTimeoutMs": {
+            "type": "number",
+            "minimum": 30000,
+            "maximum": 1800000,
+            "default": 300000,
+            "description": "Maximum total wall-clock for the scenario."
+          }
+        },
+        "required": ["scenarioSlug"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "True iff every ribbon step ended in 'completed' or 'remediated'."
+          },
+          "scenarioSlug": { "type": "string" },
+          "runId": {
+            "type": "string",
+            "description": "The wp_weavers_tension_runs.run_id for the run Witness drove."
+          },
+          "totalSteps": { "type": "number" },
+          "completedSteps": { "type": "number" },
+          "remediatedSteps": { "type": "number" },
+          "failedSteps": { "type": "number" },
+          "escalation": {
+            "type": "object",
+            "description": "Present when the run escalated. Plain-English description of what failed plus structured evidence the Author/Mender can act on.",
+            "properties": {
+              "stepKey": { "type": "string" },
+              "reason": { "type": "string" },
+              "evidenceText": { "type": "string" }
+            }
+          },
+          "durationMs": { "type": "number" },
+          "ribbon": {
+            "type": "array",
+            "description": "Final ribbon state — one entry per scenario step.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": { "type": "string" },
+                "title": { "type": "string" },
+                "status": { "type": "string" }
+              }
+            }
+          }
+        },
+        "required": ["ok", "scenarioSlug", "runId", "totalSteps", "completedSteps", "ribbon"]
+      },
+      "emitsAudit": ["wp.spinner.invoke"]
+    }
+  ],
+  "documentation": {
+    "howItWorks": "./how-it-works.md",
+    "readme": "./README.md"
+  },
+  "thumbnail": "./thumbnail.svg",
+  "threadable": true,
+  "audit": {
+    "source": "wp://spinner/witness"
+  }
+}
