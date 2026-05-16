@@ -100,4 +100,5 @@ export type {
   SpinnerQuietLoomResponse,
   SpinnerEmbedRequest,
   SpinnerEmbedResponse,
+  SpinnerSession,
 } from './spinner-context.js';

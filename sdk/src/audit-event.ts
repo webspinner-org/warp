@@ -18,6 +18,7 @@ export type AuditEventType =
   | 'wp.spinner.linted'
   | 'wp.spinner.integrity-checked'
   | 'wp.spinner.outbound.fetch'
+  | 'wp.spinner.session.save'
   | 'wp.thread.invoke'
   | 'wp.weavers-tension.started'
   | 'wp.weavers-tension.step-approved'
@@ -189,6 +190,21 @@ export interface AuditEventData {
     readonly durationMs?: number;
     readonly responseBytes?: number;
     readonly errorKind?: string;
+  };
+  /**
+   * Emitted once per `context.session.save(...)` write to the Cell's
+   * `wp_spinner_sessions` collection. Captures the spinnerId +
+   * sessionId + phase + status + the byte count of the persisted
+   * state JSON; never the state's value. Reads are not audited
+   * (high-frequency, low-signal); writes are the trail.
+   */
+  'wp.spinner.session.save': {
+    readonly spinnerId: SpinnerName;
+    readonly sessionId: string;
+    readonly phase: string;
+    readonly status: 'active' | 'completed' | 'aborted';
+    readonly stateBytes: number;
+    readonly firstTurn: boolean;
   };
   'wp.thread.invoke': {
     readonly threadId: string;

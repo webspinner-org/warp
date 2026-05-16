@@ -106,6 +106,51 @@ export interface SpinnerEmbedResponse {
 }
 
 /**
+ * Re-entrant session — the Spinner's persistent working state across
+ * capability invocations on the same session. Loaded by the dispatcher
+ * before the handler runs; modified through `save()`. The Spinner does
+ * not see the storage layer; the Loom (today) and the canonical Weaver
+ * (later) provide identical semantics.
+ *
+ * Re-entrancy semantics:
+ *
+ *   - **Coarse-grained.** Between capability calls, the patron can
+ *     leave at any safe point and come back later. The next call's
+ *     `state` / `phase` reflect the last `save()`.
+ *   - **Fine-grained (cooperative).** Within a single capability call,
+ *     a Spinner doing multi-step work (research → schema → questions)
+ *     can `save()` between steps. If the Loom restarts mid-call, the
+ *     next invocation sees the most recent checkpoint.
+ *   - **No atomic / optimistic concurrency in v0.** Concurrent writes
+ *     on the same session are last-writer-wins; the Loom serialises
+ *     patron turns above this layer.
+ *
+ * State shape is Spinner-defined: the platform persists it as JSON and
+ * hands it back untouched. `phase` is a Spinner-defined string the
+ * Loom uses to render "where are we" in patron-facing surfaces.
+ */
+export interface SpinnerSession {
+  /** UUID minted by the Loom on the first invocation in this session. */
+  readonly id: string;
+  /** True iff there is no persisted row yet — the Spinner is starting fresh. */
+  readonly isFirstTurn: boolean;
+  /** Last-persisted state. Empty object on first turn. */
+  readonly state: Readonly<Record<string, unknown>>;
+  /** Last-persisted phase string. Empty string on first turn. */
+  readonly phase: string;
+  /**
+   * Persist a new state + phase atomically. Upsert semantics: the row
+   * is created on first save, updated thereafter. Emits
+   * `wp.spinner.session.save` to the audit chain.
+   */
+  save(next: {
+    readonly state: Record<string, unknown>;
+    readonly phase: string;
+    readonly status?: 'active' | 'completed' | 'aborted';
+  }): Promise<void>;
+}
+
+/**
  * The canonical SpinnerContext the Weaver constructs and passes to a
  * capability handler. All primitives are async and return typed shapes;
  * the Spinner never reaches host APIs directly.
@@ -134,4 +179,10 @@ export interface SpinnerContext {
   quietLoom(req: SpinnerQuietLoomRequest): Promise<SpinnerQuietLoomResponse>;
   /** Sovereign embeddings through the Cell's embeddings sidecar. */
   embed(req: SpinnerEmbedRequest): Promise<SpinnerEmbedResponse>;
+  /**
+   * Re-entrant session state — survives Spinner death, Loom restart,
+   * and patron-departure-and-return. Every Spinner gets one; the
+   * Spinner author decides how to use it.
+   */
+  readonly session: SpinnerSession;
 }
