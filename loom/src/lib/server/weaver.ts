@@ -155,9 +155,8 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
       'deployLoom',
     ]),
   ],
-  // database-application: only `propose` is wired in v0; `refine` and
-  // `build` throw "pending implementation" until the proof point closes.
-  ['@webspinner-foundation/database-application' as SpinnerName, new Set(['propose'])],
+  // database-application: propose + refine wired; build pending (R8).
+  ['@webspinner-foundation/database-application' as SpinnerName, new Set(['propose', 'refine'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -2540,12 +2539,10 @@ async function dispatchDatabaseApplication(
     case 'propose':
       return databaseAppPropose(input, ctx, fetcher, session, keplerModel);
     case 'refine':
-      throw new Error(
-        'Database Application `refine` is pending implementation. v0 wires `propose` only; `refine` and `build` land once propose proves the loop.',
-      );
+      return databaseAppRefine(input, ctx, session, keplerModel);
     case 'build':
       throw new Error(
-        'Database Application `build` is pending implementation. v0 wires `propose` only.',
+        'Database Application `build` is pending implementation. R8 in DEMO-RUNTIME-PLAN.md.',
       );
     default:
       throw new Error(`database-application dispatch: unhandled capability "${capability}"`);
@@ -2857,4 +2854,233 @@ function stripWikipediaHtml(html: string): string {
     .replace(/&[a-z]+;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * `refine` — subsequent patron turn. Reads the prior schema +
+ * progressLog from session.state, applies the patron's answers via
+ * Quiet Loom, and returns an updated schema. The Spinner decides
+ * whether to ask more clarifying questions or mark `readyToBuild:
+ * true` so the patron can move to `build`.
+ *
+ * Progress: two phases — `reviewing-answers` (loading prior context)
+ * and `refining-schema` (the Quiet Loom call). Same `advance()`
+ * pattern as propose so the Observatory re-arms and shows the new
+ * phase progression on each refine turn.
+ */
+async function databaseAppRefine(
+  rawInput: unknown,
+  ctx: DatabaseAppDispatchContext,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+  keplerModel: string,
+): Promise<DispatchOutput> {
+  const input = rawInput as {
+    answers?: readonly { id?: string; answer?: unknown }[];
+  };
+  if (!Array.isArray(input?.answers)) {
+    throw new Error('refine requires an `answers` array.');
+  }
+  const answers = input.answers.filter((a) => a && typeof a.id === 'string' && a.id.length > 0);
+
+  // Load the prior state — re-load via the session primitive's getter
+  // (snapshot at construction; getters reflect the latest saved state).
+  const priorState = (session.state ?? {}) as Record<string, unknown>;
+  const priorSentence =
+    typeof priorState['patronSentence'] === 'string'
+      ? (priorState['patronSentence'] as string)
+      : '';
+  const priorDomain =
+    typeof priorState['domain'] === 'string' ? (priorState['domain'] as string) : 'unknown domain';
+  const priorSchemaDraft =
+    priorState['schemaDraft'] && typeof priorState['schemaDraft'] === 'object'
+      ? (priorState['schemaDraft'] as Record<string, unknown>)
+      : {};
+  const priorSources = Array.isArray(priorState['sources'])
+    ? ((priorState['sources'] as readonly unknown[]).filter(
+        (u) => typeof u === 'string',
+      ) as readonly string[])
+    : [];
+  const priorTurns = Array.isArray(priorState['turns'])
+    ? (priorState['turns'] as readonly Record<string, unknown>[])
+    : [];
+
+  if (priorSentence.length === 0) {
+    throw new Error(
+      'refine called on a session that has no prior propose state. The patron must call propose first.',
+    );
+  }
+
+  // Fresh progressLog for THIS refine turn — the Observatory shows
+  // per-turn phase pills. The session.state carries the full turn
+  // history in `turns[]`; the progressLog is for the current
+  // invocation only.
+  const sessionStartedAt = new Date().toISOString();
+  interface ProgressEntry {
+    phase: string;
+    narration: string;
+    startedAt: string;
+    endedAt?: string;
+  }
+  const progressLog: ProgressEntry[] = [];
+
+  async function advance(
+    phase: string,
+    narration: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    if (progressLog.length > 0) {
+      const prev = progressLog[progressLog.length - 1]!;
+      if (!prev.endedAt) prev.endedAt = now;
+    }
+    progressLog.push({ phase, narration, startedAt: now });
+    await session.save({
+      state: {
+        version: 1,
+        patronSentence: priorSentence,
+        sessionStartedAt,
+        progressLog,
+        domain: priorDomain,
+        schemaDraft: priorSchemaDraft,
+        sources: priorSources,
+        turns: priorTurns,
+        ...extra,
+      },
+      phase,
+    });
+  }
+
+  await advance(
+    'reviewing-answers',
+    `Reading what you told me — ${answers.length} ${answers.length === 1 ? 'answer' : 'answers'} to apply to the schema.`,
+  );
+
+  // Render the answers + prior schema into a compact prompt for the
+  // Quiet Loom. The model has the patron's full conversation context
+  // in priorState; we re-summarise here so the prompt stays small.
+  const answersBlock = answers
+    .map((a) => {
+      const id = JSON.stringify(a.id);
+      const v = a.answer;
+      const formatted = Array.isArray(v)
+        ? JSON.stringify(v)
+        : typeof v === 'boolean'
+          ? v
+            ? 'true'
+            : 'false'
+          : JSON.stringify(String(v ?? ''));
+      return `  - ${id}: ${formatted}`;
+    })
+    .join('\n');
+
+  const priorSchemaJson = JSON.stringify(priorSchemaDraft, null, 2);
+
+  await advance(
+    'refining-schema',
+    'Refining the schema to match what you said. Usually faster than the first turn — under thirty seconds.',
+  );
+
+  const refineResult = await quietLoomChat({
+    system: ctx.missionLock,
+    userMessage:
+      `Original sentence: ${JSON.stringify(priorSentence)}.\n` +
+      `Domain: ${JSON.stringify(priorDomain)}.\n\n` +
+      `Prior schema draft you proposed:\n\`\`\`json\n${priorSchemaJson}\n\`\`\`\n\n` +
+      `The Webspinner has answered some clarifying questions:\n${answersBlock}\n\n` +
+      `Per your Mission Lock, refine the schema to match what they said. ` +
+      `If the answers fully resolve the structure, set readyToBuild=true and clarifications=[]. ` +
+      `If more clarification is still needed, set readyToBuild=false and include up to four more focused questions about what's still ambiguous about THEIR situation.\n\n` +
+      `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+      `{\n` +
+      `  "narration": "Markdown string the Loom renders. Patron-readable. Tell them what changed.",\n` +
+      `  "schemaDraft": {\n` +
+      `    "entities": [\n` +
+      `      {"name": "string", "describes": "one sentence", "fields": [{"name": "string", "kind": "text|number|date|yes-no|money", "describes": "one sentence"}], "links": [{"to": "string", "describes": "one sentence"}]}\n` +
+      `    ]\n` +
+      `  },\n` +
+      `  "clarifications": [\n` +
+      `    {"id": "kebab-case", "question": "string in domain words", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["string"]}\n` +
+      `  ],\n` +
+      `  "readyToBuild": true|false\n` +
+      `}\n\nOpen with "{".`,
+    model: keplerModel,
+    maxTokens: 2_048,
+  });
+
+  const parsed = parseStrictJson(refineResult.text) ?? {};
+  const narration =
+    typeof parsed['narration'] === 'string'
+      ? (parsed['narration'] as string)
+      : '(no narration returned — early-iteration signal)';
+  const schemaDraft =
+    parsed['schemaDraft'] && typeof parsed['schemaDraft'] === 'object'
+      ? (parsed['schemaDraft'] as Record<string, unknown>)
+      : priorSchemaDraft;
+  const clarifications = Array.isArray(parsed['clarifications'])
+    ? (parsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
+    : [];
+  const readyToBuild = parsed['readyToBuild'] === true;
+  const finalPhase: 'refining' | 'ready' = readyToBuild ? 'ready' : 'refining';
+
+  const nowIso = new Date().toISOString();
+  if (progressLog.length > 0) {
+    const prev = progressLog[progressLog.length - 1]!;
+    if (!prev.endedAt) prev.endedAt = nowIso;
+  }
+  progressLog.push({
+    phase: finalPhase,
+    narration: readyToBuild
+      ? 'Done — schema settled, ready to build.'
+      : 'Done — schema updated, a few more questions to refine.',
+    startedAt: nowIso,
+    endedAt: nowIso,
+  });
+
+  // Persist: full turn history grows by one entry; phase column =
+  // 'refining' or 'ready' so the Loom UI / Observatory can tell.
+  await session.save({
+    state: {
+      version: 1,
+      patronSentence: priorSentence,
+      sessionStartedAt,
+      progressLog,
+      domain: priorDomain,
+      schemaDraft,
+      sources: priorSources,
+      narration,
+      clarifications,
+      turns: [
+        ...priorTurns,
+        {
+          capability: 'refine',
+          answers,
+          clarifications,
+          readyToBuild,
+          timestamp: nowIso,
+        },
+      ],
+    },
+    phase: finalPhase,
+  });
+
+  return {
+    output: {
+      narration,
+      domain: priorDomain,
+      schemaDraft,
+      clarifications,
+      readyToBuild,
+      phase: finalPhase,
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: refineResult.model,
+        sessionId: session.id,
+        modelCalls: 1,
+      },
+    },
+    modelTokens: {
+      input: refineResult.inputTokens,
+      output: refineResult.outputTokens,
+    },
+  };
 }
