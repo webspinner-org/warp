@@ -724,3 +724,22 @@ Per Operating Principle §17.3 (_Production-Candidate Quality Only_) and the Wiz
 - **No row-level access control.** The proxy authenticates as PB superuser; rows are scoped only by the per-entity collection name being derived from the metadata row (the patron can't guess at other patrons' collection names from URLs). When R9 lands and patrons can return, row-level ACLs gain weight.
 
 **Future state:** When the Wizard validates the architecture's generality (the next test is a non-bookkeeping domain — "plants in my garden" / "donors for my church" / etc.), the same code path produces a different schema and a different app, validating the Spinner-as-the-only-domain-aware-piece claim.
+
+## 2026-05-16 — Generality test passed: church donor relations end-to-end
+
+**Decision (verification, not new architecture):** The Database Application Spinner's "schema is data, code is generic" claim is empirically validated. A non-bookkeeping domain — _"I want a log of donors and gifts for my church"_ — runs through the exact same code path (propose → refine → build → live app → CRUD) with zero domain-specific branches and produces a domain-appropriate application.
+
+**Empirical evidence (session `demo-generality-1778967327`):**
+
+- **propose** (20.3 s wall): LLM identified domain `"church donor relations"`, fetched `https://en.wikipedia.org/wiki/Donor_relations` through the gated outbound primitive, returned entities `["Donors", "Gifts"]` with patron-language clarifying questions about donation methods + communication preferences. **Zero overlap with bookkeeping's `["Transactions", "Accounts"]`.**
+- **refine** (22.2 s wall): Patron answered `donation-methods: [cash, check, online]`, `communication-preferences: [email, phone]`, plus free-text noting year-end tax statements + major giving campaigns. LLM **adaptively added a `Campaigns` entity** in response, set `readyToBuild: true`. Demonstrates the SI is doing real domain reasoning, not template substitution.
+- **build** (215 ms wall): Three PocketBase collections created in the demo Grimoire — `app_6841647e_donors`, `app_6841647e_gifts`, `app_6841647e_campaigns`. App row written to `wp_database_applications`. No LLM call.
+- **Add row + list**: POST `/api/app/<sid>/donors` accepted a row; GET returned it with both schema fields and PB's auto-created `created`/`updated` timestamps. Server-side field whitelist correctly dropped a non-schema field (`total_given` not in the church-donor schema; would have been in bookkeeping).
+
+**What this confirms:**
+
+The same `databaseAppPropose` / `databaseAppRefine` / `databaseAppBuild` functions, the same FastAPI proxy routes, the same Observatory + modal + tabs + table renderer all worked for a domain they were never specifically coded for. The only thing that changed was the schema, and the schema came from the LLM, not from any branching code.
+
+**What this implies for the Foundation roadmap:**
+
+When the next archetype Spinners ship (the iPhone App / Website / Simple Game / Custom AI Spinner from VISION.md §3), the architecture suggests they'll need new dispatchers (those archetypes produce code, not schemas — different output kind) but the patron-side UX patterns (Observatory, clarifications panel, narration in chat, real-time polling as heartbeat, build CTA, modes within the Observatory) all transfer. The Database Application is the precedent, not the special case.
