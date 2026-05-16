@@ -29,6 +29,11 @@ import {
   ensureSpinnerSessionsCollection,
   type SpinnerSessionActor,
 } from './spinner-session.js';
+import {
+  createApp as createDatabaseApp,
+  type SchemaDraft as DbAppSchemaDraft,
+  type EntityMap as DbAppEntityMap,
+} from './database-applications.js';
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
 import { readSpool, knownSpools } from './spools.js';
 import { dispatchCellAuthored } from './weaver-cell-dispatch.js';
@@ -155,8 +160,11 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
       'deployLoom',
     ]),
   ],
-  // database-application: propose + refine wired; build pending (R8).
-  ['@webspinner-foundation/database-application' as SpinnerName, new Set(['propose', 'refine'])],
+  // database-application: full loop wired — propose + refine + build.
+  [
+    '@webspinner-foundation/database-application' as SpinnerName,
+    new Set(['propose', 'refine', 'build']),
+  ],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -2541,9 +2549,7 @@ async function dispatchDatabaseApplication(
     case 'refine':
       return databaseAppRefine(input, ctx, session, keplerModel);
     case 'build':
-      throw new Error(
-        'Database Application `build` is pending implementation. R8 in DEMO-RUNTIME-PLAN.md.',
-      );
+      return databaseAppBuild(input, ctx, session);
     default:
       throw new Error(`database-application dispatch: unhandled capability "${capability}"`);
   }
@@ -3083,4 +3089,198 @@ async function databaseAppRefine(
       output: refineResult.outputTokens,
     },
   };
+}
+
+/**
+ * `build` — the final patron turn. Reads the settled schema from
+ * session.state and provisions the patron's actual Database
+ * Application: one PB collection per entity in the demo Grimoire,
+ * plus a `wp_database_applications` row binding the schema to the
+ * map of collection names.
+ *
+ * Single phase ('building-collections') — the work is mostly PB API
+ * calls; no Quiet Loom step. The Observatory shows progress through
+ * the polling endpoint the same way.
+ *
+ * Idempotency: one app per session. A second build call returns the
+ * existing app (and the prior message); v0 doesn't support schema
+ * migrations.
+ */
+async function databaseAppBuild(
+  _rawInput: unknown,
+  ctx: DatabaseAppDispatchContext,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+): Promise<DispatchOutput> {
+  const priorState = (session.state ?? {}) as Record<string, unknown>;
+  const priorSentence =
+    typeof priorState['patronSentence'] === 'string'
+      ? (priorState['patronSentence'] as string)
+      : '';
+  const priorDomain =
+    typeof priorState['domain'] === 'string' ? (priorState['domain'] as string) : 'unknown';
+  const priorSchemaDraft =
+    priorState['schemaDraft'] && typeof priorState['schemaDraft'] === 'object'
+      ? (priorState['schemaDraft'] as DbAppSchemaDraft)
+      : null;
+  const priorTurns = Array.isArray(priorState['turns'])
+    ? (priorState['turns'] as readonly Record<string, unknown>[])
+    : [];
+
+  if (priorSentence.length === 0) {
+    throw new Error('build called on a session with no prior propose state.');
+  }
+  if (
+    priorSchemaDraft === null ||
+    !Array.isArray(priorSchemaDraft.entities) ||
+    priorSchemaDraft.entities.length === 0
+  ) {
+    throw new Error('build requires a non-empty schemaDraft in session state.');
+  }
+
+  // Single progress phase — building is a few PB API calls, fast.
+  const sessionStartedAt = new Date().toISOString();
+  interface ProgressEntry {
+    phase: string;
+    narration: string;
+    startedAt: string;
+    endedAt?: string;
+  }
+  const progressLog: ProgressEntry[] = [];
+  async function advance(
+    phase: string,
+    narration: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    if (progressLog.length > 0) {
+      const prev = progressLog[progressLog.length - 1]!;
+      if (!prev.endedAt) prev.endedAt = now;
+    }
+    progressLog.push({ phase, narration, startedAt: now });
+    await session.save({
+      state: {
+        version: 1,
+        patronSentence: priorSentence,
+        sessionStartedAt,
+        progressLog,
+        domain: priorDomain,
+        schemaDraft: priorSchemaDraft,
+        turns: priorTurns,
+        ...extra,
+      },
+      phase,
+    });
+  }
+
+  await advance(
+    'building-collections',
+    `Creating the records areas for your ${priorDomain} — one per kind of thing we listed.`,
+  );
+
+  const result = await createDatabaseApp({
+    fetchFn: fetch,
+    token: ctx.pbToken,
+    sessionId: ctx.sessionId,
+    spinnerId: ctx.manifest.name,
+    patronSentence: priorSentence,
+    domain: priorDomain,
+    schemaDraft: priorSchemaDraft,
+  });
+
+  if (!result.ok && result.kind === 'backend') {
+    throw new Error(`build failed: ${result.detail}`);
+  }
+
+  // Resolve to an existing app (idempotent re-call) or a freshly-created one.
+  let appRow: DbAppRowSubset;
+  let alreadyBuilt = false;
+  if (!result.ok && result.kind === 'already-built') {
+    appRow = result.existing;
+    alreadyBuilt = true;
+  } else if (result.ok) {
+    appRow = result.row;
+  } else {
+    throw new Error('build failed with unexpected error shape');
+  }
+
+  const nowIso = new Date().toISOString();
+  if (progressLog.length > 0) {
+    const prev = progressLog[progressLog.length - 1]!;
+    if (!prev.endedAt) prev.endedAt = nowIso;
+  }
+  progressLog.push({
+    phase: 'built',
+    narration: alreadyBuilt
+      ? 'Already built — your application is ready to use.'
+      : `Done — ${appRow.entities.length} records area${appRow.entities.length === 1 ? '' : 's'} created in your Cell.`,
+    startedAt: nowIso,
+    endedAt: nowIso,
+  });
+
+  // Build narration the Spinner writes back to the patron — a short
+  // patron-readable summary. Deterministic; no Quiet Loom call needed
+  // for build's narration (the schema is already settled; the patron
+  // doesn't need new analysis — just the news).
+  const narration = alreadyBuilt
+    ? `Your ${priorDomain} application is already built and waiting. The Observatory shows the entities you can work with; click into any of them to start adding records.`
+    : `Your ${priorDomain} application is ready. I created ${appRow.entities.length} record area${appRow.entities.length === 1 ? '' : 's'} in your Cell: ${appRow.entities.map((e) => e.name).join(', ')}. The Observatory now shows your application — click any of the tabs to start adding records.`;
+
+  const deployedSurfaceUrl = `/db-app/${appRow.appId}`;
+
+  await session.save({
+    state: {
+      version: 1,
+      patronSentence: priorSentence,
+      sessionStartedAt,
+      progressLog,
+      domain: priorDomain,
+      schemaDraft: priorSchemaDraft,
+      narration,
+      builtApp: {
+        appId: appRow.appId,
+        entities: appRow.entities,
+        deployedSurfaceUrl,
+        builtAt: appRow.builtAt,
+      },
+      turns: [
+        ...priorTurns,
+        {
+          capability: 'build',
+          appId: appRow.appId,
+          entities: appRow.entities,
+          timestamp: nowIso,
+          alreadyBuilt,
+        },
+      ],
+    },
+    phase: 'built',
+    status: 'completed',
+  });
+
+  return {
+    output: {
+      narration,
+      appId: appRow.appId,
+      deployedSurfaceUrl,
+      entities: appRow.entities,
+      artifacts: appRow.entities.map((e) => ({
+        kind: 'collection',
+        name: e.name,
+        location: e.collectionName,
+      })),
+      phase: 'built',
+      alreadyBuilt,
+      provenance: {
+        provider: 'kepler.grimoire-demo',
+        sessionId: session.id,
+      },
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
+}
+
+interface DbAppRowSubset {
+  readonly appId: string;
+  readonly entities: readonly DbAppEntityMap[];
+  readonly builtAt: string;
 }
