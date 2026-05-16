@@ -151,7 +151,8 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
   };
   const pbToken = authBody.token;
   const actorEmail = authBody.record.email;
-  const actorId = authBody.record.id;
+  // actorId unused since switching install to HTTP endpoint (the
+  // endpoint derives actor from session.token internally).
 
   // Cell fingerprint (for the meta.json that the template embeds).
   let cellFingerprint = 'unknown';
@@ -207,48 +208,43 @@ export async function authorSpinner(input: AuthorInput): Promise<AuthorOutput> {
   writeFileSync(scenarioPath, JSON.stringify(scenarioJson, null, 2) + '\n', 'utf8');
 
   // ── Phase 3: Install ─────────────────────────────────────────
-  let installSpinnerBundle:
-    | (typeof import('../../../loom/src/lib/server/spinner-install-op.js'))['installSpinnerBundle']
-    | undefined;
-  let installImportError = '';
-  try {
-    const mod = (await import(
-      /* @vite-ignore */ `${warpRoot}/loom/src/lib/server/spinner-install-op.ts`
-    )) as typeof import('../../../loom/src/lib/server/spinner-install-op.js');
-    installSpinnerBundle = mod.installSpinnerBundle;
-  } catch (e) {
-    installImportError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  }
-
-  if (typeof installSpinnerBundle !== 'function') {
+  // Call the Loom's /admin/spinners/install HTTP endpoint rather than
+  // importing the module. Two reasons:
+  //   1. spinner-install-op.ts chains relative `./identity.js`
+  //      imports that don't resolve when loaded from outside the
+  //      Loom workspace.
+  //   2. Going through the HTTP surface means Author exercises the
+  //      same audited path the Wizard would — Witness will see the
+  //      install op + audit events in the same shape.
+  const installRes = await fetch(`${DEFAULT_LOOM_BASE}/admin/spinners/install`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `wp_session=_superusers::${pbToken}`,
+    },
+    body: JSON.stringify({ bundlePath: destDir }),
+  });
+  if (!installRes.ok) {
+    const text = await installRes.text();
     return fail(
       input.slug,
       'scenario-written',
-      'loom-module-not-resolvable',
-      `Cannot import installSpinnerBundle: ${installImportError || 'symbol missing'}`,
+      'install-http-failed',
+      `POST /admin/spinners/install → ${installRes.status}: ${text.slice(0, 400)}`,
       scenarioSlug,
       destDir,
     );
   }
-
-  const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
-  if (!masterKey) {
-    return fail(input.slug, 'scaffolded', 'no-master-key', 'WARP_VAULT_MASTER_KEY missing');
-  }
-
-  const install = await installSpinnerBundle({
-    bundlePath: destDir,
-    actor: { kind: 'wizard', id: actorId, email: actorEmail },
-    fetch,
-    pbToken,
-    masterKey,
-  });
-  if (!install.ok) {
+  const installBody = (await installRes.json()) as {
+    ok: boolean;
+    error?: { kind?: string; detail?: string };
+  };
+  if (!installBody.ok) {
     return fail(
       input.slug,
       'scenario-written',
-      install.error.kind,
-      'detail' in install.error ? install.error.detail : '',
+      installBody.error?.kind ?? 'install-failed',
+      installBody.error?.detail ?? JSON.stringify(installBody).slice(0, 400),
       scenarioSlug,
       destDir,
     );
