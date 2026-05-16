@@ -9,7 +9,9 @@
 // the canonical Weaver will honour.
 
 import type {
+  AuditEvent,
   AuditResult,
+  SpinnerAuditDraft,
   SpinnerManifest,
   SpinnerName,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -21,6 +23,12 @@ import { decryptValue, type EncryptedValue } from './crypto.js';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { callAnthropic, resolveAnthropicModel, AnthropicCallError } from './anthropic.js';
 import { quietLoomChat, resolveKeplerModel, KeplerCallError } from './kepler.js';
+import { createOutboundFetcher, type OutboundFetcher, type OutboundFetchMeta } from './outbound.js';
+import {
+  createSpinnerSession,
+  ensureSpinnerSessionsCollection,
+  type SpinnerSessionActor,
+} from './spinner-session.js';
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
 import { readSpool, knownSpools } from './spools.js';
 import { dispatchCellAuthored } from './weaver-cell-dispatch.js';
@@ -39,7 +47,7 @@ import { addSecret, ensureCollection as ensureVaultCollection } from './secrets.
 import { readFile, writeFile, mkdir, chmod, stat as fsStat } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import { platform as osPlatform, hostname as osHostname } from 'node:os';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { ensureAuditCollection, writeAuditEvent, type AuditWriteRequest } from './audit.js';
 import {
   appendSilkPattern,
@@ -57,6 +65,15 @@ export interface InvokeRequest {
   readonly input: unknown;
   readonly actorEmail: string;
   readonly actorId: string;
+  /**
+   * Session identity for re-entrant Spinners. When the Spinner reads
+   * `context.session` (per `SpinnerContext`), this id keys its row in
+   * `wp_spinner_sessions`. Omitted ⇒ the Weaver mints a fresh UUID per
+   * invocation (single-turn use). Multi-turn surfaces (Database
+   * Application, future conversational Spinners) pass a stable id so
+   * subsequent turns resume the prior session.
+   */
+  readonly sessionId?: string;
 }
 
 export interface InvokeSuccess {
@@ -109,6 +126,10 @@ const DISPATCH = new Map<SpinnerName, Set<string>>([
       'verifyCell',
     ]),
   ],
+  [
+    '@webspinner-foundation/database-application' as SpinnerName,
+    new Set(['propose', 'refine', 'build']),
+  ],
 ]);
 
 const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
@@ -134,6 +155,9 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
       'deployLoom',
     ]),
   ],
+  // database-application: only `propose` is wired in v0; `refine` and
+  // `build` throw "pending implementation" until the proof point closes.
+  ['@webspinner-foundation/database-application' as SpinnerName, new Set(['propose'])],
 ]);
 
 export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
@@ -212,9 +236,10 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
   }
   const pbToken = auth.auth.token;
 
-  // 5. Ensure audit + silk-pattern collections
+  // 5. Ensure audit + silk-pattern + spinner-sessions collections
   await ensureAuditCollection(fetch, pbToken);
   await ensureSilkPatternCollection(fetch, pbToken);
+  await ensureSpinnerSessionsCollection(fetch, pbToken);
 
   // 6. Resolve vault references
   const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
@@ -301,6 +326,23 @@ export async function invoke(req: InvokeRequest): Promise<InvokeResult> {
         missionLock,
         spoolReads,
         pbToken,
+      });
+      output = handled.output;
+      modelTokens = handled.modelTokens;
+    } else if (manifest.name === ('@webspinner-foundation/database-application' as SpinnerName)) {
+      const sessionId = req.sessionId ?? randomUUID();
+      const handled = await dispatchDatabaseApplication(req.capability, req.input, {
+        manifest,
+        vault,
+        missionLock,
+        spoolReads,
+        pbToken,
+        sessionId,
+        actor: {
+          kind: 'webspinner',
+          id: req.actorId,
+          ...(req.actorEmail ? { email: req.actorEmail } : {}),
+        },
       });
       output = handled.output;
       modelTokens = handled.modelTokens;
@@ -2402,4 +2444,340 @@ async function genesisVerifyCell(rawInput: unknown): Promise<DispatchOutput> {
     output: { loomUrl, grimoireUrl, ready, summary, checks },
     modelTokens: { input: 0, output: 0 },
   };
+}
+
+// ── @webspinner-foundation/database-application ─────────────────────
+//
+// Bootstrap dispatcher for the first Webspinner-facing Spinner: takes a
+// Webspinner's plain-English description of what they want to keep
+// track of, does the homework via `context.fetch` against the manifest's
+// `outboundAllowlist`, drafts a schema in patron-readable language via
+// the Quiet Loom, and asks focused clarifying questions. Re-entrancy
+// through `context.session`: a returning patron sees their prior turn.
+//
+// v0 wires only `propose`; `refine` and `build` throw "pending
+// implementation" until `propose` proves the loop end-to-end (research
+// fetch + Quiet Loom + session save, all observable in the audit chain
+// and the Silk Pattern).
+
+interface DatabaseAppDispatchContext extends BootstrapDispatchContext {
+  readonly pbToken: string;
+  readonly sessionId: string;
+  readonly actor: SpinnerSessionActor;
+}
+
+async function dispatchDatabaseApplication(
+  capability: string,
+  input: unknown,
+  ctx: DatabaseAppDispatchContext,
+): Promise<DispatchOutput> {
+  // Model gate — sovereign-only on the patron path.
+  const provider = (ctx.manifest.model ?? '').split('/')[0];
+  if (provider === 'anthropic') {
+    throw new Error(
+      'Database Application Spinner is configured for Anthropic, which is prohibited on the patron path per POLICY-PATRON-PATH-LLM.md R1. Switch model to "kepler/<...>".',
+    );
+  }
+  const keplerModel = resolveKeplerModel(ctx.manifest.model);
+  if (!keplerModel) {
+    throw new Error(
+      `Database Application declares unrecognised model "${ctx.manifest.model}". Use "kepler/qwen-2.5-14b" or similar; the Bootstrap Weaver only routes through the Quiet Loom.`,
+    );
+  }
+
+  // Build the SpinnerContext primitives — emitAudit, outbound fetcher,
+  // session — closed over the Cell's PB token + the parent invocation's
+  // actor. Every primitive's audit emission lands in the same wp_audit
+  // chain with the dispatch actor as `wpactor`.
+  const baseEmit = makeEmitAuditFor(ctx);
+
+  const fetcher = createOutboundFetcher(ctx.manifest.outboundAllowlist ?? [], {
+    spinnerId: ctx.manifest.name,
+    onCall: async (meta: OutboundFetchMeta) => {
+      await baseEmit({
+        type: 'wp.spinner.outbound.fetch',
+        subject: meta.url,
+        reason: `spinner outbound fetch ${meta.host} ${meta.method} → ${meta.outcome}`,
+        data: {
+          spinnerId: ctx.manifest.name,
+          url: meta.url,
+          host: meta.host,
+          method: meta.method,
+          ...(meta.status !== undefined ? { status: meta.status } : {}),
+          ...(meta.durationMs !== undefined ? { durationMs: meta.durationMs } : {}),
+          ...(meta.responseBytes !== undefined ? { responseBytes: meta.responseBytes } : {}),
+          ...(meta.errorKind ? { errorKind: meta.errorKind } : {}),
+        },
+        outcome: meta.outcome,
+      });
+    },
+  });
+
+  const session = await createSpinnerSession({
+    fetchFn: fetch,
+    token: ctx.pbToken,
+    spinnerId: ctx.manifest.name,
+    sessionId: ctx.sessionId,
+    actor: ctx.actor,
+    capability,
+    emitAudit: async (draft: SpinnerAuditDraft) => {
+      await baseEmit({
+        type: draft.type,
+        ...(draft.subject ? { subject: draft.subject } : {}),
+        reason: draft.reason,
+        data: draft.data,
+        outcome: 'success',
+      });
+      // SpinnerSession's typed signature expects an AuditEvent return,
+      // but the bootstrap shim only needs a successful resolution — the
+      // ID is reified above. Return a minimal stub; the canonical Python
+      // Weaver will return the full event.
+      return {} as AuditEvent;
+    },
+  });
+
+  switch (capability) {
+    case 'propose':
+      return databaseAppPropose(input, ctx, fetcher, session, keplerModel);
+    case 'refine':
+      throw new Error(
+        'Database Application `refine` is pending implementation. v0 wires `propose` only; `refine` and `build` land once propose proves the loop.',
+      );
+    case 'build':
+      throw new Error(
+        'Database Application `build` is pending implementation. v0 wires `propose` only.',
+      );
+    default:
+      throw new Error(`database-application dispatch: unhandled capability "${capability}"`);
+  }
+}
+
+/**
+ * Build an emitAudit closure for a dispatcher. The closure writes
+ * to the Cell's audit chain with the parent invocation's actor +
+ * the dispatcher's source identifier; per-call outcome / payload is
+ * passed by the caller.
+ */
+function makeEmitAuditFor(ctx: DatabaseAppDispatchContext) {
+  return async function emitChild(req: {
+    type: AuditWriteRequest['type'];
+    subject?: string;
+    reason: string;
+    data: AuditWriteRequest['data'];
+    outcome: AuditResult;
+  }): Promise<void> {
+    const payload: AuditWriteRequest = {
+      type: req.type,
+      source: ctx.manifest.audit.source,
+      actor: {
+        kind: 'spinner',
+        id: ctx.manifest.name,
+        displayName: ctx.actor.email ?? ctx.actor.id,
+        authMethod: 'pb-superuser',
+      },
+      result: req.outcome,
+      reason: req.reason,
+      ...(req.subject ? { subject: req.subject } : {}),
+      ocsfClass: 6003,
+      data: req.data,
+    };
+    try {
+      await writeAuditEvent(fetch, ctx.pbToken, payload);
+    } catch {
+      // Child-audit write failures are swallowed; the parent
+      // wp.spinner.invoke event captures the broader outcome.
+    }
+  };
+}
+
+/**
+ * `propose` — the first patron turn. Two Quiet Loom calls separated by
+ * one outbound fetch: identify the domain + Wikipedia article slug;
+ * fetch the article (stripped to plain text, truncated); draft a
+ * schema + clarifying questions citing the source. State is saved
+ * via `context.session` at phase 'proposed'.
+ */
+async function databaseAppPropose(
+  rawInput: unknown,
+  ctx: DatabaseAppDispatchContext,
+  fetcher: OutboundFetcher,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+  keplerModel: string,
+): Promise<DispatchOutput> {
+  const input = rawInput as { patronSentence?: string };
+  if (typeof input?.patronSentence !== 'string' || input.patronSentence.trim().length === 0) {
+    throw new Error('propose requires a non-empty `patronSentence` string.');
+  }
+  const sentence = input.patronSentence.trim();
+
+  // ── Step 1: identify domain + wiki article slug ─────────────────
+  const identifyResult = await quietLoomChat({
+    system: ctx.missionLock,
+    userMessage:
+      `The Webspinner just said: ${JSON.stringify(sentence)}.\n\n` +
+      `Identify the domain in one short phrase (e.g. "small-business bookkeeping", "home garden tracking", "donor and gift logging"). ` +
+      `Then identify the English Wikipedia article slug that most closely covers the canonical shape of this domain — the last path segment of the URL (e.g. "Bookkeeping", "Gardening", "Donor_relations").\n\n` +
+      `Return ONLY strict JSON, no prose: {"domain": "string", "wikipediaSlug": "string"}. ` +
+      `Open with "{".`,
+    model: keplerModel,
+    maxTokens: 256,
+  });
+  const idParsed = parseStrictJson(identifyResult.text);
+  const domain =
+    typeof idParsed?.['domain'] === 'string' ? (idParsed['domain'] as string) : 'unknown domain';
+  const wikiSlug =
+    typeof idParsed?.['wikipediaSlug'] === 'string'
+      ? (idParsed['wikipediaSlug'] as string).trim()
+      : '';
+
+  // ── Step 2: fetch the Wikipedia article (best-effort) ───────────
+  let referenceUrl = '';
+  let referenceText = '';
+  if (wikiSlug.length > 0) {
+    referenceUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(wikiSlug)}`;
+    try {
+      const fetched = await fetcher.fetch({
+        url: referenceUrl,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Webspinner-Database-Application/0.1 (+https://webspinner.foundation)',
+        },
+        timeoutMs: 20_000,
+      });
+      if (fetched.ok && fetched.text.length > 0) {
+        referenceText = stripWikipediaHtml(fetched.text).slice(0, 8_000);
+      }
+    } catch {
+      // Allowlist denial, network timeout, or parse failure — the SI
+      // gets an empty reference and is instructed by its mission-lock
+      // to be honest about the gap.
+    }
+  }
+
+  // ── Step 3: draft schema + clarifying questions ─────────────────
+  const draftResult = await quietLoomChat({
+    system: ctx.missionLock,
+    userMessage:
+      `The Webspinner just said: ${JSON.stringify(sentence)}.\n` +
+      `Domain you identified: ${JSON.stringify(domain)}.\n` +
+      (referenceUrl
+        ? `Reference consulted (cite this URL in your narration): ${referenceUrl}\n\n` +
+          `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
+        : `No reference was reachable for this domain — note the gap honestly in your narration.\n\n`) +
+      `Per your Mission Lock, propose a starting database schema for this Webspinner in their domain's words (not engineering's), and ask three or four focused clarifying questions about their specific situation.\n\n` +
+      `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+      `{\n` +
+      `  "narration": "Markdown string the Loom renders. Cite the reference URL above. Be warm and plain-language.",\n` +
+      `  "domain": "${domain}",\n` +
+      `  "schemaDraft": {\n` +
+      `    "entities": [\n` +
+      `      {"name": "string (patron-facing)", "describes": "one sentence", "fields": [{"name": "string", "kind": "text|number|date|yes-no|money", "describes": "one sentence"}], "links": [{"to": "string", "describes": "one sentence"}]}\n` +
+      `    ]\n` +
+      `  },\n` +
+      `  "clarifications": [\n` +
+      `    {"id": "kebab-case", "question": "string in domain words", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["string"]}\n` +
+      `  ]\n` +
+      `}\n\n` +
+      `Open with "{".`,
+    model: keplerModel,
+    maxTokens: 2_048,
+  });
+  const draftParsed = parseStrictJson(draftResult.text) ?? {};
+
+  const narration =
+    typeof draftParsed['narration'] === 'string'
+      ? (draftParsed['narration'] as string)
+      : '(no narration returned — the model produced unparseable output; treat this as an early-iteration signal)';
+  const schemaDraft =
+    typeof draftParsed['schemaDraft'] === 'object' && draftParsed['schemaDraft'] !== null
+      ? (draftParsed['schemaDraft'] as Record<string, unknown>)
+      : {};
+  const clarifications = Array.isArray(draftParsed['clarifications'])
+    ? (draftParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
+    : [];
+
+  // ── Step 4: save session state ──────────────────────────────────
+  const nowIso = new Date().toISOString();
+  await session.save({
+    state: {
+      version: 1,
+      patronSentence: sentence,
+      domain,
+      schemaDraft,
+      sources: referenceUrl ? [referenceUrl] : [],
+      turns: [
+        {
+          capability: 'propose',
+          clarifications,
+          timestamp: nowIso,
+        },
+      ],
+    },
+    phase: 'proposed',
+  });
+
+  // ── Step 5: return ──────────────────────────────────────────────
+  return {
+    output: {
+      narration,
+      domain,
+      schemaDraft,
+      clarifications,
+      phase: 'proposed',
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: identifyResult.model,
+        sessionId: session.id,
+        referenceUrl: referenceUrl || null,
+        modelCalls: 2,
+      },
+    },
+    modelTokens: {
+      input: identifyResult.inputTokens + draftResult.inputTokens,
+      output: identifyResult.outputTokens + draftResult.outputTokens,
+    },
+  };
+}
+
+const DB_JSON_RE = /\{[\s\S]*\}/m;
+
+function parseStrictJson(raw: string): Record<string, unknown> | null {
+  let txt = (raw ?? '').trim();
+  if (txt.startsWith('```')) {
+    txt = txt.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '');
+  }
+  const match = txt.match(DB_JSON_RE);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]) as unknown;
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return null;
+    return obj as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Strip Wikipedia HTML to plain text suitable for an LLM prompt.
+ * Removes script/style blocks, then strips all remaining tags and
+ * collapses whitespace. The result is not pristine — Wikipedia's
+ * markup leaks reference-superscript numbers and the like — but it's
+ * good enough for entity extraction.
+ */
+function stripWikipediaHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<sup[^>]*>[\s\S]*?<\/sup>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
