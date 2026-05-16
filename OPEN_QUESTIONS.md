@@ -369,3 +369,15 @@ The `webspinner-ai-try` vault token is scoped to `webspinner.ai` only and cannot
 Path 1 is cleaner. Not urgent — the record is inert.
 
 **Lesson for future tunnel DNS work in this repo:** `cloudflared tunnel route dns` is unreliable when the cert's zone differs from the target hostname's zone, and unreliable when tunnel names share a prefix. Prefer direct CF API CNAME PATCH with a zone-scoped token + the tunnel UUID. See `DECISIONS.md` 2026-05-16 — Production tunnel separation.
+
+## 2026-05-16 — Demo Cell runtime — patron-facing Spinner orchestration (in flight)
+
+**Question:** Building the patron-facing Spinner runtime at `try.webspinner.ai` as a generalised AI Agent Orchestration substrate — a dedicated Demo Cell on Kepler that hosts any Foundation-approved patron-facing Spinner via a roster file. Database Application is the first; the design must scale to the meta-Spinner and the other archetypes (iPhone App, Website, Simple Game, Custom AI Spinner, `weave-form`, future Webspinner Spinners) without per-Spinner deployment work.
+
+**Why it matters:** The Wizard's standing instruction is that the demo at `try.webspinner.ai` is "open to anyone, only local LLMs on Kepler, isolated so cleanup is simple and contained." The architecture has to honour all three constraints AND remain coherent as the Foundation ships more patron-facing Spinners. Per Operating Principle §17.3 (_Production-Candidate Quality Only_), this is the canonical Foundation pattern for public Spinner hosting, not a one-off for Database Application.
+
+**Status:** Architectural decision recorded in `DECISIONS.md` 2026-05-16 — _Demo Cell pattern — patron-facing Spinner runtime architecture_. Operative execution plan lives in `DEMO-RUNTIME-PLAN.md` at the repo root. Four pieces R0–R4; status column tracks the resume point. Four open deployment sub-decisions named in the plan; the Wizard confirms or overrides each before R0 lands. The Database Application Spinner is already authored, signed, installed in the operator's Skein, and dispatched-ready (`dispatchDatabaseApplication` in `loom/src/lib/server/weaver.ts` — `propose` wired; `refine`/`build` throw pending). The demo runtime is what closes the loop on actually using it from the public surface.
+
+**Trigger to land:** R0 (Demo Cell infrastructure) is the next piece. Once the four sub-decisions are confirmed (PB data dir, env source, identity-key generation, plist location), R0–R4 execute in order. R3 + R4 are the visible-to-patron pieces; R0–R2 are the infrastructure underneath.
+
+**Resume:** A fresh Claude session reads `DEMO-RUNTIME-PLAN.md` and continues from the first piece marked **not started** in its Status column.

@@ -655,3 +655,40 @@ loop was built — and verified by itself, end to end.
 **Cutover discipline:** `webspinner.ai` moves to the new tunnel _before_ being removed from the old one — the new tunnel daemon serves the apex; DNS for `webspinner.ai` is repointed (CF API) to the new tunnel ID; old tunnel is reloaded only after verification. Zero-downtime cutover; no rollback drama.
 
 **Future state:** When the demo Cell migrates off Kepler (Hetzner or otherwise), only the `webspinner-prod` tunnel moves — `webspinner-kepler` stays put with its experimental load. Tunnel separation makes that future migration a daemon-relocation, not a topology rebuild.
+
+## 2026-05-16 — Demo Cell pattern — patron-facing Spinner runtime architecture
+
+**Decision:** The public Spinner runtime at `try.webspinner.ai` runs in a **dedicated Demo Cell** on Kepler — a second Loom + a second Grimoire, parallel to the operator's, sharing only the stateless Kepler compute services (Quiet Loom and embeddings sidecar). The pattern is **generalised**: any future patron-facing Spinner (the meta-Spinner, the iPhone App archetype, the Website archetype, the Simple Game archetype, the Custom AI Spinner archetype, the `weave-form` Spinner, future Webspinner Spinners) installs into the same Demo Cell via a roster file at `~/warp/demo-roster.json`. No per-Spinner deployment work; one infrastructure substrate carries them all.
+
+**Topology:**
+
+- **Operator Cell** (existing): `foundation.webspinner.loom` on `:3000`, `foundation.webspinner.grimoire` on `:8090`, bootstrap creds at `~/.warp/bootstrap/`. LAN/Tailscale-only admin surface.
+- **Demo Cell** (new): `foundation.webspinner.loom-demo` on `:3001`, `foundation.webspinner.grimoire-demo` on `:8091`, bootstrap creds at `~/.warp/bootstrap-demo/`, separate Cell identity key, separate `pb_data` directory. **No public hostname** — only reachable via the FastAPI proxy on `try.webspinner.ai` over loopback.
+- **Shared (stateless) compute**: Quiet Loom (mlx-server on `:11445`) + embeddings sidecar (`:11446`). No state, no isolation concern.
+- **Public surface**: only `try.webspinner.ai` via the `webspinner-prod` Cloudflare Tunnel (per 2026-05-16 — _Production tunnel separation_). FastAPI proxy on `:11900` is the trust boundary.
+
+**Why a second Cell instead of session-id-prefix isolation in the operator's Cell:**
+
+The Wizard's standing requirement is that operator state and demo state never mix. A boolean flag on `wp_spinner_sessions` (or a `demo-` session-id prefix) provides cleanup convenience but leaves operator collections, the operator vault, the operator's audit chain, the operator's Skein, and the operator's Cell identity exposed to demo activity. A demo bug — a Spinner that writes too much, an adversarial patron, a misconfigured invocation — would land in the same Grimoire as the Foundation's operational records. **Architectural blast-radius reduction** demands a separate Cell. Cleanup becomes one command (`tools/demo-reset`) that drops the demo `pb_data` and re-installs the roster Spinners; no SQL filtering across shared collections; no risk of leftover state.
+
+**Why generalise (the roster):**
+
+Per Operating Principle §17.3 (_Production-Candidate Quality Only_) and the Wizard's instruction that _"this is an AI Agent Orchestration, it has to scale,"_ the demo runtime cannot be Database-Application-specific. Every primitive — the FastAPI proxy's invoke route shape, the demo-reset tool, the frontend's menu-tile state, the install-on-boot flow — reads the roster. Adding a new Spinner is one PR: bundle goes under `spinners/<slug>/`, roster entry added, `demo-reset` re-runs, frontend lights up automatically. Removing a Spinner is the same one PR in reverse. **Spinner deployment to the public demo is a configuration change, not a code change.**
+
+**Isolation guarantees (operative):**
+
+1. Operator Grimoire is unreachable from demo Spinner code. Different PB instance, different superuser, different vault master key.
+2. Operator Cell identity key is unreachable from demo Spinner installs. Demo bundles are signed by the demo Cell's own identity.
+3. Operator audit chain receives no demo events. Audit isolation is structural — the demo audit chain is in the demo Grimoire.
+4. Demo Loom processes can be bounced (`launchctl bootout … bootstrap …`) without affecting operator state. Demo Grimoire data can be wiped (`rm -rf` the data directory) without affecting operator state.
+5. The shared Quiet Loom and embeddings sidecar are stateless — they receive prompts and return responses; they hold no per-Cell state to corrupt.
+
+**What the Demo Cell does NOT solve (named so it doesn't drift):**
+
+- **Spinner-runtime sandboxing.** A Spinner that runs amok inside the demo Loom's process can still degrade the demo Loom (memory, CPU). The canonical answer is RUNNERS.md — Firecracker microVM execution on a dedicated runner host. That's Tier 2.1 work; the demo Loom runs Spinners in-process until then. Blast radius is bounded by the bouncability of the demo Loom + the wipability of the demo Grimoire.
+- **Concurrent-patron scale beyond ~10/hour.** mlx-server on Kepler serializes generations; multiple patrons queue at the model. Scale-out lands when Hetzner federation begins (per RUNNERS.md §4).
+- **Adversarial traffic.** No Cloudflare Turnstile, no per-IP rate limiting in v0. The FastAPI proxy has hooks for both; the rules are wired in when adversarial traffic appears.
+
+**Operative plan:** `DEMO-RUNTIME-PLAN.md` at the repo root carries the four-piece execution plan (R0–R4), the open deployment decisions, the future-Spinner readiness checklist, and the resume instructions for a fresh Claude session. The plan is the live operational document; this entry is the durable architectural record.
+
+**Future state:** When the demo Cell needs to migrate off Kepler (Hetzner runner pool, or a dedicated demo host as patron load grows), only the demo Cell moves. The operator Cell stays on Kepler. The tunnel separation (per 2026-05-16) already isolates the demo's public surface. The roster + FastAPI proxy point at the new demo Loom's URL; nothing else changes.
