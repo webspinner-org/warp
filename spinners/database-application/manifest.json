@@ -3,7 +3,7 @@
   "name": "@webspinner-foundation/database-application",
   "displayName": "Database Application",
   "version": "0.1.0",
-  "description": "Takes a Webspinner's plain-English description of what they want to keep track of, researches the domain from credible public references, proposes a database schema in patron-readable language, iterates through clarifying questions, and builds the working web application — list views, detail forms, the canonical reports — backed by a collection in the patron's Cell. Bookkeeping, plant tracking, donor logging, customer records: same Spinner, different domain. Narrates each step as it works.",
+  "description": "Takes a Webspinner's plain-English description of what they want to keep track of, researches the domain from credible public references, proposes the full set of screens (forms, lists, details, reports) a competent professional would build for that domain, offers three branding palettes (warm / cool / Foundation default), iterates as the patron prunes and chooses, then builds the working web application — schema derived from the screens, collections in the patron's Cell, branding applied at runtime. Bookkeeping, plant tracking, donor logging, customer service: same Spinner, different domain. The schema is engineering, hidden from the patron; the screens are theirs to design.",
   "homepage": "https://github.com/webspinner-org/warp/tree/main/spinners/database-application",
   "license": "Apache-2.0",
   "entrypoint": "./src/index.ts",
@@ -17,7 +17,7 @@
     {
       "name": "propose",
       "displayName": "Propose",
-      "description": "First turn — the Spinner reads the patron's sentence, researches the domain from credible references, and proposes a starting database schema with focused clarifying questions. Saves session state at phase 'proposed'.",
+      "description": "First turn — the Spinner reads the patron's sentence, researches the domain, proposes the full set of screens a working professional would build (forms / lists / details / reports), offers three branding palettes, and asks focused clarifying questions naming screen-level decisions. Saves session state at phase 'proposed'.",
       "inputSchema": {
         "$id": "urn:webspinner:capability:database-application:propose:input:v1.0.0",
         "type": "object",
@@ -47,14 +47,18 @@
             "type": "string",
             "description": "The Spinner's identification of the domain (e.g. 'small-business bookkeeping', 'home gardening')."
           },
-          "schemaDraft": {
+          "screensDraft": {
             "type": "object",
-            "description": "The draft schema in Spinner-defined shape — entities with patron-named fields. Inspectable but not yet built."
+            "description": "The drafted screens (forms, lists, details, reports), their navigation, and the three branding palette options. Inspectable; the patron prunes via clarifications."
+          },
+          "branding": {
+            "type": "object",
+            "description": "Branding state — `options` (three palette proposals), `selectedPaletteId` (null in propose; set in refine), optional `customDescription` / `referenceUrl`."
           },
           "clarifications": {
             "type": "array",
             "maxItems": 8,
-            "description": "Focused questions the Loom renders as a form. Three or four is the target.",
+            "description": "Focused questions, each naming the screen or field its answer modifies. One question is always the branding choice (palette selection / custom description / website reference).",
             "items": {
               "type": "object",
               "required": ["id", "question", "kind"],
@@ -85,7 +89,7 @@
     {
       "name": "refine",
       "displayName": "Refine",
-      "description": "Subsequent turns — applies the patron's answers to the prior draft, updates the schema, and either asks the next set of focused questions or marks the schema ready to build. Saves session state at phase 'refining' or 'ready'.",
+      "description": "Subsequent turns — applies the patron's answers as concrete screen-level deltas (adds/removes screens, sections, fields), settles on the branding choice, and either asks more screen-level questions or marks the design ready to build. Saves session state at phase 'refining' or 'ready'.",
       "inputSchema": {
         "$id": "urn:webspinner:capability:database-application:refine:input:v1.0.0",
         "type": "object",
@@ -120,7 +124,8 @@
         "required": ["narration", "clarifications", "readyToBuild", "phase"],
         "properties": {
           "narration": { "type": "string", "minLength": 1 },
-          "schemaDraft": { "type": "object" },
+          "screensDraft": { "type": "object" },
+          "branding": { "type": "object" },
           "clarifications": {
             "type": "array",
             "maxItems": 8,
@@ -154,7 +159,7 @@
     {
       "name": "build",
       "displayName": "Build",
-      "description": "Final turn — reads the settled schema from session state, creates the Cell-side collections, registers the application with the Loom's database-application renderer, and returns the surface URL the patron lands on. Saves session state at phase 'built' with status 'completed'.",
+      "description": "Final turn — reads the settled screens + branding from session state, derives the schema from the screens (form fields → columns, link-to fields → relations), creates the Cell-side collections, writes the screens + branding to wp_database_applications, and returns the surface URL the patron lands on. Saves session state at phase 'built' with status 'completed'.",
       "inputSchema": {
         "$id": "urn:webspinner:capability:database-application:build:input:v1.0.0",
         "type": "object",

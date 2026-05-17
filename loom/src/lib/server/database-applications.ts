@@ -22,6 +22,122 @@ const PB_URL_DEFAULT = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
 const COLLECTION = 'wp_database_applications';
 const MAX_SCHEMA_BYTES = 256 * 1024;
 
+// ── Screen shapes ─────────────────────────────────────────────────
+// Per SCREEN-FIRST-AUTHORING.md — the Spinner proposes screens
+// (forms, lists, details, reports); the schema is DERIVED from the
+// screens by `deriveEntitiesFromScreens()`. Patron-facing.
+
+export type ScreenKind = 'form' | 'list' | 'detail' | 'report';
+
+export type FormFieldKind =
+  | 'text'
+  | 'long-text'
+  | 'number'
+  | 'date'
+  | 'money'
+  | 'yes-no'
+  | 'choice'
+  | 'multi-choice'
+  | 'link-to';
+
+export interface FormField {
+  readonly id: string;
+  readonly label: string;
+  readonly describes?: string;
+  readonly kind: FormFieldKind;
+  readonly required?: boolean;
+  readonly options?: readonly string[];
+  readonly linkTo?: string;
+}
+
+export interface FormSection {
+  readonly title?: string;
+  readonly describes?: string;
+  readonly fields: readonly FormField[];
+}
+
+export interface FormLayout {
+  readonly sections: readonly FormSection[];
+}
+
+export interface ListColumn {
+  readonly fieldId: string;
+  readonly label?: string;
+  readonly width?: 'narrow' | 'normal' | 'wide';
+}
+
+export interface ListLayout {
+  readonly columns: readonly ListColumn[];
+  readonly defaultSort?: { readonly field: string; readonly direction: 'asc' | 'desc' };
+  readonly filterFields?: readonly string[];
+}
+
+export interface DetailLayout {
+  readonly showFields: readonly string[];
+  readonly relatedScreens?: readonly string[];
+}
+
+export interface ReportLayout {
+  readonly describes: string;
+  readonly sourceEntities: readonly string[];
+  readonly groupBy?: string;
+  readonly aggregations?: readonly string[];
+}
+
+export type ScreenLayout = FormLayout | ListLayout | DetailLayout | ReportLayout;
+
+export interface Screen {
+  readonly id: string;
+  readonly kind: ScreenKind;
+  readonly name: string;
+  readonly describes: string;
+  readonly parentEntity: string;
+  readonly layout: ScreenLayout;
+}
+
+export interface NavItem {
+  readonly label: string;
+  readonly primary: boolean;
+  readonly screens: readonly string[];
+}
+
+export interface ScreensDraft {
+  readonly appName: string;
+  readonly domain: string;
+  readonly screens: readonly Screen[];
+  readonly navigation: readonly NavItem[];
+}
+
+// ── Branding shapes ───────────────────────────────────────────────
+
+export interface BrandingPalette {
+  readonly bg: string;
+  readonly surface: string;
+  readonly surfaceAlt: string;
+  readonly text: string;
+  readonly textMuted: string;
+  readonly accent: string;
+  readonly accentSoft: string;
+  readonly gold: string;
+  readonly border: string;
+}
+
+export interface BrandingOption {
+  readonly id: string;
+  readonly name: string;
+  readonly mood: string;
+  readonly palette: BrandingPalette;
+}
+
+export interface BrandingState {
+  readonly options: readonly BrandingOption[];
+  readonly selectedPaletteId: string | null;
+  readonly customDescription?: string;
+  readonly referenceUrl?: string;
+}
+
+// ── Derived schema shapes (post-build) ────────────────────────────
+
 export interface SchemaField {
   readonly name: string;
   readonly kind: 'text' | 'number' | 'date' | 'money' | 'yes-no' | string;
@@ -52,6 +168,17 @@ export interface EntityMap {
   readonly links: readonly SchemaLink[];
 }
 
+/**
+ * Persisted shape of `wp_database_applications.schema_draft` — for v2
+ * (screen-first) this is `{screens, navigation, branding}`; the column
+ * name is legacy from the schema-first era. The Loom always reads /
+ * writes through this typed envelope.
+ */
+export interface ApplicationDesign {
+  readonly screensDraft: ScreensDraft;
+  readonly branding: BrandingState;
+}
+
 export interface DatabaseApplicationRow {
   readonly id: string;
   readonly appId: string;
@@ -59,7 +186,7 @@ export interface DatabaseApplicationRow {
   readonly spinnerId: string;
   readonly patronSentence: string;
   readonly domain: string;
-  readonly schemaDraft: SchemaDraft;
+  readonly design: ApplicationDesign;
   readonly entities: readonly EntityMap[];
   readonly builtAt: string;
   readonly status: 'active' | 'archived';
@@ -72,7 +199,7 @@ interface PBRow {
   readonly spinner_id: string;
   readonly patron_sentence: string;
   readonly domain: string;
-  readonly schema_draft: SchemaDraft;
+  readonly schema_draft: ApplicationDesign;
   readonly entities: readonly EntityMap[];
   readonly built_at: string;
   readonly status: string;
@@ -90,11 +217,109 @@ function parseRow(row: PBRow): DatabaseApplicationRow {
     spinnerId: row.spinner_id,
     patronSentence: row.patron_sentence,
     domain: row.domain,
-    schemaDraft: row.schema_draft,
+    design: row.schema_draft,
     entities: row.entities,
     builtAt: row.built_at,
     status: row.status as DatabaseApplicationRow['status'],
   };
+}
+
+/**
+ * Derive the entity-level schema from a `ScreensDraft`. Every form
+ * screen contributes its fields to its `parentEntity`; `link-to`
+ * fields create both the target entity (if not already declared) and
+ * a `SchemaLink`. List / detail / report screens are query-only —
+ * they reference existing entities but don't contribute columns.
+ *
+ * The derived schema is what `createEntityCollection` reads to build
+ * PocketBase collections.
+ */
+export function deriveEntitiesFromScreens(draft: ScreensDraft): SchemaEntity[] {
+  const entities = new Map<
+    string,
+    { fields: Map<string, SchemaField>; links: Map<string, SchemaLink>; describes: string }
+  >();
+
+  function ensure(
+    name: string,
+    describes = '',
+  ): { fields: Map<string, SchemaField>; links: Map<string, SchemaLink>; describes: string } {
+    const key = name.trim();
+    if (!entities.has(key)) {
+      entities.set(key, { fields: new Map(), links: new Map(), describes });
+    }
+    return entities.get(key)!;
+  }
+
+  function fieldKindToSchemaKind(k: FormFieldKind): SchemaField['kind'] {
+    switch (k) {
+      case 'long-text':
+        return 'text';
+      case 'choice':
+      case 'multi-choice':
+        // Stored as text; the screen carries the option list.
+        return 'text';
+      case 'link-to':
+        // The link itself is a relation; the field stores the linked id as text.
+        return 'text';
+      case 'number':
+      case 'date':
+      case 'money':
+      case 'yes-no':
+      case 'text':
+        return k;
+      default:
+        return 'text';
+    }
+  }
+
+  // First pass: ensure every entity referenced as parentEntity or
+  // link-to target exists.
+  for (const screen of draft.screens) {
+    if (screen.parentEntity) ensure(screen.parentEntity, screen.describes);
+    if (screen.kind === 'form') {
+      const layout = screen.layout as FormLayout;
+      for (const section of layout.sections ?? []) {
+        for (const field of section.fields ?? []) {
+          if (field.kind === 'link-to' && field.linkTo) {
+            ensure(field.linkTo);
+          }
+        }
+      }
+    }
+  }
+
+  // Second pass: collect fields per entity from form screens.
+  for (const screen of draft.screens) {
+    if (screen.kind !== 'form' || !screen.parentEntity) continue;
+    const layout = screen.layout as FormLayout;
+    const entity = ensure(screen.parentEntity);
+    for (const section of layout.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (!field.id) continue;
+        const schemaField: SchemaField = {
+          name: sanitizeForPb(field.id),
+          kind: fieldKindToSchemaKind(field.kind),
+          describes: field.describes ?? '',
+        };
+        // Merge into entity (later form wins on conflicting describes).
+        entity.fields.set(schemaField.name, schemaField);
+        if (field.kind === 'link-to' && field.linkTo) {
+          entity.links.set(field.linkTo, {
+            to: field.linkTo,
+            describes: field.describes ?? '',
+          });
+        }
+      }
+    }
+  }
+
+  return Array.from(entities.entries()).map(([name, data]) => ({
+    name,
+    describes: data.describes,
+    fields: Array.from(data.fields.values()),
+    links: Array.from(data.links.values()),
+  }));
 }
 
 /**
@@ -262,7 +487,7 @@ export interface CreateAppInput {
   readonly spinnerId: string;
   readonly patronSentence: string;
   readonly domain: string;
-  readonly schemaDraft: SchemaDraft;
+  readonly design: ApplicationDesign;
   readonly pbUrl?: string;
 }
 
@@ -300,13 +525,24 @@ export async function createApp(
     return { ok: false, kind: 'already-built', existing: existing.row };
   }
 
-  // Derive entity map: name → slug → collection name. Sanitize each so
-  // PB accepts it. Conflicts within one app (two entities sanitising to
-  // the same slug) are suffixed _2, _3, etc.
+  // Derive the schema from the patron's screens. Every form's fields
+  // become columns on its parentEntity; link-to fields create
+  // relations between entities; list / detail / report screens are
+  // query-only and contribute no columns. Then map each derived entity
+  // to a PB collection name, sanitised + per-app-id prefixed.
+  const derivedEntities = deriveEntitiesFromScreens(input.design.screensDraft);
+  if (derivedEntities.length === 0) {
+    return {
+      ok: false,
+      kind: 'backend',
+      detail:
+        'derive-entities: no entities derived from screensDraft (no form screens with parentEntity)',
+    };
+  }
   const appId = generateAppId();
   const usedSlugs = new Set<string>();
   const entities: EntityMap[] = [];
-  for (const entity of input.schemaDraft.entities) {
+  for (const entity of derivedEntities) {
     const base = sanitizeForPb(entity.name);
     let slug = base;
     let i = 2;
@@ -342,7 +578,9 @@ export async function createApp(
     }
   }
 
-  // Write the app metadata row.
+  // Write the app metadata row. The schema_draft JSON column holds
+  // the screen-first design envelope (screensDraft + branding) — the
+  // column name is a legacy from the schema-first era.
   const builtAt = new Date().toISOString();
   const payload = {
     app_id: appId,
@@ -350,7 +588,7 @@ export async function createApp(
     spinner_id: input.spinnerId,
     patron_sentence: input.patronSentence,
     domain: input.domain,
-    schema_draft: input.schemaDraft,
+    schema_draft: input.design,
     entities,
     built_at: builtAt,
     status: 'active',

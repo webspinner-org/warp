@@ -31,7 +31,8 @@ import {
 } from './spinner-session.js';
 import {
   createApp as createDatabaseApp,
-  type SchemaDraft as DbAppSchemaDraft,
+  type ScreensDraft as DbAppScreensDraft,
+  type BrandingState as DbAppBrandingState,
   type EntityMap as DbAppEntityMap,
 } from './database-applications.js';
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
@@ -2614,11 +2615,10 @@ async function databaseAppPropose(
   const sentence = input.patronSentence.trim();
 
   // ── Progress tracking ───────────────────────────────────────────
-  // Each phase boundary is a session.save() so the patron's browser
-  // can poll the session row for progress (per the Wizard's directive
-  // — pull, never push; the polling is also the heartbeat). The
-  // state's `progressLog` field is the append-only trail; the row's
-  // `phase` column is the current phase. Both update on every save().
+  // Per the Wizard's directive — pull, never push; the polling is also
+  // the heartbeat. Each `advance()` is a `wp_spinner_sessions` row
+  // write the patron's browser sees on the next poll. More phases =
+  // more visible activity for the same wall-clock.
   const sessionStartedAt = new Date().toISOString();
   interface ProgressEntry {
     phase: string;
@@ -2641,7 +2641,7 @@ async function databaseAppPropose(
     progressLog.push({ phase, narration, startedAt: now });
     await session.save({
       state: {
-        version: 1,
+        version: 2,
         patronSentence: sentence,
         sessionStartedAt,
         progressLog,
@@ -2653,7 +2653,7 @@ async function databaseAppPropose(
 
   await advance(
     'identifying-domain',
-    'Thinking about what kind of work this is — bookkeeping, gardening, donor tracking, customer records, something else.',
+    'Listening — what kind of work is this? Bookkeeping, gardening, donor tracking, customer records, something else.',
   );
 
   // ── Step 1: identify domain + wiki article slug ─────────────────
@@ -2661,7 +2661,7 @@ async function databaseAppPropose(
     system: ctx.missionLock,
     userMessage:
       `The Webspinner just said: ${JSON.stringify(sentence)}.\n\n` +
-      `Identify the domain in one short phrase (e.g. "small-business bookkeeping", "home garden tracking", "donor and gift logging"). ` +
+      `Identify the domain in one specific phrase (e.g. "small-business bookkeeping", "home garden tracking", "donor and gift logging", "service-history for a small contractor"). ` +
       `Then identify the English Wikipedia article slug that most closely covers the canonical shape of this domain — the last path segment of the URL (e.g. "Bookkeeping", "Gardening", "Donor_relations").\n\n` +
       `Return ONLY strict JSON, no prose: {"domain": "string", "wikipediaSlug": "string"}. ` +
       `Open with "{".`,
@@ -2676,12 +2676,18 @@ async function databaseAppPropose(
       ? (idParsed['wikipediaSlug'] as string).trim()
       : '';
 
+  await advance(
+    'researching-conventions',
+    `Studying the canonical shape of ${domain} — the screens a working professional in this domain uses every day.`,
+    { domain, wikipediaSlug: wikiSlug },
+  );
+
   // ── Step 2: fetch the Wikipedia article (best-effort) ───────────
   await advance(
     'fetching-reference',
     wikiSlug.length > 0
       ? `Reading the Wikipedia article on ${domain}.`
-      : 'No matching reference in the allowed sources for this domain — moving on with what I can reason about.',
+      : 'No matching reference in the allowed sources for this domain — moving on with professional practice.',
     { domain, wikipediaSlug: wikiSlug },
   );
 
@@ -2694,7 +2700,7 @@ async function databaseAppPropose(
         url: referenceUrl,
         method: 'GET',
         headers: {
-          'User-Agent': 'Webspinner-Database-Application/0.1 (+https://webspinner.foundation)',
+          'User-Agent': 'Webspinner-Database-Application/0.2 (+https://webspinner.foundation)',
         },
         timeoutMs: 20_000,
       });
@@ -2708,10 +2714,10 @@ async function databaseAppPropose(
     }
   }
 
-  // ── Step 3: draft schema + clarifying questions ─────────────────
+  // ── Step 3: draft screens + branding + clarifications ───────────
   await advance(
-    'drafting-schema',
-    `Drafting a starting schema in your domain's words and shaping a few focused questions. This is the slowest step — usually thirty to sixty seconds.`,
+    'drafting-screens',
+    `Sketching the forms, lists, and reports a competent professional would build for your ${domain}. This is the slowest step — usually around a minute.`,
     {
       domain,
       wikipediaSlug: wikiSlug,
@@ -2729,23 +2735,40 @@ async function databaseAppPropose(
         ? `Reference consulted (cite this URL in your narration): ${referenceUrl}\n\n` +
           `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
         : `No reference was reachable for this domain — note the gap honestly in your narration.\n\n`) +
-      `Per your Mission Lock, propose a starting database schema for this Webspinner in their domain's words (not engineering's), and ask three or four focused clarifying questions about their specific situation.\n\n` +
+      `Per your Mission Lock, propose:\n` +
+      `1. The full set of SCREENS a competent professional would build for this domain — entry forms (one per kind-of-thing they record), browse lists, detail screens, and the canonical reports the practice expects. Be GENEROUS; the patron prunes.\n` +
+      `2. A NAVIGATION structure grouping the screens into primary tabs.\n` +
+      `3. Three BRANDING PALETTES to choose from — one warm, one cool, one neutral/Foundation. Each is a colour palette with concrete hex values.\n` +
+      `4. Three or four CLARIFYING QUESTIONS, each naming the screen or field its answer modifies. ALWAYS include one clarification with id "branding-choice", kind "single-choice", whose options are the three palette ids plus "describe-my-own" plus "reference-a-website".\n\n` +
       `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
       `{\n` +
-      `  "narration": "Markdown string the Loom renders. Cite the reference URL above. Be warm and plain-language.",\n` +
-      `  "domain": "${domain}",\n` +
-      `  "schemaDraft": {\n` +
-      `    "entities": [\n` +
-      `      {"name": "string (patron-facing)", "describes": "one sentence", "fields": [{"name": "string", "kind": "text|number|date|yes-no|money", "describes": "one sentence"}], "links": [{"to": "string", "describes": "one sentence"}]}\n` +
-      `    ]\n` +
+      `  "narration": "Markdown. Cite the reference URL. Speak about screens (forms / lists / reports), not about schemas. Be warm, confident.",\n` +
+      `  "appName": "Patron-facing name for the application",\n` +
+      `  "domain": ${JSON.stringify(domain)},\n` +
+      `  "screens": [\n` +
+      `    {"id": "kebab-case", "kind": "form", "name": "Record a ...", "describes": "one sentence", "parentEntity": "kebab-case-entity-name", "layout": {"sections": [{"title": "string", "fields": [{"id": "kebab-case", "label": "Patron-facing", "kind": "text|long-text|number|date|money|yes-no|choice|multi-choice|link-to", "describes": "one sentence", "required": true|false, "options": ["..."], "linkTo": "entity-name (only for link-to)"}]}]}},\n` +
+      `    {"id": "kebab-case", "kind": "list", "name": "All ...", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"columns": [{"fieldId": "kebab-case"}], "defaultSort": {"field": "kebab-case", "direction": "desc"}}},\n` +
+      `    {"id": "kebab-case", "kind": "detail", "name": "... Detail", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"showFields": ["..."]}},\n` +
+      `    {"id": "kebab-case", "kind": "report", "name": "...", "describes": "one sentence", "parentEntity": "primary-entity", "layout": {"describes": "what this report shows", "sourceEntities": ["..."], "groupBy": "field", "aggregations": ["sum:amount", "count:transactions"]}}\n` +
+      `  ],\n` +
+      `  "navigation": [\n` +
+      `    {"label": "Group label", "primary": true, "screens": ["screen-id"]}\n` +
+      `  ],\n` +
+      `  "branding": {\n` +
+      `    "options": [\n` +
+      `      {"id": "warm-amber", "name": "Warm Amber", "mood": "warm and inviting", "palette": {"bg": "#1a1410", "surface": "#241b15", "surfaceAlt": "#2f231a", "text": "#f0e6d4", "textMuted": "#bba990", "accent": "#d4a85a", "accentSoft": "#e6c486", "gold": "#d4a85a", "border": "#3d2f24"}},\n` +
+      `      {"id": "cool-slate", "name": "Cool Slate", "mood": "steady and professional", "palette": {"bg": "#171c22", "surface": "#1f2832", "surfaceAlt": "#2a3540", "text": "#dae3ec", "textMuted": "#94a3b1", "accent": "#5fcfe0", "accentSoft": "#7fdfee", "gold": "#c9a96a", "border": "#2e3a47"}},\n` +
+      `      {"id": "foundation-dark", "name": "Foundation Dark", "mood": "manuscript-disciplined Webspinner default", "palette": {"bg": "#1a262e", "surface": "#233440", "surfaceAlt": "#2c3f4c", "text": "#ece4d4", "textMuted": "#a4b4c0", "accent": "#5fd2ed", "accentSoft": "#88dff0", "gold": "#d4a85a", "border": "#34465290"}}\n` +
+      `    ],\n` +
+      `    "selectedPaletteId": null\n` +
       `  },\n` +
       `  "clarifications": [\n` +
-      `    {"id": "kebab-case", "question": "string in domain words", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["string"]}\n` +
+      `    {"id": "kebab-case", "question": "patron-facing question naming the screen or field it modifies", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]},\n` +
+      `    {"id": "branding-choice", "question": "Which look fits the way you want this app to feel?", "kind": "single-choice", "options": ["warm-amber", "cool-slate", "foundation-dark", "describe-my-own", "reference-a-website"]}\n` +
       `  ]\n` +
-      `}\n\n` +
-      `Open with "{".`,
+      `}\n\nOpen with "{". Be GENEROUS with screens (at least 4-6 for a working application) and fields (at least 6-10 per form). The patron prunes.`,
     model: keplerModel,
-    maxTokens: 2_048,
+    maxTokens: 4_096,
   });
   const draftParsed = parseStrictJson(draftResult.text) ?? {};
 
@@ -2753,35 +2776,52 @@ async function databaseAppPropose(
     typeof draftParsed['narration'] === 'string'
       ? (draftParsed['narration'] as string)
       : '(no narration returned — the model produced unparseable output; treat this as an early-iteration signal)';
-  const schemaDraft =
-    typeof draftParsed['schemaDraft'] === 'object' && draftParsed['schemaDraft'] !== null
-      ? (draftParsed['schemaDraft'] as Record<string, unknown>)
-      : {};
+  const appName =
+    typeof draftParsed['appName'] === 'string'
+      ? (draftParsed['appName'] as string)
+      : `${domain} application`;
+  const screens = Array.isArray(draftParsed['screens'])
+    ? (draftParsed['screens'] as readonly unknown[]).filter((s) => s && typeof s === 'object')
+    : [];
+  const navigation = Array.isArray(draftParsed['navigation'])
+    ? (draftParsed['navigation'] as readonly unknown[]).filter((n) => n && typeof n === 'object')
+    : [];
+  const branding =
+    typeof draftParsed['branding'] === 'object' && draftParsed['branding'] !== null
+      ? (draftParsed['branding'] as Record<string, unknown>)
+      : { options: FOUNDATION_DEFAULT_PALETTES, selectedPaletteId: null };
   const clarifications = Array.isArray(draftParsed['clarifications'])
     ? (draftParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
 
+  const screensDraft = {
+    appName,
+    domain,
+    screens,
+    navigation,
+  };
+
   // ── Step 4: save final session state ────────────────────────────
   const nowIso = new Date().toISOString();
-  // Close the in-flight progress entry.
   if (progressLog.length > 0) {
     const prev = progressLog[progressLog.length - 1]!;
     if (!prev.endedAt) prev.endedAt = nowIso;
   }
   progressLog.push({
     phase: 'proposed',
-    narration: 'Done — schema sketched, questions ready for you.',
+    narration: `Done — ${screens.length} screens drafted, three palettes ready, questions on the right.`,
     startedAt: nowIso,
     endedAt: nowIso,
   });
   await session.save({
     state: {
-      version: 1,
+      version: 2,
       patronSentence: sentence,
       sessionStartedAt,
       progressLog,
       domain,
-      schemaDraft,
+      screensDraft,
+      branding,
       sources: referenceUrl ? [referenceUrl] : [],
       narration,
       clarifications,
@@ -2801,7 +2841,8 @@ async function databaseAppPropose(
     output: {
       narration,
       domain,
-      schemaDraft,
+      screensDraft,
+      branding,
       clarifications,
       phase: 'proposed',
       provenance: {
@@ -2818,6 +2859,60 @@ async function databaseAppPropose(
     },
   };
 }
+
+// Fallback palettes when the LLM's branding output is malformed. Same
+// three shapes shown in the prompt above; mirroring lets the patron
+// always see options even when the JSON parse path failed.
+const FOUNDATION_DEFAULT_PALETTES = [
+  {
+    id: 'warm-amber',
+    name: 'Warm Amber',
+    mood: 'warm and inviting',
+    palette: {
+      bg: '#1a1410',
+      surface: '#241b15',
+      surfaceAlt: '#2f231a',
+      text: '#f0e6d4',
+      textMuted: '#bba990',
+      accent: '#d4a85a',
+      accentSoft: '#e6c486',
+      gold: '#d4a85a',
+      border: '#3d2f24',
+    },
+  },
+  {
+    id: 'cool-slate',
+    name: 'Cool Slate',
+    mood: 'steady and professional',
+    palette: {
+      bg: '#171c22',
+      surface: '#1f2832',
+      surfaceAlt: '#2a3540',
+      text: '#dae3ec',
+      textMuted: '#94a3b1',
+      accent: '#5fcfe0',
+      accentSoft: '#7fdfee',
+      gold: '#c9a96a',
+      border: '#2e3a47',
+    },
+  },
+  {
+    id: 'foundation-dark',
+    name: 'Foundation Dark',
+    mood: 'manuscript-disciplined Webspinner default',
+    palette: {
+      bg: '#1a262e',
+      surface: '#233440',
+      surfaceAlt: '#2c3f4c',
+      text: '#ece4d4',
+      textMuted: '#a4b4c0',
+      accent: '#5fd2ed',
+      accentSoft: '#88dff0',
+      gold: '#d4a85a',
+      border: '#34465290',
+    },
+  },
+];
 
 const DB_JSON_RE = /\{[\s\S]*\}/m;
 
@@ -2888,8 +2983,7 @@ async function databaseAppRefine(
   }
   const answers = input.answers.filter((a) => a && typeof a.id === 'string' && a.id.length > 0);
 
-  // Load the prior state — re-load via the session primitive's getter
-  // (snapshot at construction; getters reflect the latest saved state).
+  // Load the prior state from the session primitive's getter.
   const priorState = (session.state ?? {}) as Record<string, unknown>;
   const priorSentence =
     typeof priorState['patronSentence'] === 'string'
@@ -2897,10 +2991,14 @@ async function databaseAppRefine(
       : '';
   const priorDomain =
     typeof priorState['domain'] === 'string' ? (priorState['domain'] as string) : 'unknown domain';
-  const priorSchemaDraft =
-    priorState['schemaDraft'] && typeof priorState['schemaDraft'] === 'object'
-      ? (priorState['schemaDraft'] as Record<string, unknown>)
+  const priorScreensDraft =
+    priorState['screensDraft'] && typeof priorState['screensDraft'] === 'object'
+      ? (priorState['screensDraft'] as Record<string, unknown>)
       : {};
+  const priorBranding =
+    priorState['branding'] && typeof priorState['branding'] === 'object'
+      ? (priorState['branding'] as Record<string, unknown>)
+      : { options: FOUNDATION_DEFAULT_PALETTES, selectedPaletteId: null };
   const priorSources = Array.isArray(priorState['sources'])
     ? ((priorState['sources'] as readonly unknown[]).filter(
         (u) => typeof u === 'string',
@@ -2916,10 +3014,26 @@ async function databaseAppRefine(
     );
   }
 
-  // Fresh progressLog for THIS refine turn — the Observatory shows
-  // per-turn phase pills. The session.state carries the full turn
-  // history in `turns[]`; the progressLog is for the current
-  // invocation only.
+  // Pull the branding answer out before sending to the LLM — we apply
+  // it deterministically rather than asking the model to.
+  let updatedBranding = { ...priorBranding } as Record<string, unknown>;
+  const brandingAnswer = answers.find((a) => a.id === 'branding-choice');
+  if (brandingAnswer) {
+    const choice = typeof brandingAnswer.answer === 'string' ? brandingAnswer.answer : '';
+    if (choice && choice !== 'describe-my-own' && choice !== 'reference-a-website') {
+      updatedBranding = { ...updatedBranding, selectedPaletteId: choice };
+    }
+  }
+  const customDescAnswer = answers.find((a) => a.id === 'branding-custom-description');
+  if (customDescAnswer && typeof customDescAnswer.answer === 'string') {
+    updatedBranding = { ...updatedBranding, customDescription: customDescAnswer.answer };
+  }
+  const referenceUrlAnswer = answers.find((a) => a.id === 'branding-reference-url');
+  if (referenceUrlAnswer && typeof referenceUrlAnswer.answer === 'string') {
+    updatedBranding = { ...updatedBranding, referenceUrl: referenceUrlAnswer.answer };
+  }
+
+  // Fresh progressLog for THIS refine turn.
   const sessionStartedAt = new Date().toISOString();
   interface ProgressEntry {
     phase: string;
@@ -2942,12 +3056,13 @@ async function databaseAppRefine(
     progressLog.push({ phase, narration, startedAt: now });
     await session.save({
       state: {
-        version: 1,
+        version: 2,
         patronSentence: priorSentence,
         sessionStartedAt,
         progressLog,
         domain: priorDomain,
-        schemaDraft: priorSchemaDraft,
+        screensDraft: priorScreensDraft,
+        branding: updatedBranding,
         sources: priorSources,
         turns: priorTurns,
         ...extra,
@@ -2958,32 +3073,38 @@ async function databaseAppRefine(
 
   await advance(
     'reviewing-answers',
-    `Reading what you told me — ${answers.length} ${answers.length === 1 ? 'answer' : 'answers'} to apply to the schema.`,
+    `Reading what you told me — ${answers.length} ${answers.length === 1 ? 'answer' : 'answers'} to apply to the screens.`,
   );
 
-  // Render the answers + prior schema into a compact prompt for the
-  // Quiet Loom. The model has the patron's full conversation context
-  // in priorState; we re-summarise here so the prompt stays small.
-  const answersBlock = answers
-    .map((a) => {
-      const id = JSON.stringify(a.id);
-      const v = a.answer;
-      const formatted = Array.isArray(v)
-        ? JSON.stringify(v)
-        : typeof v === 'boolean'
-          ? v
-            ? 'true'
-            : 'false'
-          : JSON.stringify(String(v ?? ''));
-      return `  - ${id}: ${formatted}`;
-    })
-    .join('\n');
+  // Build the screen-level prompt. Filter out the branding-* answers
+  // since we applied those deterministically above.
+  const screenAnswers = answers.filter(
+    (a) =>
+      a.id !== 'branding-choice' &&
+      a.id !== 'branding-custom-description' &&
+      a.id !== 'branding-reference-url',
+  );
+  const answersBlock =
+    screenAnswers
+      .map((a) => {
+        const id = JSON.stringify(a.id);
+        const v = a.answer;
+        const formatted = Array.isArray(v)
+          ? JSON.stringify(v)
+          : typeof v === 'boolean'
+            ? v
+              ? 'true'
+              : 'false'
+            : JSON.stringify(String(v ?? ''));
+        return `  - ${id}: ${formatted}`;
+      })
+      .join('\n') || '  (none — patron only chose branding this turn)';
 
-  const priorSchemaJson = JSON.stringify(priorSchemaDraft, null, 2);
+  const priorScreensJson = JSON.stringify(priorScreensDraft, null, 2);
 
   await advance(
-    'refining-schema',
-    'Refining the schema to match what you said. Usually faster than the first turn — under thirty seconds.',
+    'refining-screens',
+    'Refining the screens to match what you said. Usually faster than the first turn — under thirty seconds.',
   );
 
   const refineResult = await quietLoomChat({
@@ -2991,26 +3112,27 @@ async function databaseAppRefine(
     userMessage:
       `Original sentence: ${JSON.stringify(priorSentence)}.\n` +
       `Domain: ${JSON.stringify(priorDomain)}.\n\n` +
-      `Prior schema draft you proposed:\n\`\`\`json\n${priorSchemaJson}\n\`\`\`\n\n` +
-      `The Webspinner has answered some clarifying questions:\n${answersBlock}\n\n` +
-      `Per your Mission Lock, refine the schema to match what they said. ` +
-      `If the answers fully resolve the structure, set readyToBuild=true and clarifications=[]. ` +
-      `If more clarification is still needed, set readyToBuild=false and include up to four more focused questions about what's still ambiguous about THEIR situation.\n\n` +
+      `Prior screens draft you proposed:\n\`\`\`json\n${priorScreensJson}\n\`\`\`\n\n` +
+      `The Webspinner has answered:\n${answersBlock}\n\n` +
+      `Per your Mission Lock, refine the SCREENS to match what they said. Apply concrete deltas — add or remove screens, sections, fields. Narrate the deltas in patron terms (e.g. "You said cash-only, so I removed the Card-Details section from the Record-a-Transaction form").\n\n` +
+      `If the screens are settled (no material ambiguity remains), set readyToBuild=true and clarifications=[]. ` +
+      `If more clarification is still needed, set readyToBuild=false and include up to four more screen-level questions, each naming the screen or field its answer modifies.\n\n` +
       `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
       `{\n` +
-      `  "narration": "Markdown string the Loom renders. Patron-readable. Tell them what changed.",\n` +
-      `  "schemaDraft": {\n` +
-      `    "entities": [\n` +
-      `      {"name": "string", "describes": "one sentence", "fields": [{"name": "string", "kind": "text|number|date|yes-no|money", "describes": "one sentence"}], "links": [{"to": "string", "describes": "one sentence"}]}\n` +
-      `    ]\n` +
+      `  "narration": "Markdown — tell them WHAT CHANGED in screen-level patron words.",\n` +
+      `  "screensDraft": {\n` +
+      `    "appName": "string",\n` +
+      `    "domain": ${JSON.stringify(priorDomain)},\n` +
+      `    "screens": [/* full updated screens array, same shape as before */],\n` +
+      `    "navigation": [/* full updated navigation */]\n` +
       `  },\n` +
       `  "clarifications": [\n` +
-      `    {"id": "kebab-case", "question": "string in domain words", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["string"]}\n` +
+      `    {"id": "kebab-case", "question": "screen-level question", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]}\n` +
       `  ],\n` +
       `  "readyToBuild": true|false\n` +
       `}\n\nOpen with "{".`,
     model: keplerModel,
-    maxTokens: 2_048,
+    maxTokens: 4_096,
   });
 
   const parsed = parseStrictJson(refineResult.text) ?? {};
@@ -3018,10 +3140,10 @@ async function databaseAppRefine(
     typeof parsed['narration'] === 'string'
       ? (parsed['narration'] as string)
       : '(no narration returned — early-iteration signal)';
-  const schemaDraft =
-    parsed['schemaDraft'] && typeof parsed['schemaDraft'] === 'object'
-      ? (parsed['schemaDraft'] as Record<string, unknown>)
-      : priorSchemaDraft;
+  const screensDraft =
+    parsed['screensDraft'] && typeof parsed['screensDraft'] === 'object'
+      ? (parsed['screensDraft'] as Record<string, unknown>)
+      : priorScreensDraft;
   const clarifications = Array.isArray(parsed['clarifications'])
     ? (parsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
@@ -3036,22 +3158,21 @@ async function databaseAppRefine(
   progressLog.push({
     phase: finalPhase,
     narration: readyToBuild
-      ? 'Done — schema settled, ready to build.'
-      : 'Done — schema updated, a few more questions to refine.',
+      ? 'Done — screens settled, ready to build.'
+      : 'Done — screens updated, a few more questions to refine.',
     startedAt: nowIso,
     endedAt: nowIso,
   });
 
-  // Persist: full turn history grows by one entry; phase column =
-  // 'refining' or 'ready' so the Loom UI / Observatory can tell.
   await session.save({
     state: {
-      version: 1,
+      version: 2,
       patronSentence: priorSentence,
       sessionStartedAt,
       progressLog,
       domain: priorDomain,
-      schemaDraft,
+      screensDraft,
+      branding: updatedBranding,
       sources: priorSources,
       narration,
       clarifications,
@@ -3073,7 +3194,8 @@ async function databaseAppRefine(
     output: {
       narration,
       domain: priorDomain,
-      schemaDraft,
+      screensDraft,
+      branding: updatedBranding,
       clarifications,
       readyToBuild,
       phase: finalPhase,
@@ -3118,10 +3240,14 @@ async function databaseAppBuild(
       : '';
   const priorDomain =
     typeof priorState['domain'] === 'string' ? (priorState['domain'] as string) : 'unknown';
-  const priorSchemaDraft =
-    priorState['schemaDraft'] && typeof priorState['schemaDraft'] === 'object'
-      ? (priorState['schemaDraft'] as DbAppSchemaDraft)
+  const priorScreensDraft =
+    priorState['screensDraft'] && typeof priorState['screensDraft'] === 'object'
+      ? (priorState['screensDraft'] as Record<string, unknown>)
       : null;
+  const priorBranding =
+    priorState['branding'] && typeof priorState['branding'] === 'object'
+      ? (priorState['branding'] as Record<string, unknown>)
+      : { options: FOUNDATION_DEFAULT_PALETTES, selectedPaletteId: null };
   const priorTurns = Array.isArray(priorState['turns'])
     ? (priorState['turns'] as readonly Record<string, unknown>[])
     : [];
@@ -3129,12 +3255,13 @@ async function databaseAppBuild(
   if (priorSentence.length === 0) {
     throw new Error('build called on a session with no prior propose state.');
   }
+  const screensDraftForBuild = priorScreensDraft as unknown as DbAppScreensDraft | null;
   if (
-    priorSchemaDraft === null ||
-    !Array.isArray(priorSchemaDraft.entities) ||
-    priorSchemaDraft.entities.length === 0
+    screensDraftForBuild === null ||
+    !Array.isArray(screensDraftForBuild.screens) ||
+    screensDraftForBuild.screens.length === 0
   ) {
-    throw new Error('build requires a non-empty schemaDraft in session state.');
+    throw new Error('build requires a non-empty screensDraft in session state.');
   }
 
   // Single progress phase — building is a few PB API calls, fast.
@@ -3159,12 +3286,13 @@ async function databaseAppBuild(
     progressLog.push({ phase, narration, startedAt: now });
     await session.save({
       state: {
-        version: 1,
+        version: 2,
         patronSentence: priorSentence,
         sessionStartedAt,
         progressLog,
         domain: priorDomain,
-        schemaDraft: priorSchemaDraft,
+        screensDraft: priorScreensDraft,
+        branding: priorBranding,
         turns: priorTurns,
         ...extra,
       },
@@ -3173,8 +3301,12 @@ async function databaseAppBuild(
   }
 
   await advance(
+    'deriving-schema',
+    `Working out the data shape behind the screens — engineering the ${priorDomain} application is the part you don't see.`,
+  );
+  await advance(
     'building-collections',
-    `Creating the records areas for your ${priorDomain} — one per kind of thing we listed.`,
+    `Creating the records areas in your Cell — one per kind of thing we drafted.`,
   );
 
   const result = await createDatabaseApp({
@@ -3184,14 +3316,16 @@ async function databaseAppBuild(
     spinnerId: ctx.manifest.name,
     patronSentence: priorSentence,
     domain: priorDomain,
-    schemaDraft: priorSchemaDraft,
+    design: {
+      screensDraft: screensDraftForBuild,
+      branding: priorBranding as unknown as DbAppBrandingState,
+    },
   });
 
   if (!result.ok && result.kind === 'backend') {
     throw new Error(`build failed: ${result.detail}`);
   }
 
-  // Resolve to an existing app (idempotent re-call) or a freshly-created one.
   let appRow: DbAppRowSubset;
   let alreadyBuilt = false;
   if (!result.ok && result.kind === 'already-built') {
@@ -3212,29 +3346,37 @@ async function databaseAppBuild(
     phase: 'built',
     narration: alreadyBuilt
       ? 'Already built — your application is ready to use.'
-      : `Done — ${appRow.entities.length} records area${appRow.entities.length === 1 ? '' : 's'} created in your Cell.`,
+      : `Done — ${appRow.entities.length} records area${appRow.entities.length === 1 ? '' : 's'} created and bound to your screens.`,
     startedAt: nowIso,
     endedAt: nowIso,
   });
 
-  // Build narration the Spinner writes back to the patron — a short
-  // patron-readable summary. Deterministic; no Quiet Loom call needed
-  // for build's narration (the schema is already settled; the patron
-  // doesn't need new analysis — just the news).
+  // Build narration — deterministic, no Quiet Loom call. Speaks in
+  // screens (per the mission-lock); names what the patron has.
+  const screensCount = Array.isArray(screensDraftForBuild.screens)
+    ? screensDraftForBuild.screens.length
+    : 0;
+  const navigation = Array.isArray(screensDraftForBuild.navigation)
+    ? screensDraftForBuild.navigation
+    : [];
+  const primaryGroups = navigation
+    .filter((n) => n && (n as { primary?: boolean }).primary)
+    .map((n) => (n as { label?: string }).label || '');
   const narration = alreadyBuilt
-    ? `Your ${priorDomain} application is already built and waiting. The Observatory shows the entities you can work with; click into any of them to start adding records.`
-    : `Your ${priorDomain} application is ready. I created ${appRow.entities.length} record area${appRow.entities.length === 1 ? '' : 's'} in your Cell: ${appRow.entities.map((e) => e.name).join(', ')}. The Observatory now shows your application — click any of the tabs to start adding records.`;
+    ? `Your ${priorDomain} application is already built and waiting. Open the screens above to start working.`
+    : `Your ${priorDomain} application is live — ${screensCount} screens across ${primaryGroups.length} sections${primaryGroups.length > 0 ? ` (${primaryGroups.join(' / ')})` : ''}. Open any screen above to start.`;
 
   const deployedSurfaceUrl = `/db-app/${appRow.appId}`;
 
   await session.save({
     state: {
-      version: 1,
+      version: 2,
       patronSentence: priorSentence,
       sessionStartedAt,
       progressLog,
       domain: priorDomain,
-      schemaDraft: priorSchemaDraft,
+      screensDraft: priorScreensDraft,
+      branding: priorBranding,
       narration,
       builtApp: {
         appId: appRow.appId,
@@ -3263,6 +3405,8 @@ async function databaseAppBuild(
       appId: appRow.appId,
       deployedSurfaceUrl,
       entities: appRow.entities,
+      screensDraft: priorScreensDraft,
+      branding: priorBranding,
       artifacts: appRow.entities.map((e) => ({
         kind: 'collection',
         name: e.name,
