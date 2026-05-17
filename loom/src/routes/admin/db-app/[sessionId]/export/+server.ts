@@ -78,6 +78,7 @@ export const GET: RequestHandler = async ({ params, cookies, fetch: f, request }
     createdBy: {
       cellName: env['WARP_CELL_NAME'] ?? 'Webspinner Cell',
       cellKeyFingerprint: ensure.value.identity.fingerprint,
+      cellPublicKeyHex: keypair.publicKeyHex,
     },
     createdFrom: {
       patronSentence: row.patronSentence,

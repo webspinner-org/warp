@@ -32,6 +32,10 @@ export type WsapBundleKind = 'database-application';
 export interface WsapCreatedBy {
   readonly cellName: string;
   readonly cellKeyFingerprint: string;
+  /** Hex-encoded ed25519 public key. Self-attesting: the bundle
+   * carries its own verification key. Receiving Cells decide trust
+   * out-of-band (the patron recognising the fingerprint, etc.). */
+  readonly cellPublicKeyHex: string;
   readonly displayName?: string;
 }
 
@@ -149,10 +153,17 @@ export type WsapVerifyError =
 
 export interface VerifyWsapInput {
   readonly bundle: unknown;
-  /** Public key (hex) the verifier expects the bundle to be signed by. */
-  readonly publicKeyHex: string;
 }
 
+/**
+ * Verify a `.wsap` bundle. Self-attesting: reads the public key
+ * out of `bundle.createdBy.cellPublicKeyHex` and confirms (a) the
+ * fingerprint in the signature matches the public key, and (b) the
+ * signature is valid over the canonicalised JSON of the bundle
+ * (excluding the signature field). Trust in the public key itself
+ * is out-of-band (the patron recognising the fingerprint they
+ * expected from a known sender).
+ */
 export function verifyWsapBundle(input: VerifyWsapInput): WsapVerifyResult {
   if (typeof input.bundle !== 'object' || input.bundle === null) {
     return { ok: false, reason: 'format-unsupported' };
@@ -167,7 +178,12 @@ export function verifyWsapBundle(input: VerifyWsapInput): WsapVerifyResult {
   if (sig['alg'] !== 'ed25519' || typeof sig['value'] !== 'string') {
     return { ok: false, reason: 'signature-malformed' };
   }
-  const expectedFp = fingerprintOf(input.publicKeyHex);
+  const createdBy = b['createdBy'] as Record<string, unknown> | undefined;
+  if (!createdBy || typeof createdBy['cellPublicKeyHex'] !== 'string') {
+    return { ok: false, reason: 'signature-malformed' };
+  }
+  const publicKeyHex = createdBy['cellPublicKeyHex'] as string;
+  const expectedFp = fingerprintOf(publicKeyHex);
   if (sig['keyFingerprint'] !== expectedFp) {
     return { ok: false, reason: 'fingerprint-mismatch' };
   }
@@ -176,6 +192,6 @@ export function verifyWsapBundle(input: VerifyWsapInput): WsapVerifyResult {
   delete unsigned['signature'];
   const canonical = canonicalizeJSON(unsigned);
   const message = new TextEncoder().encode(canonical);
-  const ok = verifyBytes(message, sig['value'] as string, input.publicKeyHex);
+  const ok = verifyBytes(message, sig['value'] as string, publicKeyHex);
   return ok ? { ok: true } : { ok: false, reason: 'signature-invalid' };
 }
