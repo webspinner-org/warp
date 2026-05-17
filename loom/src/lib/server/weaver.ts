@@ -2714,10 +2714,13 @@ async function databaseAppPropose(
     }
   }
 
-  // ── Step 3: draft screens + branding + clarifications ───────────
+  // ── Step 3a: draft screens + navigation ─────────────────────────
+  // Split from the old single mega-call so the patron sees two
+  // smaller phases instead of one ~2-minute black box, and so each
+  // call has a tighter output schema that parses reliably.
   await advance(
     'drafting-screens',
-    `Sketching the forms, lists, and reports a competent professional would build for your ${domain}. This is the slowest step — usually around a minute.`,
+    `Sketching the screens a competent professional would build for your ${domain} — forms, lists, detail views, the reports the practice expects.`,
     {
       domain,
       wikipediaSlug: wikiSlug,
@@ -2726,72 +2729,270 @@ async function databaseAppPropose(
     },
   );
 
-  const draftResult = await quietLoomChat({
-    system: ctx.missionLock,
-    userMessage:
-      `The Webspinner just said: ${JSON.stringify(sentence)}.\n` +
-      `Domain you identified: ${JSON.stringify(domain)}.\n` +
-      (referenceUrl
-        ? `Reference consulted (cite this URL in your narration): ${referenceUrl}\n\n` +
-          `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
-        : `No reference was reachable for this domain — note the gap honestly in your narration.\n\n`) +
-      `Per your Mission Lock, propose:\n` +
-      `1. The full set of SCREENS a competent professional would build for this domain — entry forms (one per kind-of-thing they record), browse lists, detail screens, and the canonical reports the practice expects. Be GENEROUS; the patron prunes.\n` +
-      `2. A NAVIGATION structure grouping the screens into primary tabs.\n` +
-      `3. Three BRANDING PALETTES to choose from — one warm, one cool, one neutral/Foundation. Each is a colour palette with concrete hex values.\n` +
-      `4. Three or four CLARIFYING QUESTIONS, each naming the screen or field its answer modifies. ALWAYS include one clarification with id "branding-choice", kind "single-choice", whose options are the three palette ids plus "describe-my-own" plus "reference-a-website".\n\n` +
-      `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
-      `{\n` +
-      `  "narration": "Markdown. Cite the reference URL. Speak about screens (forms / lists / reports), not about schemas. Be warm, confident.",\n` +
-      `  "appName": "Patron-facing name for the application",\n` +
-      `  "domain": ${JSON.stringify(domain)},\n` +
-      `  "screens": [\n` +
-      `    {"id": "kebab-case", "kind": "form", "name": "Record a ...", "describes": "one sentence", "parentEntity": "kebab-case-entity-name", "layout": {"sections": [{"title": "string", "fields": [{"id": "kebab-case", "label": "Patron-facing", "kind": "text|long-text|number|date|money|yes-no|choice|multi-choice|link-to", "describes": "one sentence", "required": true|false, "options": ["..."], "linkTo": "entity-name (only for link-to)"}]}]}},\n` +
-      `    {"id": "kebab-case", "kind": "list", "name": "All ...", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"columns": [{"fieldId": "kebab-case"}], "defaultSort": {"field": "kebab-case", "direction": "desc"}}},\n` +
-      `    {"id": "kebab-case", "kind": "detail", "name": "... Detail", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"showFields": ["..."]}},\n` +
-      `    {"id": "kebab-case", "kind": "report", "name": "...", "describes": "one sentence", "parentEntity": "primary-entity", "layout": {"describes": "what this report shows", "sourceEntities": ["..."], "groupBy": "field", "aggregations": ["sum:amount", "count:transactions"]}}\n` +
-      `  ],\n` +
-      `  "navigation": [\n` +
-      `    {"label": "Group label", "primary": true, "screens": ["screen-id"]}\n` +
-      `  ],\n` +
-      `  "branding": {\n` +
-      `    "options": [\n` +
-      `      {"id": "warm-amber", "name": "Warm Amber", "mood": "warm and inviting", "palette": {"bg": "#1a1410", "surface": "#241b15", "surfaceAlt": "#2f231a", "text": "#f0e6d4", "textMuted": "#bba990", "accent": "#d4a85a", "accentSoft": "#e6c486", "gold": "#d4a85a", "border": "#3d2f24"}},\n` +
-      `      {"id": "cool-slate", "name": "Cool Slate", "mood": "steady and professional", "palette": {"bg": "#171c22", "surface": "#1f2832", "surfaceAlt": "#2a3540", "text": "#dae3ec", "textMuted": "#94a3b1", "accent": "#5fcfe0", "accentSoft": "#7fdfee", "gold": "#c9a96a", "border": "#2e3a47"}},\n` +
-      `      {"id": "foundation-dark", "name": "Foundation Dark", "mood": "manuscript-disciplined Webspinner default", "palette": {"bg": "#1a262e", "surface": "#233440", "surfaceAlt": "#2c3f4c", "text": "#ece4d4", "textMuted": "#a4b4c0", "accent": "#5fd2ed", "accentSoft": "#88dff0", "gold": "#d4a85a", "border": "#34465290"}}\n` +
-      `    ],\n` +
-      `    "selectedPaletteId": null\n` +
-      `  },\n` +
-      `  "clarifications": [\n` +
-      `    {"id": "kebab-case", "question": "patron-facing question naming the screen or field it modifies", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]},\n` +
-      `    {"id": "branding-choice", "question": "Which look fits the way you want this app to feel?", "kind": "single-choice", "options": ["warm-amber", "cool-slate", "foundation-dark", "describe-my-own", "reference-a-website"]}\n` +
-      `  ]\n` +
-      `}\n\nOpen with "{". Be GENEROUS with screens (at least 4-6 for a working application) and fields (at least 6-10 per form). The patron prunes.`,
-    model: keplerModel,
-    maxTokens: 4_096,
-  });
-  const draftParsed = parseStrictJson(draftResult.text) ?? {};
+  // Mid-flight narration: while the LLM is busy, rotate patron-facing
+  // status text every ~10s by updating the *current* progress entry's
+  // narration in place. The patron's heartbeat poll picks it up; the
+  // single phase pill stays "active" but the line below it ticks.
+  async function tickNarration(
+    text: string,
+    extraState: Record<string, unknown> = {},
+  ): Promise<void> {
+    const last = progressLog[progressLog.length - 1];
+    if (!last) return;
+    last.narration = text;
+    try {
+      await session.save({
+        state: {
+          version: 2,
+          patronSentence: sentence,
+          sessionStartedAt,
+          progressLog,
+          domain,
+          ...extraState,
+        },
+        phase: last.phase,
+      });
+    } catch {
+      // mid-flight saves are best-effort; never let a tick failure
+      // kill the actual work.
+    }
+  }
+  async function withChatter<T>(
+    chatter: readonly string[],
+    intervalMs: number,
+    doWork: () => Promise<T>,
+  ): Promise<T> {
+    let i = 0;
+    let stopped = false;
+    const schedule = (): void => {
+      if (stopped) return;
+      setTimeout(() => {
+        if (stopped || i >= chatter.length) return;
+        const text = chatter[i]!;
+        i += 1;
+        void tickNarration(text).then(() => {
+          if (!stopped) schedule();
+        });
+      }, intervalMs);
+    };
+    schedule();
+    try {
+      return await doWork();
+    } finally {
+      stopped = true;
+    }
+  }
 
+  // Retry-on-unparseable helper. The Quiet Loom is non-deterministic;
+  // about one run in ten produces malformed JSON (truncation, stray
+  // prose, escaped-quote glitches). Detect the parse failure and try
+  // once more with a stricter "JSON only" framing before degrading.
+  async function chatAndParse(args: { userMessage: string; maxTokens: number }): Promise<{
+    parsed: Record<string, unknown> | null;
+    rawFirst: string;
+    rawSecond?: string;
+    retried: boolean;
+    inputTokens: number;
+    outputTokens: number;
+  }> {
+    const first = await quietLoomChat({
+      system: ctx.missionLock,
+      userMessage: args.userMessage,
+      model: keplerModel,
+      maxTokens: args.maxTokens,
+    });
+    const parsed1 = parseStrictJson(first.text);
+    if (parsed1) {
+      return {
+        parsed: parsed1,
+        rawFirst: first.text,
+        retried: false,
+        inputTokens: first.inputTokens,
+        outputTokens: first.outputTokens,
+      };
+    }
+    const second = await quietLoomChat({
+      system: ctx.missionLock,
+      userMessage:
+        args.userMessage +
+        `\n\nYour previous response was not valid JSON. Respond with ONLY the JSON object — start with "{" and end with "}", no markdown fences, no preamble, no commentary, no trailing prose. Same task, same schema.`,
+      model: keplerModel,
+      maxTokens: args.maxTokens,
+    });
+    const parsed2 = parseStrictJson(second.text);
+    return {
+      parsed: parsed2,
+      rawFirst: first.text,
+      rawSecond: second.text,
+      retried: true,
+      inputTokens: first.inputTokens + second.inputTokens,
+      outputTokens: first.outputTokens + second.outputTokens,
+    };
+  }
+
+  const screensCall = await withChatter(
+    [
+      `Mapping out the kinds of things you'll track.`,
+      `Designing each entry form's fields and sections.`,
+      `Drafting the list views and detail screens.`,
+      `Defining the reports that pull it all together.`,
+      `Laying out the navigation that ties the screens into a working app.`,
+      `Almost there — finalising the screen layouts.`,
+    ],
+    10_000,
+    () =>
+      chatAndParse({
+        userMessage:
+          `The Webspinner just said: ${JSON.stringify(sentence)}.\n` +
+          `Domain you identified: ${JSON.stringify(domain)}.\n` +
+          (referenceUrl
+            ? `Reference consulted (cite this URL in your narration): ${referenceUrl}\n\n` +
+              `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
+            : `No reference was reachable for this domain — note the gap honestly in your narration.\n\n`) +
+          `Per your Mission Lock, propose ONLY the screens and navigation (branding + clarifications come next):\n` +
+          `1. The full set of SCREENS a competent professional would build for this domain — entry forms (one per kind-of-thing they record), browse lists, detail screens, and the canonical reports the practice expects. Be GENEROUS; the patron prunes.\n` +
+          `2. A NAVIGATION structure grouping the screens into primary tabs.\n\n` +
+          `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+          `{\n` +
+          `  "narration": "Markdown. Cite the reference URL. Speak about screens (forms / lists / reports), not about schemas. Be warm, confident.",\n` +
+          `  "appName": "Patron-facing name for the application",\n` +
+          `  "domain": ${JSON.stringify(domain)},\n` +
+          `  "screens": [\n` +
+          `    {"id": "kebab-case", "kind": "form", "name": "Record a ...", "describes": "one sentence", "parentEntity": "kebab-case-entity-name", "layout": {"sections": [{"title": "string", "fields": [{"id": "kebab-case", "label": "Patron-facing", "kind": "text|long-text|number|date|money|yes-no|choice|multi-choice|link-to", "describes": "one sentence", "required": true|false, "options": ["..."], "linkTo": "entity-name (only for link-to)"}]}]}},\n` +
+          `    {"id": "kebab-case", "kind": "list", "name": "All ...", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"columns": [{"fieldId": "kebab-case"}], "defaultSort": {"field": "kebab-case", "direction": "desc"}}},\n` +
+          `    {"id": "kebab-case", "kind": "detail", "name": "... Detail", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"showFields": ["..."]}},\n` +
+          `    {"id": "kebab-case", "kind": "report", "name": "...", "describes": "one sentence", "parentEntity": "primary-entity", "layout": {"describes": "what this report shows", "sourceEntities": ["..."], "groupBy": "field", "aggregations": ["sum:amount", "count:transactions"]}}\n` +
+          `  ],\n` +
+          `  "navigation": [\n` +
+          `    {"label": "Group label", "primary": true, "screens": ["screen-id"]}\n` +
+          `  ]\n` +
+          `}\n\nOpen with "{". Be GENEROUS with screens (at least 4-6 for a working application) and fields (at least 6-10 per form). The patron prunes.`,
+        maxTokens: 4_096,
+      }),
+  );
+
+  const screensParsed = screensCall.parsed ?? {};
   const narration =
-    typeof draftParsed['narration'] === 'string'
-      ? (draftParsed['narration'] as string)
-      : '(no narration returned — the model produced unparseable output; treat this as an early-iteration signal)';
+    typeof screensParsed['narration'] === 'string' ? (screensParsed['narration'] as string) : '';
   const appName =
-    typeof draftParsed['appName'] === 'string'
-      ? (draftParsed['appName'] as string)
+    typeof screensParsed['appName'] === 'string'
+      ? (screensParsed['appName'] as string)
       : `${domain} application`;
-  const screens = Array.isArray(draftParsed['screens'])
-    ? (draftParsed['screens'] as readonly unknown[]).filter((s) => s && typeof s === 'object')
+  const screens = Array.isArray(screensParsed['screens'])
+    ? (screensParsed['screens'] as readonly unknown[]).filter((s) => s && typeof s === 'object')
     : [];
-  const navigation = Array.isArray(draftParsed['navigation'])
-    ? (draftParsed['navigation'] as readonly unknown[]).filter((n) => n && typeof n === 'object')
+  const navigation = Array.isArray(screensParsed['navigation'])
+    ? (screensParsed['navigation'] as readonly unknown[]).filter((n) => n && typeof n === 'object')
     : [];
+
+  // If both attempts produced unparseable output AND we have no
+  // screens, surface a graceful retryable failure rather than a blank
+  // result that blames the patron.
+  if (!screensCall.parsed || screens.length === 0) {
+    const nowIso = new Date().toISOString();
+    if (progressLog.length > 0) {
+      const prev = progressLog[progressLog.length - 1]!;
+      if (!prev.endedAt) prev.endedAt = nowIso;
+    }
+    const friendly = `I tripped over my own work drafting your screens — the Synthetic Intelligence sometimes tangles its sentences on the first try. Click **Try again** below and I'll start fresh; this usually clears on the next run.`;
+    progressLog.push({
+      phase: 'propose-failed',
+      narration: friendly,
+      startedAt: nowIso,
+      endedAt: nowIso,
+    });
+    await session.save({
+      state: {
+        version: 2,
+        patronSentence: sentence,
+        sessionStartedAt,
+        progressLog,
+        domain,
+        narration: friendly,
+        sources: referenceUrl ? [referenceUrl] : [],
+        failure: { kind: 'unparseable-output', retried: screensCall.retried },
+      },
+      phase: 'proposed',
+      status: 'aborted',
+    });
+    return {
+      output: {
+        narration: friendly,
+        domain,
+        screensDraft: null,
+        branding: null,
+        clarifications: [],
+        phase: 'proposed',
+        failure: { kind: 'unparseable-output', retryable: true, retried: screensCall.retried },
+        provenance: {
+          provider: 'kepler.quiet-loom',
+          model: identifyResult.model,
+          sessionId: session.id,
+          referenceUrl: referenceUrl || null,
+          modelCalls: screensCall.retried ? 3 : 2,
+        },
+      },
+      modelTokens: {
+        input: identifyResult.inputTokens + screensCall.inputTokens,
+        output: identifyResult.outputTokens + screensCall.outputTokens,
+      },
+    };
+  }
+
+  // ── Step 3b: branding palettes + clarifications ─────────────────
+  await advance(
+    'drafting-branding',
+    `Pulling together the branding choices and the clarifying questions for you — three palettes (warm, cool, Foundation default) and the screen-level questions worth your attention.`,
+    {
+      domain,
+      wikipediaSlug: wikiSlug,
+      referenceUrl: referenceUrl || null,
+      referenceBytesRead: referenceText.length,
+    },
+  );
+
+  const brandingCall = await withChatter(
+    [
+      `Considering the mood that fits this kind of work.`,
+      `Tuning the warm, cool, and Foundation palettes.`,
+      `Picking the questions worth your attention.`,
+    ],
+    8_000,
+    () =>
+      chatAndParse({
+        userMessage:
+          `The patron's sentence: ${JSON.stringify(sentence)}.\n` +
+          `Domain: ${JSON.stringify(domain)}.\n` +
+          `Screens already drafted: ${screens.length} (forms, lists, details, reports).\n\n` +
+          `Now propose the BRANDING choices and the CLARIFYING QUESTIONS. Per your Mission Lock:\n` +
+          `1. Three BRANDING PALETTES — warm, cool, neutral/Foundation. Concrete hex values per role.\n` +
+          `2. Three or four CLARIFYING QUESTIONS naming the screen or field each modifies. ALWAYS include one with id "branding-choice", kind "single-choice", options the three palette ids plus "describe-my-own" plus "reference-a-website".\n\n` +
+          `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+          `{\n` +
+          `  "branding": {\n` +
+          `    "options": [\n` +
+          `      {"id": "warm-amber", "name": "Warm Amber", "mood": "warm and inviting", "palette": {"bg": "#1a1410", "surface": "#241b15", "surfaceAlt": "#2f231a", "text": "#f0e6d4", "textMuted": "#bba990", "accent": "#d4a85a", "accentSoft": "#e6c486", "gold": "#d4a85a", "border": "#3d2f24"}},\n` +
+          `      {"id": "cool-slate", "name": "Cool Slate", "mood": "steady and professional", "palette": {"bg": "#171c22", "surface": "#1f2832", "surfaceAlt": "#2a3540", "text": "#dae3ec", "textMuted": "#94a3b1", "accent": "#5fcfe0", "accentSoft": "#7fdfee", "gold": "#c9a96a", "border": "#2e3a47"}},\n` +
+          `      {"id": "foundation-dark", "name": "Foundation Dark", "mood": "manuscript-disciplined Webspinner default", "palette": {"bg": "#1a262e", "surface": "#233440", "surfaceAlt": "#2c3f4c", "text": "#ece4d4", "textMuted": "#a4b4c0", "accent": "#5fd2ed", "accentSoft": "#88dff0", "gold": "#d4a85a", "border": "#34465290"}}\n` +
+          `    ],\n` +
+          `    "selectedPaletteId": null\n` +
+          `  },\n` +
+          `  "clarifications": [\n` +
+          `    {"id": "kebab-case", "question": "patron-facing question naming the screen or field it modifies", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]},\n` +
+          `    {"id": "branding-choice", "question": "Which look fits the way you want this app to feel?", "kind": "single-choice", "options": ["warm-amber", "cool-slate", "foundation-dark", "describe-my-own", "reference-a-website"]}\n` +
+          `  ]\n` +
+          `}\n\nOpen with "{".`,
+        maxTokens: 1_536,
+      }),
+  );
+
+  const brandingParsed = brandingCall.parsed ?? {};
   const branding =
-    typeof draftParsed['branding'] === 'object' && draftParsed['branding'] !== null
-      ? (draftParsed['branding'] as Record<string, unknown>)
+    typeof brandingParsed['branding'] === 'object' && brandingParsed['branding'] !== null
+      ? (brandingParsed['branding'] as Record<string, unknown>)
       : { options: FOUNDATION_DEFAULT_PALETTES, selectedPaletteId: null };
-  const clarifications = Array.isArray(draftParsed['clarifications'])
-    ? (draftParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
+  const clarifications = Array.isArray(brandingParsed['clarifications'])
+    ? (brandingParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
 
   const screensDraft = {
@@ -2850,12 +3051,12 @@ async function databaseAppPropose(
         model: identifyResult.model,
         sessionId: session.id,
         referenceUrl: referenceUrl || null,
-        modelCalls: 2,
+        modelCalls: 1 + (screensCall.retried ? 2 : 1) + (brandingCall.retried ? 2 : 1),
       },
     },
     modelTokens: {
-      input: identifyResult.inputTokens + draftResult.inputTokens,
-      output: identifyResult.outputTokens + draftResult.outputTokens,
+      input: identifyResult.inputTokens + screensCall.inputTokens + brandingCall.inputTokens,
+      output: identifyResult.outputTokens + screensCall.outputTokens + brandingCall.outputTokens,
     },
   };
 }
@@ -3148,7 +3349,7 @@ async function databaseAppRefine(
   const narration =
     typeof parsed['narration'] === 'string'
       ? (parsed['narration'] as string)
-      : '(no narration returned — early-iteration signal)';
+      : `Your answers are in. I've folded them into the design — the screens on the right reflect what you've decided so far.`;
   const screensDraft =
     parsed['screensDraft'] && typeof parsed['screensDraft'] === 'object'
       ? (parsed['screensDraft'] as Record<string, unknown>)
