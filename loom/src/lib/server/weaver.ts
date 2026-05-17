@@ -2832,10 +2832,10 @@ async function databaseAppPropose(
 
   const screensCall = await withChatter(
     [
-      `Mapping out the kinds of things you'll track.`,
+      `Mapping out the kinds of things you'll track in your ${domain}.`,
       `Designing each entry form's fields and sections.`,
-      `Drafting the list views and detail screens.`,
-      `Defining the reports that pull it all together.`,
+      `Drafting the list views and detail screens for browsing.`,
+      `Defining the reports that pull your ${domain} data together.`,
       `Laying out the navigation that ties the screens into a working app.`,
       `Almost there — finalising the screen layouts.`,
     ],
