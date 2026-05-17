@@ -2714,10 +2714,61 @@ async function databaseAppPropose(
     }
   }
 
-  // ── Step 3a: draft screens + navigation ─────────────────────────
-  // Split from the old single mega-call so the patron sees two
-  // smaller phases instead of one ~2-minute black box, and so each
-  // call has a tighter output schema that parses reliably.
+  // ── Step 2.5: model the domain in prose ─────────────────────────
+  // BEFORE drafting screens, ask the LLM to model the domain — its
+  // entities, the core transactional pattern, the canonical
+  // relationships, the reports a practitioner expects. This grounds
+  // the subsequent screen-drafting in domain reality so the patron
+  // doesn't get a sketch that lacks the relations and structure the
+  // domain actually requires.
+  //
+  // Two-stage prompting (model → translate) gives the LLM space to
+  // think about domain shape before being forced into a JSON output.
+  // Without this, the screens come out shallow — "trial and error
+  // not intelligence," in the Wizard's words. We don't yet have a
+  // proper WRAG retrieval pipeline; this is the cheap version that
+  // uses the LLM's pretraining knowledge more deliberately.
+  await advance(
+    'modeling-domain',
+    `Modelling the canonical shape of your ${domain} — the entities, the core transactional pattern, the key relationships, the reports a practitioner expects. This is where the application takes its real shape.`,
+    {
+      domain,
+      wikipediaSlug: wikiSlug,
+      referenceUrl: referenceUrl || null,
+      referenceBytesRead: referenceText.length,
+    },
+  );
+
+  const domainModelResult = await withChatter(
+    [
+      `Thinking through the entities — what kinds of things are tracked.`,
+      `Mapping the relationships — which things refer to which.`,
+      `Identifying the canonical transactional pattern and the reports that matter.`,
+    ],
+    8_000,
+    () =>
+      quietLoomChat({
+        system: ctx.missionLock,
+        userMessage:
+          `The Webspinner just said: ${JSON.stringify(sentence)}.\n` +
+          `Domain you identified: ${JSON.stringify(domain)}.\n` +
+          (referenceUrl
+            ? `Reference consulted: ${referenceUrl}\n\n` +
+              `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
+            : `No external reference was reachable. Rely on your domain knowledge.\n\n`) +
+          `Model this domain BEFORE drafting any screens. Write a brief working brief — prose, no JSON — covering:\n` +
+          `1. The 4-8 canonical ENTITIES (kinds of things tracked). For each: a one-line description and a hint at the most important fields.\n` +
+          `2. The KEY RELATIONSHIPS between entities (X belongs to Y; X has many Y; X references Y). Be specific. If the domain has a non-trivial transactional pattern (e.g. double-entry bookkeeping where each transaction has paired debit/credit line-items hitting accounts; service tickets with line-items; orders with line-items), CALL IT OUT EXPLICITLY.\n` +
+          `3. The CANONICAL REPORTS or aggregations a practitioner in this domain expects (e.g. P&L, balance sheet, AR aging for bookkeeping; backlog, win-rate, pipeline for sales; growth curve, mortality, harvest yield for plant tracking).\n` +
+          `4. The SUBLEDGERS or per-entity rollups that come standard (e.g. accounts-receivable per customer, accounts-payable per vendor; per-product inventory; per-technician scheduling).\n\n` +
+          `Be specific to ${JSON.stringify(domain)}. Don't generalize. Don't list features the screens won't actually need. ~250-400 words. No headers needed — flowing prose is fine.`,
+        model: keplerModel,
+        maxTokens: 2_048,
+      }),
+  );
+  const domainModel = (domainModelResult.text || '').trim();
+
+  // ── Step 3a: draft screens + navigation, grounded in the model ──
   await advance(
     'drafting-screens',
     `Sketching the screens a competent professional would build for your ${domain} — forms, lists, detail views, the reports the practice expects.`,
@@ -2844,21 +2895,31 @@ async function databaseAppPropose(
       chatAndParse({
         userMessage:
           `The Webspinner just said: ${JSON.stringify(sentence)}.\n` +
-          `Domain you identified: ${JSON.stringify(domain)}.\n` +
-          (referenceUrl
-            ? `Reference consulted (cite this URL in your narration): ${referenceUrl}\n\n` +
-              `Reference text (Wikipedia extract, truncated):\n\`\`\`\n${referenceText || '(empty)'}\n\`\`\`\n\n`
-            : `No reference was reachable for this domain — note the gap honestly in your narration.\n\n`) +
-          `Per your Mission Lock, propose ONLY the screens and navigation (branding + clarifications come next):\n` +
-          `1. The full set of SCREENS a competent professional would build for this domain — entry forms (one per kind-of-thing they record), browse lists, detail screens, and the canonical reports the practice expects. Be GENEROUS; the patron prunes.\n` +
-          `2. A NAVIGATION structure grouping the screens into primary tabs.\n\n` +
-          `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+          `Domain: ${JSON.stringify(domain)}.\n\n` +
+          `### Domain model (your prior step, the canonical shape — TRANSLATE THIS, don't invent new entities)\n` +
+          `\`\`\`\n${domainModel || '(no domain model — fall back to first principles)'}\n\`\`\`\n\n` +
+          (referenceUrl ? `Reference: ${referenceUrl} (cite in narration if used).\n\n` : '') +
+          `Translate the domain model above into SCREENS. Hard requirements:\n` +
+          `- Every entity in the model becomes an entity in the screens. The same entity-kebab-name in every screen's parentEntity.\n` +
+          `- Every key relationship in the model is a link-to field. If A belongs to B, A's form has a link-to field with linkTo="b". If A has many B-line-items (e.g. transactions have line-items, invoices have items, orders have line-items), the line-item entity gets its own form-screen with link-to back to the parent.\n` +
+          `- For domains with paired transactional patterns (double-entry bookkeeping, journal entries with debit/credit lines): the transaction has a parent record AND a line-items collection; line-items have link-to fields for both the account hit AND the parent transaction.\n` +
+          `- Reports the practitioner expects (from the model) become report-kind screens. Be specific in describes.\n\n` +
+          `Screen kinds to emit:\n` +
+          `1. One form-screen per entity (Record a ..., Add a ..., Create ...).\n` +
+          `2. One list-screen per entity (All ..., This Month's ...).\n` +
+          `3. One detail-screen per entity (... Detail) for opening individual records.\n` +
+          `4. One report-screen per canonical report the domain expects.\n\n` +
+          `Field rules:\n` +
+          `- USE link-to liberally. If a field is "Customer" / "Account" / "Vendor" / any entity name, it MUST be kind:"link-to" with linkTo set to the kebab-entity-name. Do NOT use kind:"text" for fields that reference other entities.\n` +
+          `- Forms should have 6-12 fields. Sections group related fields.\n` +
+          `- For money use kind:"money"; for dates kind:"date"; for limited-choice sets kind:"choice" with options; for true/false kind:"yes-no".\n\n` +
+          `Return ONLY strict JSON, no prose, matching this shape EXACTLY:\n` +
           `{\n` +
-          `  "narration": "Markdown. Cite the reference URL. Speak about screens (forms / lists / reports), not about schemas. Be warm, confident.",\n` +
+          `  "narration": "Markdown describing the SPECIFIC screens you produced — name them. Reference the canonical pattern from the model (e.g. \\"I've laid out a double-entry bookkeeping shape: each transaction has line-items hitting your chart of accounts\\"). DO NOT invent features the screens don't include.",\n` +
           `  "appName": "Patron-facing name for the application",\n` +
           `  "domain": ${JSON.stringify(domain)},\n` +
           `  "screens": [\n` +
-          `    {"id": "kebab-case", "kind": "form", "name": "Record a ...", "describes": "one sentence", "parentEntity": "kebab-case-entity-name", "layout": {"sections": [{"title": "string", "fields": [{"id": "kebab-case", "label": "Patron-facing", "kind": "text|long-text|number|date|money|yes-no|choice|multi-choice|link-to", "describes": "one sentence", "required": true|false, "options": ["..."], "linkTo": "entity-name (only for link-to)"}]}]}},\n` +
+          `    {"id": "kebab-case", "kind": "form", "name": "Record a ...", "describes": "one sentence", "parentEntity": "kebab-case-entity-name", "layout": {"sections": [{"title": "string", "fields": [{"id": "kebab-case", "label": "Patron-facing", "kind": "text|long-text|number|date|money|yes-no|choice|multi-choice|link-to", "describes": "one sentence", "required": true|false, "options": ["..."], "linkTo": "entity-kebab-name (REQUIRED when kind=link-to)"}]}]}},\n` +
           `    {"id": "kebab-case", "kind": "list", "name": "All ...", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"columns": [{"fieldId": "kebab-case"}], "defaultSort": {"field": "kebab-case", "direction": "desc"}}},\n` +
           `    {"id": "kebab-case", "kind": "detail", "name": "... Detail", "describes": "one sentence", "parentEntity": "entity-name", "layout": {"showFields": ["..."]}},\n` +
           `    {"id": "kebab-case", "kind": "report", "name": "...", "describes": "one sentence", "parentEntity": "primary-entity", "layout": {"describes": "what this report shows", "sourceEntities": ["..."], "groupBy": "field", "aggregations": ["sum:amount", "count:transactions"]}}\n` +
@@ -2866,7 +2927,7 @@ async function databaseAppPropose(
           `  "navigation": [\n` +
           `    {"label": "Group label", "primary": true, "screens": ["screen-id"]}\n` +
           `  ]\n` +
-          `}\n\nOpen with "{". Be GENEROUS with screens (at least 4-6 for a working application) and fields (at least 6-10 per form). The patron prunes.`,
+          `}\n\nOpen with "{". Be GENEROUS with screens — 4-6 entities × 3 screens each + 2-4 reports = ~16-24 total screens for a complete application. The patron prunes.`,
         maxTokens: 4_096,
       }),
   );
