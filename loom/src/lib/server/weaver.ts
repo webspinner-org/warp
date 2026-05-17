@@ -2927,8 +2927,8 @@ async function databaseAppPropose(
           `  "navigation": [\n` +
           `    {"label": "Group label", "primary": true, "screens": ["screen-id"]}\n` +
           `  ]\n` +
-          `}\n\nOpen with "{". Be GENEROUS with screens — 4-6 entities × 3 screens each + 2-4 reports = ~16-24 total screens for a complete application. The patron prunes.`,
-        maxTokens: 4_096,
+          `}\n\nOpen with "{". Aim for the SMALLEST WORKING SET — 3-4 entities × 3 screens each + 2 reports = ~11-14 total screens. The patron prunes; we'd rather ship a tight first draft than a sprawling one that truncates. Keep field labels SHORT, describes ONE SENTENCE.`,
+        maxTokens: 6_144,
       }),
   );
 
