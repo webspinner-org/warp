@@ -60,6 +60,8 @@ export {
   fingerprintOf,
   signBundleDigest,
   verifyBundleDigest,
+  signBytes,
+  verifyBytes,
 } from './signing.js';
 
 export type {

@@ -113,6 +113,29 @@ function canonicalDigestBytes(record: BundleDigestRecord): Uint8Array {
   return new TextEncoder().encode(canonicalizeJSON(record));
 }
 
+/**
+ * Sign arbitrary bytes with an Ed25519 secret key. Returns the
+ * signature as a hex string. Used for non-Spinner artifacts (e.g.
+ * Webspinner Application Packages — .wsap) that need the same
+ * ceremony but a different envelope.
+ */
+export function signBytes(message: Uint8Array, privateKeyHex: string): string {
+  const secret = hexToBytes(privateKeyHex);
+  const sig = ed25519.sign(message, secret);
+  return bytesToHex(sig);
+}
+
+/**
+ * Verify an Ed25519 hex signature over arbitrary bytes.
+ */
+export function verifyBytes(
+  message: Uint8Array,
+  signatureHex: string,
+  publicKeyHex: string,
+): boolean {
+  return ed25519.verify(hexToBytes(signatureHex), message, hexToBytes(publicKeyHex));
+}
+
 export function signBundleDigest(input: SignBundleDigestInput): SpinnerSignature {
   const message = canonicalDigestBytes(input.digestRecord);
   const secret = hexToBytes(input.privateKeyHex);
