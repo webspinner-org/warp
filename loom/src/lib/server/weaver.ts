@@ -2991,9 +2991,35 @@ async function databaseAppPropose(
     typeof brandingParsed['branding'] === 'object' && brandingParsed['branding'] !== null
       ? (brandingParsed['branding'] as Record<string, unknown>)
       : { options: FOUNDATION_DEFAULT_PALETTES, selectedPaletteId: null };
-  const clarifications = Array.isArray(brandingParsed['clarifications'])
+  const rawClarifications = Array.isArray(brandingParsed['clarifications'])
     ? (brandingParsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
+
+  // Guarantee a branding-choice clarification exists. The propose
+  // prompt mandates it, but the LLM sometimes omits it when domain-
+  // specific questions feel sufficient. Inject the canonical shape
+  // (built from whichever options actually live in `branding.options`)
+  // so the patron is always asked to pick a palette before build.
+  const hasBrandingChoice = rawClarifications.some(
+    (c) => typeof c['id'] === 'string' && c['id'] === 'branding-choice',
+  );
+  const clarifications = hasBrandingChoice
+    ? rawClarifications
+    : (() => {
+        const paletteIds = Array.isArray((branding as { options?: unknown }).options)
+          ? (branding as { options: { id?: string }[] }).options
+              .map((o) => (typeof o?.id === 'string' ? o.id : ''))
+              .filter((s) => s.length > 0)
+          : [];
+        const options = [...paletteIds, 'describe-my-own', 'reference-a-website'];
+        const injected: Record<string, unknown> = {
+          id: 'branding-choice',
+          question: 'Which look fits the way you want this app to feel?',
+          kind: 'single-choice',
+          options,
+        };
+        return [injected, ...rawClarifications].slice(0, 8);
+      })();
 
   const screensDraft = {
     appName,
@@ -3317,33 +3343,95 @@ async function databaseAppRefine(
     'Refining the screens to match what you said. Usually faster than the first turn — under thirty seconds.',
   );
 
-  const refineResult = await quietLoomChat({
-    system: ctx.missionLock,
-    userMessage:
-      `Original sentence: ${JSON.stringify(priorSentence)}.\n` +
-      `Domain: ${JSON.stringify(priorDomain)}.\n\n` +
-      `Prior screens draft you proposed:\n\`\`\`json\n${priorScreensJson}\n\`\`\`\n\n` +
-      `The Webspinner has answered:\n${answersBlock}\n\n` +
-      `Per your Mission Lock, refine the SCREENS to match what they said. Apply concrete deltas — add or remove screens, sections, fields. Narrate the deltas in patron terms (e.g. "You said cash-only, so I removed the Card-Details section from the Record-a-Transaction form").\n\n` +
-      `If the screens are settled (no material ambiguity remains), set readyToBuild=true and clarifications=[]. ` +
-      `If more clarification is still needed, set readyToBuild=false and include up to four more screen-level questions, each naming the screen or field its answer modifies.\n\n` +
-      `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
-      `{\n` +
-      `  "narration": "Markdown — tell them WHAT CHANGED in screen-level patron words.",\n` +
-      `  "screensDraft": {\n` +
-      `    "appName": "string",\n` +
-      `    "domain": ${JSON.stringify(priorDomain)},\n` +
-      `    "screens": [/* full updated screens array, same shape as before */],\n` +
-      `    "navigation": [/* full updated navigation */]\n` +
-      `  },\n` +
-      `  "clarifications": [\n` +
-      `    {"id": "kebab-case", "question": "screen-level question", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]}\n` +
-      `  ],\n` +
-      `  "readyToBuild": true|false\n` +
-      `}\n\nOpen with "{".`,
-    model: keplerModel,
-    maxTokens: 4_096,
-  });
+  // Mid-flight narration during the refine LLM call — same pattern as
+  // propose's withChatter. Rotates patron-facing status text every
+  // ~10s by updating the current progressLog entry in place.
+  async function tickRefineNarration(text: string): Promise<void> {
+    const last = progressLog[progressLog.length - 1];
+    if (!last) return;
+    last.narration = text;
+    try {
+      await session.save({
+        state: {
+          version: 2,
+          patronSentence: priorSentence,
+          sessionStartedAt,
+          progressLog,
+          domain: priorDomain,
+          screensDraft: priorScreensDraft,
+          branding: updatedBranding,
+          sources: priorSources,
+          turns: priorTurns,
+        },
+        phase: last.phase,
+      });
+    } catch {
+      /* mid-flight saves are best-effort */
+    }
+  }
+  async function withRefineChatter<T>(
+    chatter: readonly string[],
+    intervalMs: number,
+    doWork: () => Promise<T>,
+  ): Promise<T> {
+    let i = 0;
+    let stopped = false;
+    const schedule = (): void => {
+      if (stopped) return;
+      setTimeout(() => {
+        if (stopped || i >= chatter.length) return;
+        const text = chatter[i]!;
+        i += 1;
+        void tickRefineNarration(text).then(() => {
+          if (!stopped) schedule();
+        });
+      }, intervalMs);
+    };
+    schedule();
+    try {
+      return await doWork();
+    } finally {
+      stopped = true;
+    }
+  }
+
+  const refineResult = await withRefineChatter(
+    [
+      'Reading the prior screens.',
+      'Folding in your answers — adding sections, fields, sorting.',
+      'Renaming and pruning where you asked.',
+      'Wrapping up and writing the patron-facing summary.',
+    ],
+    10_000,
+    () =>
+      quietLoomChat({
+        system: ctx.missionLock,
+        userMessage:
+          `Original sentence: ${JSON.stringify(priorSentence)}.\n` +
+          `Domain: ${JSON.stringify(priorDomain)}.\n\n` +
+          `Prior screens draft you proposed:\n\`\`\`json\n${priorScreensJson}\n\`\`\`\n\n` +
+          `The Webspinner has answered:\n${answersBlock}\n\n` +
+          `Per your Mission Lock, refine the SCREENS to match what they said. Apply concrete deltas — add or remove screens, sections, fields. Narrate the deltas in patron terms (e.g. "You said cash-only, so I removed the Card-Details section from the Record-a-Transaction form").\n\n` +
+          `If the screens are settled (no material ambiguity remains), set readyToBuild=true and clarifications=[]. ` +
+          `If more clarification is still needed, set readyToBuild=false and include up to four more screen-level questions, each naming the screen or field its answer modifies.\n\n` +
+          `Return ONLY strict JSON, no prose, matching this shape exactly:\n` +
+          `{\n` +
+          `  "narration": "Markdown — tell them WHAT CHANGED in screen-level patron words.",\n` +
+          `  "screensDraft": {\n` +
+          `    "appName": "string",\n` +
+          `    "domain": ${JSON.stringify(priorDomain)},\n` +
+          `    "screens": [/* full updated screens array, same shape as before */],\n` +
+          `    "navigation": [/* full updated navigation */]\n` +
+          `  },\n` +
+          `  "clarifications": [\n` +
+          `    {"id": "kebab-case", "question": "screen-level question", "kind": "single-choice|multi-choice|free-text|yes-no", "options": ["..."]}\n` +
+          `  ],\n` +
+          `  "readyToBuild": true|false\n` +
+          `}\n\nOpen with "{".`,
+        model: keplerModel,
+        maxTokens: 4_096,
+      }),
+  );
 
   const parsed = parseStrictJson(refineResult.text) ?? {};
   const narration =
