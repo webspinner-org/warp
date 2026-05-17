@@ -3588,10 +3588,20 @@ async function databaseAppRefine(
  * migrations.
  */
 async function databaseAppBuild(
-  _rawInput: unknown,
+  rawInput: unknown,
   ctx: DatabaseAppDispatchContext,
   session: Awaited<ReturnType<typeof createSpinnerSession>>,
 ): Promise<DispatchOutput> {
+  // Build accepts an optional designOverride that lets the Form
+  // Studio's customized design replace the session-state screensDraft
+  // at build time. If omitted, we fall back to session.state.
+  const input =
+    rawInput && typeof rawInput === 'object' ? (rawInput as Record<string, unknown>) : {};
+  const designOverride =
+    input['designOverride'] && typeof input['designOverride'] === 'object'
+      ? (input['designOverride'] as Record<string, unknown>)
+      : null;
+
   const priorState = (session.state ?? {}) as Record<string, unknown>;
   const priorSentence =
     typeof priorState['patronSentence'] === 'string'
@@ -3600,9 +3610,11 @@ async function databaseAppBuild(
   const priorDomain =
     typeof priorState['domain'] === 'string' ? (priorState['domain'] as string) : 'unknown';
   const priorScreensDraft =
-    priorState['screensDraft'] && typeof priorState['screensDraft'] === 'object'
-      ? (priorState['screensDraft'] as Record<string, unknown>)
-      : null;
+    designOverride && Array.isArray((designOverride as { screens?: unknown[] }).screens)
+      ? (designOverride as Record<string, unknown>)
+      : priorState['screensDraft'] && typeof priorState['screensDraft'] === 'object'
+        ? (priorState['screensDraft'] as Record<string, unknown>)
+        : null;
   const priorBranding =
     priorState['branding'] && typeof priorState['branding'] === 'object'
       ? (priorState['branding'] as Record<string, unknown>)

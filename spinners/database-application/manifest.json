@@ -164,7 +164,12 @@
         "$id": "urn:webspinner:capability:database-application:build:input:v1.0.0",
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+          "designOverride": {
+            "type": "object",
+            "description": "Optional — the patron's Form-Studio-customized screensDraft. When present, replaces the session-state screensDraft at build time so the Cell collections match the patron's edits. Same shape as the proposed screensDraft."
+          }
+        }
       },
       "outputSchema": {
         "$id": "urn:webspinner:capability:database-application:build:output:v1.0.0",
