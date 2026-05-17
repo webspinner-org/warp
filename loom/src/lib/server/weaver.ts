@@ -2761,9 +2761,9 @@ async function databaseAppPropose(
           `2. The KEY RELATIONSHIPS between entities (X belongs to Y; X has many Y; X references Y). Be specific. If the domain has a non-trivial transactional pattern (e.g. double-entry bookkeeping where each transaction has paired debit/credit line-items hitting accounts; service tickets with line-items; orders with line-items), CALL IT OUT EXPLICITLY.\n` +
           `3. The CANONICAL REPORTS or aggregations a practitioner in this domain expects (e.g. P&L, balance sheet, AR aging for bookkeeping; backlog, win-rate, pipeline for sales; growth curve, mortality, harvest yield for plant tracking).\n` +
           `4. The SUBLEDGERS or per-entity rollups that come standard (e.g. accounts-receivable per customer, accounts-payable per vendor; per-product inventory; per-technician scheduling).\n\n` +
-          `Be specific to ${JSON.stringify(domain)}. Don't generalize. Don't list features the screens won't actually need. ~250-400 words. No headers needed — flowing prose is fine.`,
+          `Be specific to ${JSON.stringify(domain)}. Don't generalize. Don't list features the screens won't actually need. ~200-300 words. No headers needed — flowing prose is fine.`,
         model: keplerModel,
-        maxTokens: 2_048,
+        maxTokens: 1_024,
       }),
   );
   const domainModel = (domainModelResult.text || '').trim();
