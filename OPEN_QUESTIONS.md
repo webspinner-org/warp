@@ -474,3 +474,23 @@ Genesis-Spinner dispatchers stack inside one file: bootstrap, pablo, journal, ge
 ### Foundation imagery for field kinds
 
 Field-kind chips in the schema cards are manuscript-text placeholders (`DATE`, `$`, `#`, `Y·N`, `TXT`). The Wizard plans to generate Foundation-disciplined imagery via OpenAI Image 2 (per DECISIONS 2026-05-12 — _Canonical cinematic-illustration generator_). When the imagery lands at `~/webspinner-try/site/brand/kinds/<kind>.svg` (or .png), swap the `kindMark()` function in `site/app.js` from text to `<img>` — one switch statement, ten lines. Same path for the entity-card hero if the Foundation wants illustrated entity types ("Transaction" / "Plant" / "Donor" etc.).
+
+## 2026-05-17 — Pablo's review-mission-lock capability (drift defence)
+
+**Question:** The 2026-05-17 review revealed that the prior Claude session authored the Database Application Spinner's mission-lock with a "first, do no harm" posture that ran counter to VISION.md's _"exceeds what they imagined"_ + _"delights and astounds"_ discipline. The fix landed via mission-lock rewrite (see `DECISIONS.md` 2026-05-17 — _Mission-lock posture: generous expertise + patron prunes_). But this drift was caught by **manual Wizard review** after the demo was already live. The structural question: how do we catch this class of drift _before_ sign + install?
+
+**Why it matters:** Mission-locks are LLM-authored or LLM-influenced artifacts. They can drift toward conservative defaults that feel safe but undercut the Foundation's flagship promise. Per Operating Principle §17.3 (Production-Candidate Quality Only), every Spinner shipped should pass the canon's flagship test. Manual review caught it once; the next drift may not be caught until a patron experiences disappointment.
+
+**Proposed mechanism:** Extend Pablo with a `review-mission-lock` capability (parallel to the existing `review` for UI). Inputs: the Spinner bundle's `mission-lock.md` text + the canon's flagship rubric (`VISION.md`'s three operative requirements + `WARP-CANON.md` §17.5 _Wow as Baseline_). Outputs: severity-tagged findings, same shape as Pablo's UI reviews. The build pipeline (sign + install) gates on Pablo's mission-lock verdict — `fails` blocks the install; `concerns` warns but lets through; `passes` proceeds.
+
+**What this catches:**
+
+- Minimal-viable-output postures ("don't over-design", "honor exactly what they said").
+- Cautious-LLM phrasings that under-promise.
+- Refused-work sections that creep too broad (refuse things the canon doesn't refuse).
+- Vocabulary drift (calling SI "AI", Cell "tenant", etc.).
+- Voice drift (technical jargon, not patron-facing words).
+
+**Status:** Open. Lands as part of the next Pablo iteration. Until then, manual review by the Wizard at each Spinner ship is the defence.
+
+**Related:** The Schema Critic Spinner concept (`SI-QUALITY-DESIGN.md` — improvement #3) is the runtime analog of this — review the SI's _output_ against a rubric, not the SI's _instructions_. Both are needed.

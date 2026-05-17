@@ -743,3 +743,37 @@ The same `databaseAppPropose` / `databaseAppRefine` / `databaseAppBuild` functio
 **What this implies for the Foundation roadmap:**
 
 When the next archetype Spinners ship (the iPhone App / Website / Simple Game / Custom AI Spinner from VISION.md §3), the architecture suggests they'll need new dispatchers (those archetypes produce code, not schemas — different output kind) but the patron-side UX patterns (Observatory, clarifications panel, narration in chat, real-time polling as heartbeat, build CTA, modes within the Observatory) all transfer. The Database Application is the precedent, not the special case.
+
+## 2026-05-17 — Mission-lock posture: generous expertise + patron prunes (flagship discipline)
+
+**Decision:** The Database Application Spinner's mission-lock is rewritten to instruct the SI to be a **competent professional advisor** producing the schema a paying client would receive — not a minimal-viable-schema generator. The Webspinner prunes through clarifying questions. Modesty is not the SI's job; expertise is. Per VISION.md's three operative requirements (works first time / elegantly branded / delights and astounds) and the Wizard's standing flagship requirement: every interaction must end with the patron feeling Webspinner is their superpower, and they must come back.
+
+**Why this changes (root cause of the prior posture):** The original mission-lock — written by an earlier Claude session in the 2026-05-16 work block — embedded a "first, do no harm" / "honor exactly what they said" posture: _"Build for THIS patron, not the textbook. Don't over-design. If the patron told you cash only, do not add credit-card fields."_ The SI did exactly what it was told. The Wizard's testing on 2026-05-17 revealed the output felt under-delivered against the canon's _"exceeds what they imagined"_ + _"how did you know I needed that?"_ standards. Real failure mode of LLM-authored guardrails — drift toward conservative defaults that feel safe but undercut the Foundation's flagship promise.
+
+**What the rewritten mission-lock now requires:**
+
+1. **Every entity a competent practitioner would track** — not just the obvious nouns from the patron's sentence. Bookkeeping is _Transactions / Accounts / Customers / Vendors / Invoices / Bills / Payments / Categories / Tax-Periods_ by default, not just _Transactions_.
+2. **Six to twelve fields per entity** as the default; more when the domain warrants. Standard professional features (tax categorization, reconciliation status, audit fields, period markers, document references, status enums) are the default, not over-design.
+3. **Explicit relationships with cardinality** — every `links` entry declares `cardinality` (one-to-one / one-to-many / many-to-many) and the `owning` side. The lines a real DBA draws, the SI draws by default.
+4. **Canonical reports the domain expects** — declared in the `schemaDraft.reports` array. P&L / Balance Sheet / Cash Flow / Trial Balance / A/R Aging / Year-End Tax Summary for bookkeeping; Seasonal Yield Summary / Pest Pressure by Location / Cost vs. Yield for gardening. The renderer doesn't visualise reports yet (deferred), but declaring them is part of the proposal.
+5. **Clarifying questions must name a schema branch** — each question must control a named decision in the schema. _"Do you take credit cards?"_ gates the Payment-Methods enum + Card-Fee field. Vague questions are refused at the prompt level.
+6. **Narration is confident** — the SI speaks as a competent professional advisor: _"I've drafted what a small-business bookkeeping system typically tracks"_ — not _"I've made a basic Transactions list, tell me more about your needs."_
+
+**What stays unchanged:**
+
+- Foundation Pledge / refused-work categories (operative law per WARP-CANON.md §13).
+- Plain-language discipline (patron-facing words; the engineering vocabulary stays out of the patron's view).
+- Vocabulary discipline (SI not AI, Webspinner not user, Cell not tenant, etc.).
+- The three-turn `propose → refine → build` arc.
+- Re-entrancy via `context.session`.
+
+**What's pending the Wizard's signal-to-proceed:**
+
+- The `databaseAppPropose` + `databaseAppRefine` + `databaseAppBuild` prompts in `weaver.ts` need to match the new posture (currently say "starting database schema"; should say "comprehensive schema a competent professional would build"). Also need to instruct the JSON output shape to include `reports[]` + `cardinality`/`owning` on links.
+- `how-it-works.md` needs tonal update to match the new ambition.
+- The bundle needs to be re-signed + re-installed in the Demo Cell on Kepler (the digest changed; the Weaver's integrity gate will refuse to invoke until `wp_skein` is updated).
+- The schema-driven renderer needs a `relation` kind + full CRUD matrix (Update / Delete / Read-detail) so the patron's app is a real database, not a log. This is R8.6.
+
+**Design notes captured in full at `~/warp/SI-QUALITY-DESIGN.md`** — the persistence the Wizard asked for, including the meta-architecture observations: not the model, the architecture around the model (multi-step reasoning, schema critic, Foundation library of canonical patterns, structured-output enforcement, embeddings-driven retrieval, agentic tool use).
+
+**Future state:** When Pablo's review capability is extended to walk a Spinner bundle's `mission-lock.md` against VISION.md / WARP-CANON.md before sign + install, this class of drift gets caught structurally — not by manual review. Logged in OPEN_QUESTIONS.md.
