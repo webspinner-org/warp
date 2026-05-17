@@ -3021,7 +3021,16 @@ async function databaseAppRefine(
   if (brandingAnswer) {
     const choice = typeof brandingAnswer.answer === 'string' ? brandingAnswer.answer : '';
     if (choice && choice !== 'describe-my-own' && choice !== 'reference-a-website') {
-      updatedBranding = { ...updatedBranding, selectedPaletteId: choice };
+      // The LLM is supposed to surface palette ids, but in practice it
+      // sometimes returns the patron-facing name. Resolve against
+      // both id and name so the deterministic application always
+      // lands on the canonical palette id.
+      const opts = Array.isArray((priorBranding as { options?: unknown[] }).options)
+        ? (priorBranding as { options: { id?: string; name?: string }[] }).options
+        : [];
+      const matched = opts.find((o) => o && (o.id === choice || o.name === choice));
+      const resolved = matched && typeof matched.id === 'string' ? matched.id : choice;
+      updatedBranding = { ...updatedBranding, selectedPaletteId: resolved };
     }
   }
   const customDescAnswer = answers.find((a) => a.id === 'branding-custom-description');
