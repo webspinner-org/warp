@@ -73,6 +73,21 @@ echo "→ launchctl bootstrap $LABEL"
 launchctl bootstrap "gui/$UID_" "$PLIST"
 sleep 3
 
+# Both the operator and the demo Loom share build/ — after the
+# clean+build, both must restart so they pick up the fresh chunk
+# manifest. Without this the demo Loom keeps crash-looping on stale
+# chunk references and randomly 502s mid-test.
+DEMO_LABEL='foundation.webspinner.loom-demo'
+DEMO_PLIST="$HOME/Library/LaunchAgents/$DEMO_LABEL.plist"
+if [ -f "$DEMO_PLIST" ]; then
+  echo "→ launchctl bootout $DEMO_LABEL  (best effort)"
+  launchctl bootout "gui/$UID_/$DEMO_LABEL" 2>&1 || true
+  sleep 1
+  echo "→ launchctl bootstrap $DEMO_LABEL"
+  launchctl bootstrap "gui/$UID_" "$DEMO_PLIST"
+  sleep 3
+fi
+
 echo ""
 echo "→ smoke"
 for p in / /login /admin; do
