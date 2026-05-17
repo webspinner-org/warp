@@ -314,6 +314,21 @@ export function deriveEntitiesFromScreens(draft: ScreensDraft): SchemaEntity[] {
     }
   }
 
+  // Third pass: any entity referenced (parentEntity or link-to target)
+  // but with zero fields — usually because the Spinner emitted screens
+  // pointing at the entity but no form-screen creating it — gets a
+  // default "name" + "notes" pair so the patron can at least record
+  // a stub. The Spinner SHOULD emit a form for every referenced
+  // entity (prompted in propose), but this is a safety net so the
+  // chicken-and-egg "+ Add new {Entity}" flow always lands somewhere
+  // real instead of an empty form.
+  for (const [, data] of entities) {
+    if (data.fields.size === 0) {
+      data.fields.set('name', { name: 'name', kind: 'text', describes: 'Name' });
+      data.fields.set('notes', { name: 'notes', kind: 'text', describes: 'Notes' });
+    }
+  }
+
   return Array.from(entities.entries()).map(([name, data]) => ({
     name,
     describes: data.describes,
