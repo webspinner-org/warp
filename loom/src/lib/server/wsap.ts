@@ -25,7 +25,14 @@ import {
   verifyBytes,
 } from '@webspinner-foundation/sdk';
 
-export const WSAP_FORMAT = 'wsap/v0.1' as const;
+/**
+ * Current format string. New bundles write this. Verifiers also
+ * accept the legacy `wsap/v0.1` for back-compat with bundles
+ * already published before the rename.
+ */
+export const WSAP_FORMAT = 'webbase/v0.1' as const;
+export const WSAP_FORMAT_LEGACY = 'wsap/v0.1' as const;
+const ACCEPTED_FORMATS = new Set<string>([WSAP_FORMAT, WSAP_FORMAT_LEGACY]);
 
 export type WsapBundleKind = 'database-application';
 
@@ -79,7 +86,7 @@ export interface WsapSignature {
 }
 
 export interface WsapBundle {
-  readonly format: typeof WSAP_FORMAT;
+  readonly format: typeof WSAP_FORMAT | typeof WSAP_FORMAT_LEGACY;
   readonly kind: WsapBundleKind;
   readonly createdBy: WsapCreatedBy;
   readonly createdFrom: WsapCreatedFrom;
@@ -169,7 +176,9 @@ export function verifyWsapBundle(input: VerifyWsapInput): WsapVerifyResult {
     return { ok: false, reason: 'format-unsupported' };
   }
   const b = input.bundle as Record<string, unknown>;
-  if (b['format'] !== WSAP_FORMAT) return { ok: false, reason: 'format-unsupported' };
+  if (typeof b['format'] !== 'string' || !ACCEPTED_FORMATS.has(b['format'] as string)) {
+    return { ok: false, reason: 'format-unsupported' };
+  }
   if (b['kind'] !== 'database-application') return { ok: false, reason: 'kind-unsupported' };
   if (typeof b['signature'] !== 'object' || b['signature'] === null) {
     return { ok: false, reason: 'signature-missing' };

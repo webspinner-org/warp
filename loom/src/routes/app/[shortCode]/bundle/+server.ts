@@ -1,10 +1,10 @@
 /**
- * GET /install/[shortCode]/bundle?t=<install_token>
+ * GET /app/[shortCode]/bundle?t=<install_token>
  *
- * Returns the raw .wsap JSON from the registry — the +page.svelte
- * client fetches this, then POSTs it to /admin/db-app/import to
- * complete the install. No Loom session required to read; the
- * install_token is the capability.
+ * Returns the raw signed Webbase bundle JSON from the registry. The
+ * +page client fetches this, then POSTs it to /admin/db-app/import
+ * to materialize the Webbase in the recipient's Cell. No Loom
+ * session required to read; the install_token is the capability.
  */
 
 import { error, json } from '@sveltejs/kit';

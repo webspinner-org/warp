@@ -288,32 +288,90 @@ try {
     }
   }
 
-  // Export — verify the Export Application button works.
+  // Share flow — click Export, fill email, fetch code from the dev
+  // outbox via SSH, enter code, expect install link.
   const exportBtn = page.locator('#app-export-btn');
   if ((await exportBtn.count()) > 0) {
-    await snap(page, '22-pre-export');
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 30_000 }).catch(() => null),
-      exportBtn.click(),
-    ]);
-    if (download) {
-      const suggested = download.suggestedFilename();
-      const saveTo = join(SHOT_DIR, suggested);
-      await download.saveAs(saveTo);
-      const fs = await import('node:fs/promises');
-      const raw = await fs.readFile(saveTo, 'utf8');
-      const bundle = JSON.parse(raw);
-      console.log('[drive] export →', suggested);
-      console.log('[drive] wsap.format =', bundle.format);
-      console.log('[drive] wsap.kind =', bundle.kind);
-      console.log('[drive] wsap.signature.alg =', bundle.signature?.alg);
-      console.log('[drive] wsap.signature.keyFingerprint =', bundle.signature?.keyFingerprint);
-      console.log('[drive] wsap entities =', (bundle.schema?.entities || []).length);
-      console.log('[drive] wsap screens =', (bundle.design?.screensDraft?.screens || []).length);
+    await snap(page, '22-pre-share');
+    await exportBtn.click();
+    await page.waitForTimeout(500);
+    const emailInput = page.locator('#share-email');
+    if ((await emailInput.count()) > 0) {
+      const testEmail = `e2e-${Date.now()}@webspinner.foundation`;
+      await emailInput.fill(testEmail);
+      await snap(page, '23-share-email-entered');
+      await page.locator('#share-send-code').click();
+      await page.waitForTimeout(2_000);
+      await snap(page, '24-share-code-prompt');
+
+      // Pull the code from the dev outbox on Kepler via SSH.
+      const { execSync } = await import('node:child_process');
+      let code = '';
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const tail = execSync(`ssh johns-mac-studio.local "tail -1 ~/.warp/email-outbox.jsonl"`, {
+            encoding: 'utf8',
+            timeout: 10_000,
+          });
+          const m = tail.match(/verification code: (\d{6})/);
+          if (m && tail.includes(testEmail)) {
+            code = m[1];
+            break;
+          }
+        } catch (_) {
+          /* retry */
+        }
+        await page.waitForTimeout(1_000);
+      }
+      if (code) {
+        console.log('[drive] pulled code from outbox:', code);
+        await page.locator('#share-code').fill(code);
+        await snap(page, '25-share-code-entered');
+        const [pubResp] = await Promise.all([
+          page
+            .waitForResponse((r) => r.url().includes('/publish') && r.status() < 500, {
+              timeout: 60_000,
+            })
+            .catch(() => null),
+          page.locator('#share-verify').click(),
+        ]);
+        if (pubResp) {
+          const pubBody = await pubResp.json().catch(() => null);
+          console.log('[drive] publish status:', pubResp.status());
+          console.log('[drive] publish result:', JSON.stringify(pubBody).slice(0, 240));
+        }
+        await page.waitForTimeout(2_000);
+        await snap(page, '26-share-done');
+        const installInput = page.locator('#share-install-url');
+        if ((await installInput.count()) > 0) {
+          const installUrl = await installInput.inputValue();
+          console.log('[drive] install URL:', installUrl);
+        }
+      } else {
+        console.log('[drive] WARNING: could not pull verification code from outbox');
+      }
     } else {
-      console.log('[drive] WARNING: export click did not produce a download');
+      // Fallback: legacy direct-download path (button still works
+      // pre-modal in older builds).
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 30_000 }).catch(() => null),
+        exportBtn.click(),
+      ]);
+      if (download) {
+        const suggested = download.suggestedFilename();
+        const saveTo = join(SHOT_DIR, suggested);
+        await download.saveAs(saveTo);
+        const fs = await import('node:fs/promises');
+        const raw = await fs.readFile(saveTo, 'utf8');
+        const bundle = JSON.parse(raw);
+        console.log('[drive] export →', suggested);
+        console.log('[drive] wsap.format =', bundle.format);
+        console.log('[drive] wsap.kind =', bundle.kind);
+        console.log('[drive] wsap.signature.alg =', bundle.signature?.alg);
+        console.log('[drive] wsap entities =', (bundle.schema?.entities || []).length);
+      }
     }
-    await snap(page, '23-post-export');
+    await snap(page, '27-share-after');
   }
 
   console.log('[drive] SUCCESS');
