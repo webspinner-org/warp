@@ -7,6 +7,7 @@
     appId?: string;
     deployedSurfaceUrl?: string;
     message?: string;
+    kind?: 'forward' | string;
   } | null>(null);
 
   async function doInstall() {
@@ -31,13 +32,30 @@
       });
       const body = await install.json().catch(() => null);
       if (!install.ok || !body || body.ok !== true) {
-        result = {
-          ok: false,
-          message:
-            body?.detail ||
-            body?.reason ||
-            `Install failed: HTTP ${install.status}. Sign in to your Cell first.`,
-        };
+        // Common case on try.webspinner.ai: the demo doesn't expose
+        // /admin/db-app/import (no patron auth, no Cell of their own).
+        // Surface the federation framing instead of the raw HTTP code.
+        if (install.status === 405 || install.status === 404 || install.status === 401) {
+          result = {
+            ok: false,
+            message:
+              "This demo doesn't host installs — it's session-isolated.\n\n" +
+              'To install ' +
+              data.appName +
+              ' into a real Cell, forward this whole URL ' +
+              '(including the ?t=… token) to a Webspinner with their own operator Cell. ' +
+              'They open it on their Cell, hit Install, and the app lands there.',
+            kind: 'forward',
+          };
+        } else {
+          result = {
+            ok: false,
+            message:
+              body?.detail ||
+              body?.reason ||
+              `Install failed: HTTP ${install.status}. Sign in to your Cell first.`,
+          };
+        }
       } else {
         result = {
           ok: true,
@@ -128,6 +146,11 @@
           <p>App id: <code>{result.appId}</code></p>
         {/if}
       </div>
+    {:else if result.kind === 'forward'}
+      <div class="install-result install-result--forward">
+        <h3>Forward this link to install</h3>
+        <p style="white-space: pre-line;">{result.message}</p>
+      </div>
     {:else}
       <div class="install-result install-result--err">
         <h3>Could not install</h3>
@@ -138,13 +161,20 @@
 </section>
 
 <style>
-  /* cache-bust v2 — force new asset hash after CF cached the pre-proxy 404 */
+  /* cache-bust v3 — readable contrast on dark page bg */
   .install-shell {
     max-width: 720px;
     margin: 3rem auto;
     padding: 0 1.4rem;
     font-family: ui-sans-serif, system-ui, sans-serif;
-    color: var(--text, #11212a);
+    color: #e8e4dc;
+  }
+  .install-head h1 {
+    color: #f5eedd;
+  }
+  .install-sub {
+    color: #cfc6b3;
+    opacity: 1;
   }
   .install-head {
     margin-bottom: 1.6rem;
@@ -165,47 +195,58 @@
     opacity: 0.78;
   }
   .install-card {
-    background: var(--bg-elev, #fffdf7);
-    border: 1px solid var(--border, #d9cebf);
+    background: #1c1c22;
+    border: 1px solid #34373d;
     border-radius: 12px;
-    padding: 1rem 1.2rem;
+    padding: 1.1rem 1.3rem;
     margin: 1rem 0;
   }
   .install-card h2 {
-    margin: 0 0 0.6rem;
+    margin: 0 0 0.85rem;
     font-size: 0.78rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--gold-soft, #b88a3a);
+    color: #d4a574;
     font-family: ui-monospace, monospace;
   }
   .install-card dl {
     display: grid;
     grid-template-columns: 11rem 1fr;
-    row-gap: 0.4rem;
+    row-gap: 0.55rem;
+    column-gap: 0.7rem;
     margin: 0;
   }
   .install-card dt {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text, #11212a);
-    opacity: 0.65;
+    letter-spacing: 0.08em;
+    color: #9a9189;
+    font-family: ui-monospace, monospace;
+    align-self: center;
   }
   .install-card dd {
     margin: 0;
+    color: #f0e9d8;
+    font-size: 0.96rem;
   }
   .install-card code {
     font-family: ui-monospace, monospace;
-    font-size: 0.85rem;
-    color: var(--text, #11212a);
+    font-size: 0.88rem;
+    color: #d4a574;
+    background: rgba(212, 165, 116, 0.08);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
   }
   .install-card ul {
     margin: 0;
     padding-left: 1.2rem;
+    color: #f0e9d8;
   }
   .install-card li {
     padding: 0.2rem 0;
+  }
+  .install-card li strong {
+    color: #d4a574;
   }
   .install-foot {
     display: flex;
@@ -213,13 +254,13 @@
     justify-content: space-between;
     gap: 0.8rem;
     padding-top: 1rem;
-    border-top: 1px solid var(--border, #d9cebf);
+    border-top: 1px solid #34373d;
     margin-top: 1.6rem;
   }
   .install-note {
     margin: 0;
     font-size: 0.85rem;
-    opacity: 0.7;
+    color: #9a9189;
   }
   .install-btn {
     appearance: none;
@@ -256,5 +297,14 @@
   .install-result--err {
     background: rgba(200, 116, 104, 0.1);
     border: 1px solid rgba(200, 116, 104, 0.4);
+    color: #f0e9d8;
+  }
+  .install-result--forward {
+    background: rgba(212, 165, 116, 0.1);
+    border: 1px solid rgba(212, 165, 116, 0.4);
+    color: #f0e9d8;
+  }
+  .install-result--forward h3 {
+    color: #d4a574;
   }
 </style>
