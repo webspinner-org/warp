@@ -96,7 +96,7 @@
     <div class="hub-content">
       <nav class="crumbs" aria-label="Breadcrumb">
         {#each data.result.breadcrumbs as bc, i (bc.href)}
-          {#if i > 0}<span class="sep">›</span>{/if}
+          {#if i > 0}<span class="sep" aria-hidden="true">/</span>{/if}
           <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
           <a class="crumb" class:active={i === data.result.breadcrumbs.length - 1} href={bc.href}
             >{bc.displayName}</a
@@ -157,17 +157,25 @@
         {/if}
       {:else}
         <!-- Project leaf detail — work-in-process Webbase source -->
+        {@const parentHref = '/' + data.result.segments.slice(0, -1).join('/')}
         <article class="webbase-detail">
           <header class="wb-head">
-            <h1>{data.result.meta.appName}</h1>
-            <div class="wb-badges">
-              {#if data.result.meta.domain}
-                <span class="badge-domain mono">{data.result.meta.domain}</span>
-              {/if}
-              <span class="badge-status mono" data-status={data.result.meta.status}>
-                {data.result.meta.status}
-              </span>
+            <div class="wb-head-l">
+              <h1>{data.result.meta.appName}</h1>
+              <div class="wb-badges">
+                {#if data.result.meta.domain}
+                  <span class="badge-domain mono">{data.result.meta.domain}</span>
+                {/if}
+                <span class="badge-status mono" data-status={data.result.meta.status}>
+                  {data.result.meta.status}
+                </span>
+              </div>
             </div>
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+            <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase Apps">
+              <span class="wb-close-x" aria-hidden="true">×</span>
+              <span class="wb-close-label">Close</span>
+            </a>
           </header>
 
           {#if data.result.meta.patronSentence}
@@ -271,16 +279,55 @@
   }
   .wb-head {
     display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+  }
+  .wb-head-l {
+    display: flex;
     align-items: baseline;
     gap: 0.9rem;
     flex-wrap: wrap;
-    margin-bottom: 0.6rem;
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .wb-head h1 {
     margin: 0;
     font-size: 1.4rem;
     color: var(--ink);
     font-weight: 600;
+  }
+  .wb-close {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--ink-muted);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 0.32rem 0.7rem 0.32rem 0.55rem;
+    text-decoration: none;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      background 120ms ease;
+    flex: 0 0 auto;
+  }
+  .wb-close:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--highlight);
+  }
+  .wb-close-x {
+    font-size: 1.05rem;
+    line-height: 1;
+    text-transform: none;
   }
   .wb-badges {
     display: flex;
