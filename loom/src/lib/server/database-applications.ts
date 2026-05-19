@@ -621,7 +621,51 @@ export async function createApp(
     };
   }
   const created = (await create.json()) as PBRow;
-  return { ok: true, row: parseRow(created) };
+  const builtRow = parseRow(created);
+
+  // Side-write the project into the Webspinner Hub's storage tree so
+  // the hub catalogs work-in-process (the patron's source, resumable).
+  // Failure is swallowed — the hub re-syncs on the next build or via
+  // the bootstrap tool.
+  try {
+    const { writeProjectToHub } = await import('./hub-storage-write.js');
+    const sd = (input.design as { screensDraft?: unknown } | undefined)?.screensDraft as
+      | { appName?: unknown; screens?: readonly unknown[] }
+      | undefined;
+    const appName =
+      typeof sd?.appName === 'string'
+        ? sd.appName
+        : input.domain
+          ? `Your ${input.domain}`
+          : '(unnamed Webbase)';
+    const screenCount = Array.isArray(sd?.screens) ? sd.screens.length : 0;
+    const resumeBase = process.env['WARP_TRY_BASE'] ?? 'https://try.webspinner.ai';
+    await writeProjectToHub({
+      meta: {
+        sessionId: input.sessionId,
+        appName,
+        domain: input.domain,
+        patronSentence: input.patronSentence,
+        status: 'built',
+        appId,
+        entityCount: entities.length,
+        screenCount,
+        createdAt: builtAt,
+        updatedAt: builtAt,
+        builtAt,
+        resumeUrl: `${resumeBase}/?resume=${encodeURIComponent(input.sessionId)}`,
+      },
+      source: {
+        screensDraft: (input.design as { screensDraft?: unknown } | undefined)?.screensDraft,
+        branding: (input.design as { branding?: unknown } | undefined)?.branding,
+        entities,
+      },
+    });
+  } catch (err) {
+    process.stderr.write(`[createApp] hub side-write failed: ${(err as Error).message}\n`);
+  }
+
+  return { ok: true, row: builtRow };
 }
 
 export async function listEntityRows(

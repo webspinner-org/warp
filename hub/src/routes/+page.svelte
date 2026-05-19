@@ -275,29 +275,47 @@
           <span class="crumb active">/</span>
         </nav>
 
-        <section class="empty-archive">
-          <svg
-            class="empty-mark"
-            viewBox="0 0 64 64"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12 50 L32 18 L52 50 Z" opacity="0.35" />
-            <path d="M18 50 L32 26 L46 50" />
-            <path d="M32 50 V58" />
-            <path d="M26 58 H38" />
-          </svg>
-          <h1>The Hub is empty.</h1>
-          <p>
-            Nothing is stored at the root yet. Source code, Spinners, manuscripts, and other
-            artifacts will appear here as they're pushed.
-          </p>
-          <div class="hint mono">root · {data.user!.email}</div>
-        </section>
+        {#if data.children.length === 0}
+          <section class="empty-archive">
+            <svg
+              class="empty-mark"
+              viewBox="0 0 64 64"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 50 L32 18 L52 50 Z" opacity="0.35" />
+              <path d="M18 50 L32 26 L46 50" />
+              <path d="M32 50 V58" />
+              <path d="M26 58 H38" />
+            </svg>
+            <h1>The Hub is empty.</h1>
+            <p>
+              Nothing is stored at the root yet. Source code, Spinners, manuscripts, and other
+              artifacts will appear here as they're pushed.
+            </p>
+            <div class="hint mono">root · {data.user!.email}</div>
+          </section>
+        {:else}
+          <ul class="tree-list">
+            {#each data.children as child (child.slug)}
+              <li class="tree-row">
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a class="tree-row-link" href={'/' + child.slug}>
+                  <span class="tree-icon">📁</span>
+                  <span class="tree-name">{child.displayName}</span>
+                  <span class="tree-count mono"
+                    >{child.childCount}
+                    {child.childCount === 1 ? 'item' : 'items'}</span
+                  >
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </div>
     </main>
   </div>
@@ -463,5 +481,46 @@
   }
   .signout:hover {
     color: var(--ink);
+  }
+
+  /* Tree list (shared shape with the catch-all detail page) */
+  .tree-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .tree-row + .tree-row {
+    border-top: 1px solid var(--rule-soft);
+  }
+  .tree-row-link {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr auto;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.8rem 1.1rem;
+    color: var(--ink);
+    border-bottom: 0;
+    transition: background 100ms ease;
+  }
+  .tree-row-link:hover {
+    background: var(--highlight);
+    border-bottom: 0;
+  }
+  .tree-icon {
+    font-size: 1rem;
+    opacity: 0.9;
+  }
+  .tree-name {
+    font-size: 0.96rem;
+    font-weight: 500;
+  }
+  .tree-count {
+    color: var(--ink-muted);
+    font-size: 0.78rem;
   }
 </style>
