@@ -1,0 +1,26 @@
+{
+  "name": "@webspinner-foundation/hub",
+  "version": "0.0.0",
+  "description": "Webspinner Hub — source-code + artifact registry. Patron-facing UX over Google OAuth; eventually serves git smart HTTP. Stewarded by the Webspinner Foundation.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite dev --port 3020",
+    "build": "vite build",
+    "preview": "vite preview --port 3020",
+    "start": "node build/index.js",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "prepare": "svelte-kit sync"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/kit": "2.59.1",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@types/node": "24.12.3",
+    "svelte": "5.55.5",
+    "svelte-check": "4.4.8",
+    "vite": "8.0.11"
+  }
+}

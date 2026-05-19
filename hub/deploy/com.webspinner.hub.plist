@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Webspinner Hub — launchd user agent.
+  Serves the hub UX on 127.0.0.1:3020, behind the webspinner-prod
+  Cloudflare tunnel as hub.webspinner.ai. Source lives in
+  ~/warp/hub/ (synced from Spindle).
+
+  Required env vars (set below):
+    WARP_VAULT_MASTER_KEY  — shared with the Foundation Loom; signs
+                             the warp_hub session cookie.
+    GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
+    GOOGLE_OAUTH_REDIRECT_URI — Google Cloud OAuth web client config.
+    WARP_HUB_WIZARDS       — comma-separated wizard email allowlist.
+    HUB_STORAGE_DIR        — root of on-disk repo storage (not used in
+                             MVP-1 but reserved for the git wire).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.webspinner.hub</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/johndavidmarx/warp/hub/build/index.js</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/johndavidmarx/Library/Logs/webspinner-hub/stdout.log</string>
+  <key>StandardErrorPath</key><string>/Users/johndavidmarx/Library/Logs/webspinner-hub/stderr.log</string>
+  <key>WorkingDirectory</key><string>/Users/johndavidmarx/warp/hub</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin</string>
+    <key>HOST</key><string>127.0.0.1</string>
+    <key>PORT</key><string>3020</string>
+    <key>ORIGIN</key><string>https://hub.webspinner.ai</string>
+    <key>HOST_HEADER</key><string>x-forwarded-host</string>
+    <key>PROTOCOL_HEADER</key><string>x-forwarded-proto</string>
+    <key>NODE_ENV</key><string>production</string>
+    <key>WARP_VAULT_MASTER_KEY</key><string>SET_AT_INSTALL_TIME</string>
+    <key>GOOGLE_OAUTH_CLIENT_ID</key><string>SET_AT_INSTALL_TIME</string>
+    <key>GOOGLE_OAUTH_CLIENT_SECRET</key><string>SET_AT_INSTALL_TIME</string>
+    <key>GOOGLE_OAUTH_REDIRECT_URI</key><string>https://hub.webspinner.ai/auth/google/callback</string>
+    <key>WARP_HUB_WIZARDS</key><string>johndavidmarx@gmail.com</string>
+    <key>HUB_STORAGE_DIR</key><string>/Users/johndavidmarx/webspinner-hub/storage</string>
+  </dict>
+</dict>
+</plist>

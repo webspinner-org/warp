@@ -1,0 +1,427 @@
+/* ──────────────────────────────────────────────────────────────
+ * Webspinner Hub — design tokens
+ *
+ * Palette: "Silicon Forest" — drawn directly from the splash image.
+ *   Deep forest canopy + electric spring-leaf accent + warm amber
+ *   glow (the building lights) for special things. Light theme is
+ *   the same forest at morning; dark is the splash itself.
+ *
+ * Sun/moon toggle preserved. Clean geometric sans for prose,
+ * monospace for paths, sizes, identifiers. No manuscript serif.
+ * ────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Light ── "morning in the forest" ── */
+  --bg: #f0ede0; /* sun-bleached mossy cream */
+  --surface: #f9f6ea; /* fog over moss */
+  --surface-alt: #e6e2d0; /* pale lichen */
+  --ink: #1f2e1e; /* deep canopy */
+  --ink-soft: #3a4d3a;
+  --ink-muted: #6b7a6b; /* dewy fog */
+  --rule: #c6c2b0; /* faded fern edge */
+  --rule-soft: #d8d4c2;
+  --accent: #2a8a4a; /* forest green */
+  --accent-soft: #4aaa6a; /* spring leaf */
+  --glow: #b07a3a; /* daytime amber (quieter) */
+  --highlight: rgba(42, 138, 74, 0.1);
+
+  --font-prose: system-ui, -apple-system, 'Segoe UI', Inter, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --shadow-sheet: 0 1px 0 rgba(31, 46, 30, 0.04), 0 8px 24px -16px rgba(31, 46, 30, 0.18);
+  --shadow-card: 0 1px 2px rgba(31, 46, 30, 0.08), 0 4px 12px -8px rgba(31, 46, 30, 0.22);
+}
+
+[data-theme='dark'] {
+  /* ── Dark ── the splash itself: night canopy + electric leaf ── */
+  --bg: #131e16; /* deepest shadow */
+  --surface: #1c2920; /* canopy interior */
+  --surface-alt: #243329; /* mossy edge */
+  --ink: #e8e4d4; /* warm cream */
+  --ink-soft: #c5c3b3;
+  --ink-muted: #8a958b; /* misty grey-green */
+  --rule: #2d4234;
+  --rule-soft: #243329;
+  --accent: #4ad57a; /* electric spring-leaf — matches splash "Hub" */
+  --accent-soft: #7ce6a0;
+  --glow: #d9a157; /* the building lanterns in the splash */
+  --highlight: rgba(74, 213, 122, 0.1);
+
+  --shadow-sheet: 0 1px 0 rgba(0, 0, 0, 0.3), 0 12px 28px -16px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 18px -10px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-prose);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms ease;
+}
+a:hover {
+  border-bottom-color: var(--accent);
+}
+
+button {
+  font-family: inherit;
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ── Common layout primitives ── */
+
+.hub-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.hub-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.4rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: var(--shadow-sheet);
+  position: relative;
+  z-index: 2;
+}
+
+.hub-bar-l {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.hub-bar-r {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.hub-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border-bottom: 0;
+}
+.hub-brand:hover {
+  border-bottom-color: transparent;
+}
+.hub-brand .word-w {
+  color: var(--ink);
+}
+.hub-brand .word-h {
+  color: var(--accent);
+}
+.hub-brand .sub {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  padding-left: 0.55rem;
+  margin-left: 0.4rem;
+  border-left: 1px solid var(--rule);
+}
+
+.hub-user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+.hub-user .avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface-alt);
+  border: 1px solid var(--rule);
+  object-fit: cover;
+}
+.hub-user .wizard-tag {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--highlight);
+}
+.hub-user .signout {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  border-bottom-color: transparent;
+}
+.hub-user .signout:hover {
+  color: var(--ink);
+  border-bottom-color: var(--rule);
+}
+
+/* Sun/moon toggle — small forest switch */
+.theme-toggle {
+  appearance: none;
+  background: var(--surface-alt);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.32rem 0.7rem 0.32rem 0.55rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.theme-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Main content frame ── */
+
+.hub-main {
+  padding: 2.2rem 1.4rem;
+  display: grid;
+  place-items: start center;
+}
+
+.hub-content {
+  width: 100%;
+  max-width: 920px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+  margin-bottom: 1.4rem;
+}
+.crumbs .crumb {
+  color: var(--ink-muted);
+  border-bottom: 0;
+}
+.crumbs .crumb.active {
+  color: var(--ink);
+}
+.crumbs .sep {
+  color: var(--rule);
+}
+
+/* ── Empty-state card ── */
+
+.empty-archive {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 3rem 2rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.empty-archive::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center top, var(--highlight) 0%, transparent 50%);
+  pointer-events: none;
+}
+.empty-archive > * {
+  position: relative;
+}
+
+.empty-mark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1.2rem;
+  color: var(--accent);
+}
+
+.empty-archive h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.empty-archive p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+.empty-archive .hint {
+  margin-top: 1.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  background: var(--surface-alt);
+  display: inline-block;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--rule);
+}
+
+/* ── Login surface — splash backdrop ── */
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.4rem;
+  position: relative;
+  background: var(--bg);
+  overflow: hidden;
+}
+.login-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/splash.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: saturate(1.1);
+  pointer-events: none;
+}
+.login-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(19, 30, 22, 0.55) 0%, rgba(19, 30, 22, 0.85) 100%);
+  pointer-events: none;
+}
+[data-theme='light'] .login-shell::after {
+  background: linear-gradient(180deg, rgba(240, 237, 224, 0.55) 0%, rgba(240, 237, 224, 0.85) 100%);
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 2.4rem 2.2rem;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+.login-mark {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 0.9rem;
+  color: var(--accent);
+}
+.login-card h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.login-card h1 .accent {
+  color: var(--accent);
+}
+.login-card .lede {
+  margin: 0 0 1.6rem;
+  color: var(--ink-soft);
+  font-size: 0.96rem;
+}
+.login-card .tagline {
+  margin: 0 0 1.4rem;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.btn-google {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: var(--ink);
+  color: var(--bg);
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1.2rem;
+  width: 100%;
+  font-family: var(--font-prose);
+  font-size: 0.96rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 0;
+  transition: filter 120ms ease;
+}
+.btn-google:hover {
+  filter: brightness(1.06);
+  border-bottom: 0;
+}
+.btn-google svg {
+  width: 18px;
+  height: 18px;
+}
+
+.login-error {
+  margin-top: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--highlight);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+.login-foot {
+  margin-top: 1.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}

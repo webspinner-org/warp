@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#
+# tools/deploy-hub — build + reload the Webspinner Hub on Kepler.
+#
+# Mirrors tools/deploy-loom: clean .svelte-kit + build/, run pnpm
+# build, bootout + bootstrap the launchd agent. Hub is a SvelteKit
+# adapter-node app, same chunk-hash safety story as the Loom — must
+# fully restart the Node process to drop the stale module resolver
+# cache after a build.
+#
+# Run on Kepler (johns-mac-studio.local). Cwd anywhere; we cd to
+# WARP_REPO_DIR/hub before building.
+
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+
+WARP_DIR="${WARP_REPO_DIR:-$HOME/warp}"
+LABEL='com.webspinner.hub'
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+if [ ! -f "$PLIST" ]; then
+  echo "[deploy-hub] no plist at $PLIST — first-time install?"
+  echo "[deploy-hub] copy $WARP_DIR/hub/deploy/com.webspinner.hub.plist there, fill in"
+  echo "             WARP_VAULT_MASTER_KEY + GOOGLE_OAUTH_CLIENT_ID + "
+  echo "             GOOGLE_OAUTH_CLIENT_SECRET, then re-run."
+  exit 1
+fi
+
+cd "$WARP_DIR/hub"
+
+echo "[deploy-hub] cleaning build/ + .svelte-kit/"
+rm -rf build .svelte-kit
+
+echo "[deploy-hub] svelte-kit sync"
+pnpm exec svelte-kit sync >/dev/null
+
+echo "[deploy-hub] pnpm build"
+pnpm build 2>&1 | tail -4
+
+echo "[deploy-hub] reloading $LABEL"
+launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+sleep 1
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
+sleep 2
+
+echo "[deploy-hub] smoking 127.0.0.1:3020/login"
+if curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3020/login" | grep -qE '^(200|302)$'; then
+  echo "[deploy-hub] hub is up"
+else
+  code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3020/login" || echo 0)
+  echo "[deploy-hub] WARN: smoke returned HTTP $code"
+  echo "[deploy-hub] tail of stderr.log:"
+  tail -20 "$HOME/Library/Logs/webspinner-hub/stderr.log" 2>/dev/null || true
+fi

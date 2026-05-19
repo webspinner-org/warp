@@ -1,6 +1,7 @@
 packages:
   - 'sdk'
   - 'loom'
+  - 'hub'
   - 'spinners/*'
 
 # Approved install-scripts. pnpm 11's supply-chain hardening blocks dep
