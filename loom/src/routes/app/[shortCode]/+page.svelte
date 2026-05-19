@@ -1,18 +1,10 @@
 <script lang="ts">
   import type { PageData } from './$types.js';
   let { data }: { data: PageData } = $props();
-  let installing = $state(false);
   let unlocking = $state(false);
   let unlocked = $state(!data.locked);
   let passphrase = $state('');
   let unlockError = $state<string | null>(null);
-  let result = $state<{
-    ok: boolean;
-    appId?: string;
-    deployedSurfaceUrl?: string;
-    message?: string;
-    kind?: 'forward' | string;
-  } | null>(null);
 
   async function unlock() {
     if (passphrase.length === 0) return;
@@ -33,59 +25,11 @@
     }
   }
 
-  async function openWebbase() {
-    installing = true;
-    result = null;
-    try {
-      const fetchBundle = await fetch(`/app/${data.shortCode}/bundle?t=${data.installToken}`, {
-        headers: { Accept: 'application/json' },
-      });
-      if (!fetchBundle.ok) {
-        result = { ok: false, message: `Could not fetch Webbase: HTTP ${fetchBundle.status}` };
-        installing = false;
-        return;
-      }
-      const bundle = await fetchBundle.json();
-      const install = await fetch('/admin/db-app/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bundle),
-      });
-      const body = await install.json().catch(() => null);
-      if (!install.ok || !body || body.ok !== true) {
-        if (install.status === 405 || install.status === 404 || install.status === 401) {
-          result = {
-            ok: false,
-            message:
-              "This is the public app surface — it doesn't host runtimes directly.\n\n" +
-              'To open ' +
-              data.appName +
-              ' in your own Cell, forward this URL ' +
-              '(including the ?t=… token) to a Webspinner who has their own Cell. ' +
-              'They open it on their Cell, hit Open, and the Webbase lands there.',
-            kind: 'forward',
-          };
-        } else {
-          result = {
-            ok: false,
-            message:
-              body?.detail ||
-              body?.reason ||
-              `Open failed: HTTP ${install.status}. Sign in to your Cell first.`,
-          };
-        }
-      } else {
-        result = {
-          ok: true,
-          appId: body.appId,
-          deployedSurfaceUrl: body.deployedSurfaceUrl,
-        };
-      }
-    } catch (err) {
-      result = { ok: false, message: (err as Error).message };
-    } finally {
-      installing = false;
-    }
+  function openWebbase() {
+    // Navigate to the in-browser runtime — bundle loads on that
+    // page, schema scaffolds into IndexedDB, data stays in the
+    // visitor's browser. No Cell round-trip on use.
+    window.location.href = `/run/${data.shortCode}?t=${data.installToken}`;
   }
 </script>
 
@@ -177,32 +121,8 @@
           ? ''
           : 's'} into a Cell and expires on {new Date(data.expiresAt).toLocaleDateString()}.
       </p>
-      <button class="install-btn" onclick={openWebbase} disabled={installing}>
-        {installing ? 'Opening…' : 'Open this Webbase'}
-      </button>
+      <button class="install-btn" onclick={openWebbase}> Open this Webbase </button>
     </footer>
-
-    {#if result}
-      {#if result.ok}
-        <div class="app-result app-result--ok">
-          <h3>Opened.</h3>
-          <p>Your Cell now has its own instance of <em>{data.appName}</em>.</p>
-          {#if result.appId}
-            <p>App id: <code>{result.appId}</code></p>
-          {/if}
-        </div>
-      {:else if result.kind === 'forward'}
-        <div class="app-result app-result--forward">
-          <h3>Forward this link to open</h3>
-          <p style="white-space: pre-line;">{result.message}</p>
-        </div>
-      {:else}
-        <div class="app-result app-result--err">
-          <h3>Could not open</h3>
-          <p>{result.message}</p>
-        </div>
-      {/if}
-    {/if}
   {/if}
 </section>
 
