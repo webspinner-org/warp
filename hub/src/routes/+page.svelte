@@ -117,21 +117,20 @@
     aria-label="Press any key to enter Webspinner Hub"
   >
     <article class="splash-card">
-      <div class="splash-content">
-        <p class="splash-tag">Webspinner ECO System</p>
-        <h1 class="splash-title">Webspinner <span class="accent">Hub</span></h1>
-        <p class="splash-lede">Where knowledge is gathered. Where innovation is built.</p>
-        <button
-          class="splash-cta"
-          type="button"
-          onclick={(e) => {
-            e.stopPropagation();
-            dismissSplash();
-          }}
-        >
-          Press any key to enter
-        </button>
-      </div>
+      <!-- The splash image is a complete composition (wordmark, tagline,
+           and ECO System marks are all in the artwork). Don't overlay
+           any duplicate text; just a small "press any key" hint along
+           the bottom edge. -->
+      <button
+        class="splash-cta"
+        type="button"
+        onclick={(e) => {
+          e.stopPropagation();
+          dismissSplash();
+        }}
+      >
+        Press any key to enter
+      </button>
     </article>
   </div>
 {/if}
@@ -333,88 +332,58 @@
   }
 
   .splash-card {
-    /* sized smaller than the viewport — page peeks through around it */
-    width: min(900px, 88vw);
+    /* Sized smaller than the viewport — page peeks through around it.
+     * NO gradient overlay, NO duplicate text: the splash image is a
+     * complete composition (wordmark, tagline, ECO System marks are
+     * all in the artwork). Show it at full saturation. */
+    position: relative;
+    width: min(960px, 90vw);
     aspect-ratio: 16 / 9;
-    max-height: 82vh;
+    max-height: 84vh;
     border-radius: 16px;
-    border: 1px solid rgba(74, 213, 122, 0.25);
+    border: 1px solid rgba(74, 213, 122, 0.3);
     box-shadow:
       0 24px 60px -20px rgba(0, 0, 0, 0.55),
       0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-    background-image:
-      linear-gradient(180deg, rgba(19, 30, 22, 0.45), rgba(19, 30, 22, 0.78)), url('/splash.png');
+    background-image: url('/splash.png');
     background-size: cover;
     background-position: center;
-    color: #e8e4d4;
-    font-family: var(--font-prose);
-    display: grid;
-    place-items: center;
     overflow: hidden;
+    cursor: pointer;
   }
   :global([data-theme='light']) .splash-card {
-    background-image:
-      linear-gradient(180deg, rgba(240, 237, 224, 0.35), rgba(240, 237, 224, 0.72)),
-      url('/splash.png');
-    color: #1f2e1e;
-    border-color: rgba(42, 138, 74, 0.3);
+    border-color: rgba(42, 138, 74, 0.35);
   }
 
-  .splash-content {
-    text-align: center;
-    padding: clamp(1rem, 3vw, 2rem);
-    max-width: 760px;
-  }
-  .splash-tag {
-    margin: 0 0 0.9rem;
-    font-family: var(--font-mono);
-    font-size: clamp(0.66rem, 1.1vw, 0.78rem);
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: currentColor;
-    opacity: 0.75;
-  }
-  .splash-title {
-    margin: 0 0 0.5rem;
-    font-size: clamp(2rem, 5.5vw, 3.4rem);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: currentColor;
-    line-height: 1.05;
-  }
-  .splash-title .accent {
-    color: #4ad57a;
-  }
-  :global([data-theme='light']) .splash-title .accent {
-    color: #2a8a4a;
-  }
-  .splash-lede {
-    margin: 0 0 1.6rem;
-    font-size: clamp(0.95rem, 1.6vw, 1.1rem);
-    opacity: 0.88;
-  }
+  /* "Press any key to enter" — small pill anchored at the bottom edge
+   * with a narrow blur-scrim only under the hint, so the artwork above
+   * stays untouched. */
   .splash-cta {
     appearance: none;
-    background: transparent;
-    color: currentColor;
-    border: 1px solid currentColor;
+    position: absolute;
+    left: 50%;
+    bottom: clamp(0.9rem, 2.2vw, 1.6rem);
+    transform: translateX(-50%);
+    background: rgba(13, 20, 14, 0.62);
+    color: #e8e4d4;
+    border: 1px solid rgba(232, 228, 212, 0.45);
     border-radius: 999px;
-    padding: 0.6rem 1.3rem;
+    padding: 0.55rem 1.2rem;
     font-family: var(--font-mono);
-    font-size: clamp(0.7rem, 1vw, 0.78rem);
-    letter-spacing: 0.16em;
+    font-size: clamp(0.66rem, 0.95vw, 0.74rem);
+    letter-spacing: 0.18em;
     text-transform: uppercase;
     cursor: pointer;
+    backdrop-filter: blur(6px);
     transition:
       background 120ms ease,
-      transform 120ms ease;
+      transform 120ms ease,
+      border-color 120ms ease;
   }
   .splash-cta:hover {
-    background: rgba(74, 213, 122, 0.16);
-    transform: translateY(-1px);
-  }
-  :global([data-theme='light']) .splash-cta:hover {
-    background: rgba(42, 138, 74, 0.12);
+    background: rgba(74, 213, 122, 0.32);
+    border-color: rgba(232, 228, 212, 0.85);
+    transform: translate(-50%, -1px);
   }
 
   /* Login form inside the login-card */

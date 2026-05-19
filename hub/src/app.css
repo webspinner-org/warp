@@ -304,42 +304,21 @@ code,
   border: 1px solid var(--rule);
 }
 
-/* ── Login surface — splash backdrop ── */
+/* ── Login surface ──
+ * No splash-image backdrop on the login page itself. The splash
+ * lives in a modal card (see +page.svelte); the page behind it
+ * is just the clean theme background, peeking around the card's
+ * edges. */
 
 .login-shell {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 1.4rem;
-  position: relative;
   background: var(--bg);
-  overflow: hidden;
-}
-.login-shell::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: url('/splash.png');
-  background-size: cover;
-  background-position: center;
-  opacity: 0.45;
-  filter: saturate(1.1);
-  pointer-events: none;
-}
-.login-shell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(19, 30, 22, 0.55) 0%, rgba(19, 30, 22, 0.85) 100%);
-  pointer-events: none;
-}
-[data-theme='light'] .login-shell::after {
-  background: linear-gradient(180deg, rgba(240, 237, 224, 0.55) 0%, rgba(240, 237, 224, 0.85) 100%);
 }
 
 .login-card {
-  position: relative;
-  z-index: 1;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
