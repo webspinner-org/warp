@@ -128,16 +128,13 @@
         {:else}
           <ul class="tree-list">
             {#each data.result.children as child (child.slug)}
+              {@const childHref =
+                (data.result.segments.length > 0 ? '/' + data.result.segments.join('/') : '') +
+                '/' +
+                child.slug}
               <li class="tree-row">
                 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-                <a
-                  class="tree-row-link"
-                  href={(data.result.segments.length > 0
-                    ? '/' + data.result.segments.join('/')
-                    : '') +
-                    '/' +
-                    child.slug}
-                >
+                <a class="tree-row-link" href={childHref}>
                   {#if child.kind === 'folder'}
                     <span class="tree-icon">📁</span>
                   {:else}

@@ -99,7 +99,7 @@ export async function listTreeAt(segments: readonly string[]): Promise<TreeNode[
     const out: TreeNode[] = [];
     for (const s of sub) {
       const dir = path.join(STORAGE_DIR, first, s.slug);
-      let count = 0;
+      let count: number;
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         count = entries.filter((e) => e.isDirectory()).length;
