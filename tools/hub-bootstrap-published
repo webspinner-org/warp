@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+#
+# tools/hub-bootstrap-published — one-shot backfill of published
+# Webbase artifacts into the hub.
+#
+# Reads every row in the demo Cell's wp_app_packages and writes each
+# as a directory under
+# $HUB_STORAGE_DIR/published-work/webbase-app/<shortCode>/.
+# Subsequent publishes auto-sync via the demo Loom's side-write in
+# the publish endpoint; this tool just gets existing rows visible
+# the first time.
+#
+# Does NOT touch try-webspinner-projects/webbase-apps (work-in-process).
+# Wipes the published-work subtree only.
+#
+# Run on Kepler.
+
+set -euo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+
+HUB_STORAGE_DIR="${HUB_STORAGE_DIR:-$HOME/webspinner-hub/storage}"
+DEMO_PB="${WARP_PB_URL:-http://127.0.0.1:8091}"
+APP_BASE="${WARP_PUBLIC_APP_BASE:-https://app.webspinner.ai}"
+
+PLIST_INFO=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom-demo" 2>/dev/null || true)
+DEMO_EMAIL=$(echo "$PLIST_INFO" | sed -n 's/.*WARP_PB_EMAIL *=> *\(.*\) *$/\1/p' | tr -d ' ')
+DEMO_PASS=$(echo "$PLIST_INFO" | sed -n 's/.*WARP_PB_PASSWORD *=> *\(.*\) *$/\1/p' | tr -d ' ')
+DEMO_CELL_NAME=$(echo "$PLIST_INFO" | sed -n 's/.*WARP_CELL_NAME *=> *\(.*\) *$/\1/p' | tr -d ' ')
+DEMO_CELL_NAME=${DEMO_CELL_NAME:-Webspinner Cell}
+
+if [ -z "$DEMO_EMAIL" ] || [ -z "$DEMO_PASS" ]; then
+  echo "[bootstrap] couldn't read demo Loom PB creds from launchd plist" >&2
+  exit 1
+fi
+
+PW_DIR="$HUB_STORAGE_DIR/published-work/webbase-app"
+echo "[bootstrap] hub storage = $HUB_STORAGE_DIR"
+echo "[bootstrap] demo PB     = $DEMO_PB"
+echo "[bootstrap] wiping prior contents of $PW_DIR"
+rm -rf "$PW_DIR"
+mkdir -p "$PW_DIR"
+
+AUTH_JSON=$(curl -sS -X POST "$DEMO_PB/api/collections/_superusers/auth-with-password" \
+  -H 'Content-Type: application/json' \
+  --data-binary @<(printf '{"identity":"%s","password":"%s"}' "$DEMO_EMAIL" "$DEMO_PASS"))
+TOKEN=$(echo "$AUTH_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+[ -z "$TOKEN" ] && { echo "[bootstrap] auth failed: $AUTH_JSON" >&2; exit 1; }
+
+ROWS=$(curl -sS -H "Authorization: $TOKEN" \
+  "$DEMO_PB/api/collections/wp_app_packages/records?perPage=500&sort=-created")
+
+export HUB_STORAGE_DIR DEMO_CELL_NAME APP_BASE
+python3 - <<PY
+import json, os, pathlib
+rows = json.loads('''$ROWS''').get("items", [])
+root = pathlib.Path(os.environ["HUB_STORAGE_DIR"]) / "published-work" / "webbase-app"
+root.mkdir(parents=True, exist_ok=True)
+demo_cell = os.environ.get("DEMO_CELL_NAME", "Webspinner Cell")
+app_base = os.environ.get("APP_BASE", "https://app.webspinner.ai")
+
+written = 0
+for r in rows:
+  short = r.get("short_code")
+  if not short:
+    continue
+  bundle = r.get("wsap_json") or {}
+  created_from = (bundle.get("createdFrom") or {})
+  created_by = (bundle.get("createdBy") or {})
+  install_token = r.get("install_token") or ""
+  meta = {
+    "shortCode": short,
+    "appName": r.get("app_name") or created_from.get("appName") or "(unnamed Webbase)",
+    "domain": r.get("domain") or "",
+    "version": r.get("version") or 1,
+    "senderEmail": r.get("sender_email") or "",
+    "cellName": created_by.get("cellName") or demo_cell,
+    "cellKeyFingerprint": r.get("cell_key_fingerprint") or created_by.get("cellKeyFingerprint") or "",
+    "originAppId": r.get("origin_app_id") or created_from.get("originAppId") or "",
+    "patronSentence": created_from.get("patronSentence") or "",
+    "hasPassphrase": bool(r.get("passphrase_hash")),
+    "openUrl": f"{app_base}/app/{short}?t={install_token}",
+    "installCount": r.get("install_count") or 0,
+    "maxInstalls": r.get("max_installs") or 5,
+    "expiresAt": r.get("expires_at") or "",
+    "createdAt": r.get("created") or "",
+    "updatedAt": r.get("updated") or r.get("created") or "",
+  }
+  pkg = root / short
+  pkg.mkdir(parents=True, exist_ok=True)
+  (pkg / "webbase.json").write_text(json.dumps(bundle, indent=2))
+  (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
+  written += 1
+  print(f"  wrote {short} — {meta['appName']} (v{meta['version']})")
+
+print(f"[bootstrap] wrote {written} published webbase(s) into {root}")
+PY

@@ -41,12 +41,32 @@ export interface ProjectMeta {
   readonly resumeUrl: string;
 }
 
+export interface PublishedWebbaseMeta {
+  readonly shortCode: string;
+  readonly appName: string;
+  readonly domain: string;
+  readonly version: number;
+  readonly senderEmail: string;
+  readonly cellName: string;
+  readonly cellKeyFingerprint: string;
+  readonly originAppId: string;
+  readonly patronSentence: string;
+  readonly hasPassphrase: boolean;
+  readonly openUrl: string;
+  readonly installCount: number;
+  readonly maxInstalls: number;
+  readonly expiresAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export interface TreeNode {
   readonly slug: string;
   readonly displayName: string;
-  readonly kind: 'folder' | 'project';
+  readonly kind: 'folder' | 'project' | 'published-webbase';
   readonly childCount?: number;
-  readonly meta?: ProjectMeta;
+  readonly projectMeta?: ProjectMeta;
+  readonly publishedMeta?: PublishedWebbaseMeta;
 }
 
 const STORAGE_DIR =
@@ -54,10 +74,12 @@ const STORAGE_DIR =
 
 const ROOT_FOLDERS = [
   { slug: 'try-webspinner-projects', displayName: 'Try Webspinner Projects' },
+  { slug: 'published-work', displayName: 'Published Work' },
 ] as const;
 
 const SUB_FOLDERS: Record<string, { slug: string; displayName: string }[]> = {
   'try-webspinner-projects': [{ slug: 'webbase-apps', displayName: 'Webbase Apps' }],
+  'published-work': [{ slug: 'webbase-app', displayName: 'Webbase App' }],
 };
 
 export function storageDir(): string {
@@ -111,8 +133,12 @@ export async function listTreeAt(segments: readonly string[]): Promise<TreeNode[
     return out;
   }
 
-  // Webbase Apps — list project directories.
-  if (segments.length === 2 && segments[1] === 'webbase-apps') {
+  // Try Webspinner Projects → Webbase Apps — list project directories.
+  if (
+    segments.length === 2 &&
+    segments[0] === 'try-webspinner-projects' &&
+    segments[1] === 'webbase-apps'
+  ) {
     const dir = path.join(STORAGE_DIR, first, 'webbase-apps');
     if (!(await dirExists(dir))) return [];
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -126,14 +152,47 @@ export async function listTreeAt(segments: readonly string[]): Promise<TreeNode[
         slug: e.name,
         displayName: meta.appName || e.name,
         kind: 'project',
-        meta,
+        projectMeta: meta,
       });
     }
-    out.sort((a, b) => (b.meta?.updatedAt ?? '').localeCompare(a.meta?.updatedAt ?? ''));
+    out.sort((a, b) =>
+      (b.projectMeta?.updatedAt ?? '').localeCompare(a.projectMeta?.updatedAt ?? ''),
+    );
+    return out;
+  }
+
+  // Published Work → Webbase App — list published-webbase directories.
+  if (segments.length === 2 && segments[0] === 'published-work' && segments[1] === 'webbase-app') {
+    const dir = path.join(STORAGE_DIR, 'published-work', 'webbase-app');
+    if (!(await dirExists(dir))) return [];
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const dirs = entries.filter((e) => e.isDirectory());
+    const out: TreeNode[] = [];
+    for (const e of dirs) {
+      const metaPath = path.join(dir, e.name, 'meta.json');
+      const meta = await safeReadJson<PublishedWebbaseMeta>(metaPath);
+      if (!meta) continue;
+      out.push({
+        slug: e.name,
+        displayName: meta.appName || e.name,
+        kind: 'published-webbase',
+        publishedMeta: meta,
+      });
+    }
+    out.sort((a, b) =>
+      (b.publishedMeta?.updatedAt ?? '').localeCompare(a.publishedMeta?.updatedAt ?? ''),
+    );
     return out;
   }
 
   return [];
+}
+
+export async function getPublishedWebbaseMeta(
+  shortCode: string,
+): Promise<PublishedWebbaseMeta | null> {
+  const metaPath = path.join(STORAGE_DIR, 'published-work', 'webbase-app', shortCode, 'meta.json');
+  return safeReadJson<PublishedWebbaseMeta>(metaPath);
 }
 
 export async function getProjectMeta(sessionId: string): Promise<ProjectMeta | null> {

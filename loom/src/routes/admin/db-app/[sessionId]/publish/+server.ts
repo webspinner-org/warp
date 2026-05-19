@@ -24,6 +24,7 @@ import { findAppBySessionId } from '$lib/server/database-applications.js';
 import { ensureCellIdentity, loadCellKeypair } from '$lib/server/identity.js';
 import { buildWsapBundle, signWsapBundle } from '$lib/server/wsap.js';
 import { upsertPackage } from '$lib/server/wsap-registry.js';
+import { writePublishedWebbaseToHub } from '$lib/server/hub-storage-write.js';
 import { verifyTicket } from '$lib/server/email-verify.js';
 import { sendEmail } from '$lib/server/email-adapter.js';
 import type { RequestHandler } from './$types.js';
@@ -150,9 +151,36 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
     return json({ ok: false, reason: stored.reason }, { status: 500 });
   }
 
-  // 4. Email the Open link.
+  // 4. Side-write the published webbase into the hub catalog under
+  // published-work/webbase-app/<shortCode>/. Failure is swallowed —
+  // the wp_app_packages row + email still go through; the hub
+  // re-syncs on next publish or via the bootstrap tool.
   const appBase = env['WARP_PUBLIC_APP_BASE'] ?? 'https://app.webspinner.ai';
   const openUrl = `${appBase}/app/${stored.shortCode}?t=${stored.installToken}`;
+  const nowIso = new Date().toISOString();
+  await writePublishedWebbaseToHub({
+    meta: {
+      shortCode: stored.shortCode,
+      appName: appName || '(unnamed Webbase)',
+      domain,
+      version: stored.version,
+      senderEmail: patronEmail,
+      cellName: env['WARP_CELL_NAME'] ?? 'Webspinner Cell',
+      cellKeyFingerprint: ensure.value.identity.fingerprint,
+      originAppId: row.appId,
+      patronSentence: row.patronSentence,
+      hasPassphrase: passphrase !== undefined && passphrase.length > 0,
+      openUrl,
+      installCount: 0,
+      maxInstalls: 5,
+      expiresAt: stored.expiresAt,
+      createdAt: stored.action === 'created' ? nowIso : (row.builtAt ?? nowIso),
+      updatedAt: nowIso,
+    },
+    bundle: signed,
+  });
+
+  // 5. Email the Open link.
   const displayName = appName || 'your Webbase';
 
   const isUpdate = stored.action === 'updated';

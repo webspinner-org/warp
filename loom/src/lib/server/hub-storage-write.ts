@@ -73,3 +73,57 @@ export async function writeProjectToHub(input: {
     return { ok: false, reason };
   }
 }
+
+/* ──────────────────────────────────────────────────────────────
+ * Published Webbase — publish-time artifact.
+ *
+ * Lives under $HUB_STORAGE_DIR/published-work/webbase-app/<shortCode>/
+ * Catalogs every patron Publish. Distinct from work-in-process
+ * projects (those live under try-webspinner-projects/webbase-apps).
+ * ────────────────────────────────────────────────────────────── */
+
+export interface PublishedWebbaseMeta {
+  readonly shortCode: string;
+  readonly appName: string;
+  readonly domain: string;
+  readonly version: number;
+  readonly senderEmail: string;
+  readonly cellName: string;
+  readonly cellKeyFingerprint: string;
+  readonly originAppId: string;
+  readonly patronSentence: string;
+  readonly hasPassphrase: boolean;
+  readonly openUrl: string;
+  readonly installCount: number;
+  readonly maxInstalls: number;
+  readonly expiresAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+function dirForPublished(shortCode: string): string {
+  return path.join(storageRoot(), 'published-work', 'webbase-app', shortCode);
+}
+
+export async function writePublishedWebbaseToHub(input: {
+  meta: PublishedWebbaseMeta;
+  bundle: unknown;
+}): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
+  try {
+    const dir = dirForPublished(input.meta.shortCode);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'webbase.json'),
+      JSON.stringify(input.bundle, null, 2),
+      'utf8',
+    );
+    await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(input.meta, null, 2), 'utf8');
+    return { ok: true, path: dir };
+  } catch (err) {
+    const reason = (err as Error).message;
+    process.stderr.write(
+      `[hub-storage-write] published failed for ${input.meta.shortCode}: ${reason}\n`,
+    );
+    return { ok: false, reason };
+  }
+}

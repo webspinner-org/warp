@@ -14,10 +14,12 @@ import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types.js';
 import {
   getProjectMeta,
+  getPublishedWebbaseMeta,
   listTreeAt,
   readProjectSource,
   type ProjectMeta,
   type ProjectSource,
+  type PublishedWebbaseMeta,
   type TreeNode,
 } from '$lib/server/hub-storage.js';
 
@@ -36,13 +38,23 @@ interface ProjectResult {
   readonly source: ProjectSource | null;
 }
 
+interface PublishedResult {
+  readonly kind: 'published-webbase';
+  readonly segments: readonly string[];
+  readonly breadcrumbs: readonly { slug: string; displayName: string; href: string }[];
+  readonly meta: PublishedWebbaseMeta;
+}
+
 export type CatchAllData =
   | { user: App.Locals['user']; authed: boolean; result: FolderResult }
-  | { user: App.Locals['user']; authed: boolean; result: ProjectResult };
+  | { user: App.Locals['user']; authed: boolean; result: ProjectResult }
+  | { user: App.Locals['user']; authed: boolean; result: PublishedResult };
 
 const DISPLAY_NAMES: Record<string, string> = {
   'try-webspinner-projects': 'Try Webspinner Projects',
   'webbase-apps': 'Webbase Apps',
+  'published-work': 'Published Work',
+  'webbase-app': 'Webbase App',
 };
 
 function breadcrumbsFor(
@@ -82,6 +94,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         breadcrumbs: breadcrumbsFor(segments, meta.appName),
         meta,
         source,
+      },
+    };
+  }
+
+  if (segments.length === 3 && segments[0] === 'published-work' && segments[1] === 'webbase-app') {
+    const meta = await getPublishedWebbaseMeta(segments[2]!);
+    if (!meta) throw error(404, 'Published Webbase not found in the hub.');
+    return {
+      user: locals.user,
+      authed: true,
+      result: {
+        kind: 'published-webbase' as const,
+        segments,
+        breadcrumbs: breadcrumbsFor(segments, meta.appName || segments[2]!),
+        meta,
       },
     };
   }

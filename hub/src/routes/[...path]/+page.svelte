@@ -39,7 +39,9 @@
 
 <svelte:head>
   <title
-    >Webspinner Hub · {data.result.kind === 'project' ? data.result.meta.appName : 'root'}</title
+    >Webspinner Hub · {data.result.kind === 'project' || data.result.kind === 'published-webbase'
+      ? data.result.meta.appName
+      : 'root'}</title
   >
 </svelte:head>
 
@@ -145,9 +147,17 @@
                     <span class="tree-count mono"
                       >{child.childCount} {child.childCount === 1 ? 'item' : 'items'}</span
                     >
-                  {:else if child.meta}
+                  {:else if child.projectMeta}
                     <span class="tree-meta mono"
-                      >{child.meta.status} · {bytesRelative(child.meta.updatedAt)}</span
+                      >{child.projectMeta.status} · {bytesRelative(
+                        child.projectMeta.updatedAt,
+                      )}</span
+                    >
+                  {:else if child.publishedMeta}
+                    <span class="tree-meta mono"
+                      >v{child.publishedMeta.version} · {bytesRelative(
+                        child.publishedMeta.updatedAt,
+                      )}</span
                     >
                   {/if}
                 </a>
@@ -155,7 +165,7 @@
             {/each}
           </ul>
         {/if}
-      {:else}
+      {:else if data.result.kind === 'project'}
         <!-- Project leaf detail — work-in-process Webbase source -->
         {@const parentHref = '/' + data.result.segments.slice(0, -1).join('/')}
         <article class="webbase-detail">
@@ -213,6 +223,71 @@
                 )})
               </dd>
             {/if}
+            <dt>Last updated</dt>
+            <dd>
+              {new Date(data.result.meta.updatedAt).toLocaleString()} ({bytesRelative(
+                data.result.meta.updatedAt,
+              )})
+            </dd>
+          </dl>
+        </article>
+      {:else}
+        <!-- Published Webbase leaf detail — publish-time artifact -->
+        {@const parentHref = '/' + data.result.segments.slice(0, -1).join('/')}
+        <article class="webbase-detail">
+          <header class="wb-head">
+            <div class="wb-head-l">
+              <h1>{data.result.meta.appName}</h1>
+              <div class="wb-badges">
+                {#if data.result.meta.domain}
+                  <span class="badge-domain mono">{data.result.meta.domain}</span>
+                {/if}
+                <span class="badge-version mono">v{data.result.meta.version}</span>
+                {#if data.result.meta.hasPassphrase}
+                  <span class="badge-locked" title="Protected by a passphrase">🔒</span>
+                {/if}
+              </div>
+            </div>
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+            <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase App">
+              <span class="wb-close-x" aria-hidden="true">×</span>
+              <span class="wb-close-label">Close</span>
+            </a>
+          </header>
+
+          {#if data.result.meta.patronSentence}
+            <p class="wb-sentence">"{data.result.meta.patronSentence}"</p>
+          {/if}
+
+          <div class="wb-resume">
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+            <a class="btn-resume" href={data.result.meta.openUrl} target="_blank" rel="noopener">
+              Open Webbase →
+            </a>
+            <span class="resume-hint mono">{data.result.meta.openUrl}</span>
+          </div>
+
+          <dl class="wb-meta">
+            <dt>Short code</dt>
+            <dd><code>{data.result.meta.shortCode}</code></dd>
+            <dt>Published by</dt>
+            <dd>{data.result.meta.senderEmail}</dd>
+            <dt>Author Cell</dt>
+            <dd>{data.result.meta.cellName}</dd>
+            <dt>Cell key fingerprint</dt>
+            <dd><code>{data.result.meta.cellKeyFingerprint}</code></dd>
+            <dt>Origin app id</dt>
+            <dd><code>{data.result.meta.originAppId}</code></dd>
+            <dt>Installs</dt>
+            <dd>{data.result.meta.installCount} / {data.result.meta.maxInstalls}</dd>
+            <dt>Expires</dt>
+            <dd>{new Date(data.result.meta.expiresAt).toLocaleDateString()}</dd>
+            <dt>First published</dt>
+            <dd>
+              {new Date(data.result.meta.createdAt).toLocaleString()} ({bytesRelative(
+                data.result.meta.createdAt,
+              )})
+            </dd>
             <dt>Last updated</dt>
             <dd>
               {new Date(data.result.meta.updatedAt).toLocaleString()} ({bytesRelative(
