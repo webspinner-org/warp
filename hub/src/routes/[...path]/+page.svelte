@@ -97,13 +97,37 @@
   <main class="hub-main">
     <div class="hub-content">
       <nav class="crumbs" aria-label="Breadcrumb">
+        <!-- eslint-disable svelte/no-navigation-without-resolve -->
         {#each data.result.breadcrumbs as bc, i (bc.href)}
           {#if i > 0}<span class="sep" aria-hidden="true">/</span>{/if}
-          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-          <a class="crumb" class:active={i === data.result.breadcrumbs.length - 1} href={bc.href}
-            >{bc.displayName}</a
-          >
+          {#if bc.slug === '/'}
+            <a
+              class="crumb crumb-home"
+              class:active={i === data.result.breadcrumbs.length - 1}
+              href={bc.href}
+              aria-label="Hub root"
+              title="Hub root"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 11.5 12 4l9 7.5" />
+                <path d="M5 10v9.5h4.5V14h5v5.5H19V10" />
+              </svg>
+            </a>
+          {:else}
+            <a class="crumb" class:active={i === data.result.breadcrumbs.length - 1} href={bc.href}
+              >{bc.displayName}</a
+            >
+          {/if}
         {/each}
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
       </nav>
 
       {#if data.result.kind === 'folder'}

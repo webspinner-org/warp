@@ -265,6 +265,27 @@ code,
   opacity: 0.6;
   user-select: none;
 }
+.crumbs .crumb-home {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  border-bottom: 0 !important;
+  color: var(--ink-soft);
+}
+.crumbs .crumb-home svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+.crumbs .crumb-home:hover {
+  color: var(--accent);
+  background: var(--highlight);
+  border-bottom: 0;
+}
+.crumbs .crumb-home.active {
+  color: var(--ink);
+}
 
 /* ── Empty-state card ── */
 

@@ -272,7 +272,21 @@
     <main class="hub-main">
       <div class="hub-content">
         <nav class="crumbs" aria-label="Breadcrumb">
-          <span class="crumb active">/</span>
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+          <a class="crumb crumb-home active" href="/" aria-label="Hub root" title="Hub root">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 11.5 12 4l9 7.5" />
+              <path d="M5 10v9.5h4.5V14h5v5.5H19V10" />
+            </svg>
+          </a>
         </nav>
 
         {#if data.children.length === 0}
