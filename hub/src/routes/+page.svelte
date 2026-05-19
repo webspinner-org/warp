@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
   import type { PageData } from './$types.js';
   let { data }: { data: PageData } = $props();
 
@@ -81,9 +82,10 @@
         phase = 'code';
         return;
       }
-      // Reload so the cookie picks up server-side and we transition
-      // into the authed view via locals.user.
-      window.location.reload();
+      // The warp_hub cookie is now set. Re-run the server load() so
+      // data.authed flips to true; don't do a full reload, which
+      // would resurrect the splash overlay we just dismissed.
+      await invalidateAll();
     } catch (err) {
       loginError = (err as Error).message;
       phase = 'code';
