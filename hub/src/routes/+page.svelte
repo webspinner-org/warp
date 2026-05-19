@@ -100,10 +100,11 @@
   <title>Webspinner Hub</title>
 </svelte:head>
 
-<!-- Splash overlay — always shown first; dismissed by any key or click -->
+<!-- Splash overlay — centered modal card sized smaller than the landing
+     page (per feedback_splash_overlay). Dismissed by any key or click. -->
 {#if splashOpen}
   <div
-    class="splash-overlay"
+    class="splash-backdrop"
     role="button"
     tabindex="0"
     onclick={dismissSplash}
@@ -115,21 +116,23 @@
     }}
     aria-label="Press any key to enter Webspinner Hub"
   >
-    <div class="splash-content">
-      <p class="splash-tag">Webspinner ECO System</p>
-      <h1 class="splash-title">Webspinner <span class="accent">Hub</span></h1>
-      <p class="splash-lede">Where knowledge is gathered. Where innovation is built.</p>
-      <button
-        class="splash-cta"
-        type="button"
-        onclick={(e) => {
-          e.stopPropagation();
-          dismissSplash();
-        }}
-      >
-        Press any key to enter
-      </button>
-    </div>
+    <article class="splash-card">
+      <div class="splash-content">
+        <p class="splash-tag">Webspinner ECO System</p>
+        <h1 class="splash-title">Webspinner <span class="accent">Hub</span></h1>
+        <p class="splash-lede">Where knowledge is gathered. Where innovation is built.</p>
+        <button
+          class="splash-cta"
+          type="button"
+          onclick={(e) => {
+            e.stopPropagation();
+            dismissSplash();
+          }}
+        >
+          Press any key to enter
+        </button>
+      </div>
+    </article>
   </div>
 {/if}
 
@@ -300,29 +303,25 @@
 {/if}
 
 <style>
-  /* Splash overlay: full-screen splash.png with darker scrim and centered
-   * call-to-action. Press any key (or click) anywhere dismisses. */
-  .splash-overlay {
+  /* Splash overlay — centered MODAL card sized smaller than the viewport
+   * (per feedback_splash_overlay). The page (login form or empty root)
+   * remains visible around the splash card's edges. Backdrop is a
+   * subtle scrim catching clicks/keypresses to dismiss. */
+  .splash-backdrop {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background-image:
-      linear-gradient(180deg, rgba(19, 30, 22, 0.55), rgba(19, 30, 22, 0.85)), url('/splash.png');
-    background-size: cover;
-    background-position: center;
     display: grid;
     place-items: center;
+    padding: clamp(1rem, 5vw, 3rem);
+    background: rgba(13, 20, 14, 0.55);
+    backdrop-filter: blur(2px);
     cursor: pointer;
     user-select: none;
-    color: #e8e4d4;
-    font-family: var(--font-prose);
-    animation: splash-in 240ms ease;
+    animation: splash-in 220ms ease;
   }
-  :global([data-theme='light']) .splash-overlay {
-    background-image:
-      linear-gradient(180deg, rgba(240, 237, 224, 0.45), rgba(240, 237, 224, 0.78)),
-      url('/splash.png');
-    color: #1f2e1e;
+  :global([data-theme='light']) .splash-backdrop {
+    background: rgba(31, 46, 30, 0.35);
   }
   @keyframes splash-in {
     from {
@@ -332,25 +331,56 @@
       opacity: 1;
     }
   }
+
+  .splash-card {
+    /* sized smaller than the viewport — page peeks through around it */
+    width: min(900px, 88vw);
+    aspect-ratio: 16 / 9;
+    max-height: 82vh;
+    border-radius: 16px;
+    border: 1px solid rgba(74, 213, 122, 0.25);
+    box-shadow:
+      0 24px 60px -20px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    background-image:
+      linear-gradient(180deg, rgba(19, 30, 22, 0.45), rgba(19, 30, 22, 0.78)), url('/splash.png');
+    background-size: cover;
+    background-position: center;
+    color: #e8e4d4;
+    font-family: var(--font-prose);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  :global([data-theme='light']) .splash-card {
+    background-image:
+      linear-gradient(180deg, rgba(240, 237, 224, 0.35), rgba(240, 237, 224, 0.72)),
+      url('/splash.png');
+    color: #1f2e1e;
+    border-color: rgba(42, 138, 74, 0.3);
+  }
+
   .splash-content {
     text-align: center;
-    padding: 1.5rem;
+    padding: clamp(1rem, 3vw, 2rem);
+    max-width: 760px;
   }
   .splash-tag {
-    margin: 0 0 1rem;
+    margin: 0 0 0.9rem;
     font-family: var(--font-mono);
-    font-size: 0.78rem;
+    font-size: clamp(0.66rem, 1.1vw, 0.78rem);
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: currentColor;
-    opacity: 0.7;
+    opacity: 0.75;
   }
   .splash-title {
-    margin: 0 0 0.6rem;
-    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    margin: 0 0 0.5rem;
+    font-size: clamp(2rem, 5.5vw, 3.4rem);
     font-weight: 600;
     letter-spacing: -0.01em;
     color: currentColor;
+    line-height: 1.05;
   }
   .splash-title .accent {
     color: #4ad57a;
@@ -359,9 +389,9 @@
     color: #2a8a4a;
   }
   .splash-lede {
-    margin: 0 0 2rem;
-    font-size: 1.05rem;
-    opacity: 0.85;
+    margin: 0 0 1.6rem;
+    font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+    opacity: 0.88;
   }
   .splash-cta {
     appearance: none;
@@ -369,16 +399,19 @@
     color: currentColor;
     border: 1px solid currentColor;
     border-radius: 999px;
-    padding: 0.65rem 1.4rem;
+    padding: 0.6rem 1.3rem;
     font-family: var(--font-mono);
-    font-size: 0.78rem;
+    font-size: clamp(0.7rem, 1vw, 0.78rem);
     letter-spacing: 0.16em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: background 120ms ease;
+    transition:
+      background 120ms ease,
+      transform 120ms ease;
   }
   .splash-cta:hover {
     background: rgba(74, 213, 122, 0.16);
+    transform: translateY(-1px);
   }
   :global([data-theme='light']) .splash-cta:hover {
     background: rgba(42, 138, 74, 0.12);
