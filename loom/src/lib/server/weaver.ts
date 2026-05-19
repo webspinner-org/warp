@@ -3507,7 +3507,11 @@ async function databaseAppRefine(
   const clarifications = Array.isArray(parsed['clarifications'])
     ? (parsed['clarifications'] as readonly Record<string, unknown>[]).slice(0, 8)
     : [];
-  const readyToBuild = parsed['readyToBuild'] === true;
+  // If the model said "not ready" but gave zero clarifications, treat
+  // it as ready. Otherwise the patron is stuck — no questions to
+  // answer, no Build button. The saner interpretation of an empty
+  // clarifications array is "I have nothing more to ask."
+  const readyToBuild = parsed['readyToBuild'] === true || clarifications.length === 0;
   const finalPhase: 'refining' | 'ready' = readyToBuild ? 'ready' : 'refining';
 
   const nowIso = new Date().toISOString();
