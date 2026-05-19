@@ -44,8 +44,8 @@ sleep 1
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 sleep 2
 
-echo "[deploy-hub] smoking 127.0.0.1:3020/login"
-if curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3020/login" | grep -qE '^(200|302)$'; then
+echo "[deploy-hub] smoking 127.0.0.1:3020/"
+if curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3020/" | grep -qE '^(200|302)$'; then
   echo "[deploy-hub] hub is up"
 else
   code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3020/login" || echo 0)

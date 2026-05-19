@@ -3,17 +3,32 @@
 <!--
   Webspinner Hub — launchd user agent.
   Serves the hub UX on 127.0.0.1:3020, behind the webspinner-prod
-  Cloudflare tunnel as hub.webspinner.ai. Source lives in
-  ~/warp/hub/ (synced from Spindle).
+  Cloudflare tunnel as hub.webspinner.ai.
 
-  Required env vars (set below):
-    WARP_VAULT_MASTER_KEY  — shared with the Foundation Loom; signs
-                             the warp_hub session cookie.
-    GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
-    GOOGLE_OAUTH_REDIRECT_URI — Google Cloud OAuth web client config.
+  Auth: email + 6-digit code via Resend, gated by a wizard
+  allowlist for the wizard tag. Patron view (non-wizard) is the
+  same empty root for now; ownership scope arrives after MVP.
+
+  Required env vars:
+    WARP_VAULT_MASTER_KEY  — AES-GCM key for warp vault decrypt
+                             and for signing the warp_hub session
+                             cookie. Must match the OPERATOR Loom's
+                             key (so the vault_secrets entries
+                             encrypted by /admin/vault decrypt
+                             cleanly here).
+    WARP_PB_URL            — operator PocketBase URL (port 8090).
+    WARP_PB_EMAIL          — operator PB superuser identity.
+    WARP_PB_PASSWORD       — operator PB superuser password.
+    WARP_FROM_EMAIL        — verified sender domain in Resend.
+    WARP_FROM_NAME         — display name on outbound code emails.
     WARP_HUB_WIZARDS       — comma-separated wizard email allowlist.
-    HUB_STORAGE_DIR        — root of on-disk repo storage (not used in
-                             MVP-1 but reserved for the git wire).
+
+  RESEND_API_KEY is intentionally NOT set: the hub fetches it from
+  the warp vault at startup (entry name `resend-api-key`) via the
+  resolveResendKey() canonical path.
+
+  HUB_STORAGE_DIR is reserved for the git-wire phase; not read by
+  MVP-1.
 -->
 <plist version="1.0">
 <dict>
@@ -38,9 +53,11 @@
     <key>PROTOCOL_HEADER</key><string>x-forwarded-proto</string>
     <key>NODE_ENV</key><string>production</string>
     <key>WARP_VAULT_MASTER_KEY</key><string>SET_AT_INSTALL_TIME</string>
-    <key>GOOGLE_OAUTH_CLIENT_ID</key><string>SET_AT_INSTALL_TIME</string>
-    <key>GOOGLE_OAUTH_CLIENT_SECRET</key><string>SET_AT_INSTALL_TIME</string>
-    <key>GOOGLE_OAUTH_REDIRECT_URI</key><string>https://hub.webspinner.ai/auth/google/callback</string>
+    <key>WARP_PB_URL</key><string>http://127.0.0.1:8090</string>
+    <key>WARP_PB_EMAIL</key><string>SET_AT_INSTALL_TIME</string>
+    <key>WARP_PB_PASSWORD</key><string>SET_AT_INSTALL_TIME</string>
+    <key>WARP_FROM_EMAIL</key><string>foundation@forms.webspinner.org</string>
+    <key>WARP_FROM_NAME</key><string>The Webspinner Foundation</string>
     <key>WARP_HUB_WIZARDS</key><string>johndavidmarx@gmail.com</string>
     <key>HUB_STORAGE_DIR</key><string>/Users/johndavidmarx/webspinner-hub/storage</string>
   </dict>

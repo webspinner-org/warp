@@ -25,10 +25,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const session = getHubSession(event.cookies);
   event.locals.user = session
     ? {
-        sub: session.sub,
         email: session.email,
-        name: session.name,
-        picture: session.picture,
         isWizard: isWizard(session.email),
       }
     : null;

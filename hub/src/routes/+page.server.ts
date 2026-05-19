@@ -1,14 +1,14 @@
 /**
- * GET / — hub root. Requires an authenticated session; redirect
- * unauth visitors to /login. MVP-1: just renders the empty root.
+ * GET / — hub front door. Always renders; the page itself decides
+ * between the splash, the login form, and the empty-root view based
+ * on session state.
  */
 
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) throw redirect(302, '/login');
   return {
+    authed: locals.user !== null,
     user: locals.user,
   };
 };

@@ -1,16 +1,38 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { PageData } from './$types.js';
   let { data }: { data: PageData } = $props();
 
+  let splashOpen = $state(true);
   let theme = $state<'light' | 'dark'>('dark');
-  // Pick up the layout's exposed theme once mounted so the toggle
-  // label matches the active state immediately.
+
+  // ── Login state (only used when !data.authed) ──
+  let phase = $state<'email' | 'code' | 'sending' | 'verifying' | 'done'>('email');
+  let email = $state('');
+  let code = $state('');
+  let loginError = $state<string | null>(null);
+
   $effect(() => {
     if (typeof window !== 'undefined') {
       const t = (window as unknown as { __hubTheme?: { theme: 'light' | 'dark' } }).__hubTheme;
       if (t) theme = t.theme;
     }
   });
+
+  onMount(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!splashOpen) return;
+      if (e.key === 'Escape') return;
+      e.preventDefault();
+      dismissSplash();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  function dismissSplash() {
+    splashOpen = false;
+  }
 
   function toggleTheme() {
     const t = (
@@ -21,106 +43,418 @@
       theme = t.theme === 'dark' ? 'light' : 'dark';
     }
   }
+
+  async function sendCode() {
+    phase = 'sending';
+    loginError = null;
+    try {
+      const r = await fetch('/auth/email/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const b = await r.json().catch(() => null);
+      if (!r.ok || !b?.ok) {
+        loginError = b?.reason ?? `HTTP ${r.status}`;
+        phase = 'email';
+        return;
+      }
+      phase = 'code';
+    } catch (err) {
+      loginError = (err as Error).message;
+      phase = 'email';
+    }
+  }
+
+  async function verifyCode() {
+    phase = 'verifying';
+    loginError = null;
+    try {
+      const r = await fetch('/auth/email/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
+      });
+      const b = await r.json().catch(() => null);
+      if (!r.ok || !b?.ok) {
+        loginError = b?.reason ?? `HTTP ${r.status}`;
+        phase = 'code';
+        return;
+      }
+      // Reload so the cookie picks up server-side and we transition
+      // into the authed view via locals.user.
+      window.location.reload();
+    } catch (err) {
+      loginError = (err as Error).message;
+      phase = 'code';
+    }
+  }
+
+  async function logout() {
+    await fetch('/auth/logout', { method: 'POST' });
+    window.location.reload();
+  }
 </script>
 
 <svelte:head>
   <title>Webspinner Hub</title>
 </svelte:head>
 
-<div class="hub-shell">
-  <header class="hub-bar">
-    <div class="hub-bar-l">
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-      <a class="hub-brand" href="/">
-        <span class="word-w">Webspinner</span><span class="word-h">Hub</span>
-        <span class="sub">root</span>
-      </a>
-    </div>
-    <div class="hub-bar-r">
-      <button class="theme-toggle" type="button" onclick={toggleTheme} aria-label="Toggle theme">
-        {#if theme === 'dark'}
-          <!-- sun icon: switch to light -->
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="4" />
-            <path
-              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-            />
-          </svg>
-          <span>Light</span>
-        {:else}
-          <!-- moon icon: switch to dark -->
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
-          </svg>
-          <span>Dark</span>
-        {/if}
+<!-- Splash overlay — always shown first; dismissed by any key or click -->
+{#if splashOpen}
+  <div
+    class="splash-overlay"
+    role="button"
+    tabindex="0"
+    onclick={dismissSplash}
+    onkeydown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        dismissSplash();
+      }
+    }}
+    aria-label="Press any key to enter Webspinner Hub"
+  >
+    <div class="splash-content">
+      <p class="splash-tag">Webspinner ECO System</p>
+      <h1 class="splash-title">Webspinner <span class="accent">Hub</span></h1>
+      <p class="splash-lede">Where knowledge is gathered. Where innovation is built.</p>
+      <button
+        class="splash-cta"
+        type="button"
+        onclick={(e) => {
+          e.stopPropagation();
+          dismissSplash();
+        }}
+      >
+        Press any key to enter
       </button>
-      <div class="hub-user">
-        {#if data.user.picture}
-          <img class="avatar" src={data.user.picture} alt="" referrerpolicy="no-referrer" />
-        {/if}
-        <span>{data.user.name || data.user.email}</span>
-        {#if data.user.isWizard}
-          <span class="wizard-tag">wizard</span>
-        {/if}
-        <form action="/auth/logout" method="POST">
+    </div>
+  </div>
+{/if}
+
+<!-- Behind-splash content: login form when !authed, empty root when authed -->
+{#if !data.authed}
+  <div class="login-shell">
+    <article class="login-card">
+      <svg
+        class="login-mark"
+        viewBox="0 0 64 64"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 50 L32 18 L52 50 Z" opacity="0.35" />
+        <path d="M18 50 L32 26 L46 50" />
+        <path d="M32 50 V58" />
+        <path d="M26 58 H38" />
+      </svg>
+      <h1>Sign in to the Hub</h1>
+      <p class="lede">Enter your email — we'll send a one-time code.</p>
+
+      {#if phase === 'email' || phase === 'sending'}
+        <form
+          class="login-form"
+          onsubmit={(e) => {
+            e.preventDefault();
+            if (phase !== 'sending') sendCode();
+          }}
+        >
+          <label for="login-email">Email address</label>
+          <input
+            id="login-email"
+            type="email"
+            bind:value={email}
+            required
+            autocomplete="email"
+            placeholder="you@example.com"
+          />
+          <button type="submit" disabled={phase === 'sending' || !email}>
+            {phase === 'sending' ? 'Sending…' : 'Send code'}
+          </button>
+        </form>
+      {:else if phase === 'code' || phase === 'verifying'}
+        <form
+          class="login-form"
+          onsubmit={(e) => {
+            e.preventDefault();
+            if (phase !== 'verifying') verifyCode();
+          }}
+        >
+          <p class="sent-note">Code sent to <strong>{email}</strong>. Check your inbox.</p>
+          <label for="login-code">6-digit code</label>
+          <input
+            id="login-code"
+            inputmode="numeric"
+            pattern={'[0-9]{6}'}
+            maxlength="6"
+            bind:value={code}
+            placeholder="000000"
+          />
+          <button type="submit" disabled={phase === 'verifying' || code.length !== 6}>
+            {phase === 'verifying' ? 'Verifying…' : 'Sign in'}
+          </button>
           <button
-            type="submit"
-            class="signout"
-            style="background:transparent;border:0;cursor:pointer;color:inherit;font:inherit"
-            >sign out</button
+            type="button"
+            class="link"
+            onclick={() => {
+              phase = 'email';
+              code = '';
+              loginError = null;
+            }}>← change email</button
           >
         </form>
+      {/if}
+
+      {#if loginError}<p class="login-error">{loginError}</p>{/if}
+    </article>
+  </div>
+{:else}
+  <div class="hub-shell">
+    <header class="hub-bar">
+      <div class="hub-bar-l">
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+        <a class="hub-brand" href="/">
+          <span class="word-w">Webspinner</span><span class="word-h">Hub</span>
+          <span class="sub">root</span>
+        </a>
       </div>
-    </div>
-  </header>
+      <div class="hub-bar-r">
+        <button class="theme-toggle" type="button" onclick={toggleTheme} aria-label="Toggle theme">
+          {#if theme === 'dark'}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              />
+            </svg>
+            <span>Light</span>
+          {:else}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+            </svg>
+            <span>Dark</span>
+          {/if}
+        </button>
+        <div class="hub-user">
+          <span>{data.user!.email}</span>
+          {#if data.user!.isWizard}
+            <span class="wizard-tag">wizard</span>
+          {/if}
+          <button type="button" class="signout" onclick={logout}>sign out</button>
+        </div>
+      </div>
+    </header>
 
-  <main class="hub-main">
-    <div class="hub-content">
-      <nav class="crumbs" aria-label="Breadcrumb">
-        <span class="crumb active">/</span>
-      </nav>
+    <main class="hub-main">
+      <div class="hub-content">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <span class="crumb active">/</span>
+        </nav>
 
-      <section class="empty-archive">
-        <svg
-          class="empty-mark"
-          viewBox="0 0 64 64"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <!-- Stylized canopy + path: matches the splash -->
-          <path d="M12 50 L32 18 L52 50 Z" opacity="0.35" />
-          <path d="M18 50 L32 26 L46 50" />
-          <path d="M32 50 V58" />
-          <path d="M26 58 H38" />
-        </svg>
-        <h1>The Hub is empty.</h1>
-        <p>
-          Nothing is stored at the root yet. Source code, Spinners, manuscripts, and other artifacts
-          will appear here as they're pushed.
-        </p>
-        <div class="hint mono">root · {data.user.email}</div>
-      </section>
-    </div>
-  </main>
-</div>
+        <section class="empty-archive">
+          <svg
+            class="empty-mark"
+            viewBox="0 0 64 64"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 50 L32 18 L52 50 Z" opacity="0.35" />
+            <path d="M18 50 L32 26 L46 50" />
+            <path d="M32 50 V58" />
+            <path d="M26 58 H38" />
+          </svg>
+          <h1>The Hub is empty.</h1>
+          <p>
+            Nothing is stored at the root yet. Source code, Spinners, manuscripts, and other
+            artifacts will appear here as they're pushed.
+          </p>
+          <div class="hint mono">root · {data.user!.email}</div>
+        </section>
+      </div>
+    </main>
+  </div>
+{/if}
+
+<style>
+  /* Splash overlay: full-screen splash.png with darker scrim and centered
+   * call-to-action. Press any key (or click) anywhere dismisses. */
+  .splash-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background-image:
+      linear-gradient(180deg, rgba(19, 30, 22, 0.55), rgba(19, 30, 22, 0.85)), url('/splash.png');
+    background-size: cover;
+    background-position: center;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    user-select: none;
+    color: #e8e4d4;
+    font-family: var(--font-prose);
+    animation: splash-in 240ms ease;
+  }
+  :global([data-theme='light']) .splash-overlay {
+    background-image:
+      linear-gradient(180deg, rgba(240, 237, 224, 0.45), rgba(240, 237, 224, 0.78)),
+      url('/splash.png');
+    color: #1f2e1e;
+  }
+  @keyframes splash-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .splash-content {
+    text-align: center;
+    padding: 1.5rem;
+  }
+  .splash-tag {
+    margin: 0 0 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: currentColor;
+    opacity: 0.7;
+  }
+  .splash-title {
+    margin: 0 0 0.6rem;
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: currentColor;
+  }
+  .splash-title .accent {
+    color: #4ad57a;
+  }
+  :global([data-theme='light']) .splash-title .accent {
+    color: #2a8a4a;
+  }
+  .splash-lede {
+    margin: 0 0 2rem;
+    font-size: 1.05rem;
+    opacity: 0.85;
+  }
+  .splash-cta {
+    appearance: none;
+    background: transparent;
+    color: currentColor;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 0.65rem 1.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .splash-cta:hover {
+    background: rgba(74, 213, 122, 0.16);
+  }
+  :global([data-theme='light']) .splash-cta:hover {
+    background: rgba(42, 138, 74, 0.12);
+  }
+
+  /* Login form inside the login-card */
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 1rem;
+    text-align: left;
+  }
+  .login-form label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .login-form input {
+    appearance: none;
+    background: var(--bg);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-md);
+    padding: 0.55rem 0.7rem;
+    font-size: 1rem;
+    font-family: var(--font-prose);
+  }
+  .login-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .login-form button[type='submit'] {
+    appearance: none;
+    background: var(--ink);
+    color: var(--bg);
+    border: 0;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.3rem;
+  }
+  .login-form button[type='submit']:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .login-form .sent-note {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+  }
+  .login-form .link {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    font-size: 0.85rem;
+    align-self: flex-start;
+  }
+
+  .signout {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: 0.85rem;
+  }
+  .signout:hover {
+    color: var(--ink);
+  }
+</style>
