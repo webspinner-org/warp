@@ -117,10 +117,10 @@
     aria-label="Press any key to enter Webspinner Hub"
   >
     <article class="splash-card">
-      <!-- The splash image is a complete composition (wordmark, tagline,
-           and ECO System marks are all in the artwork). Don't overlay
-           any duplicate text; just a small "press any key" hint along
-           the bottom edge. -->
+      <!-- The splash image is the entire composition. Use a real <img>
+           so the source's native aspect ratio (1808x870, ~2.08:1)
+           drives the card's shape — no cropping, no overlay. -->
+      <img class="splash-img" src="/splash.png" alt="Webspinner Hub" />
       <button
         class="splash-cta"
         type="button"
@@ -333,26 +333,29 @@
 
   .splash-card {
     /* Sized smaller than the viewport — page peeks through around it.
-     * NO gradient overlay, NO duplicate text: the splash image is a
-     * complete composition (wordmark, tagline, ECO System marks are
-     * all in the artwork). Show it at full saturation. */
+     * The <img> inside dictates the aspect ratio (image is 1808x870,
+     * ~2.08:1). NO forced aspect-ratio on the card. NO cropping. */
     position: relative;
-    width: min(960px, 90vw);
-    aspect-ratio: 16 / 9;
-    max-height: 84vh;
+    width: min(1100px, 90vw);
+    max-height: 86vh;
     border-radius: 16px;
     border: 1px solid rgba(74, 213, 122, 0.3);
     box-shadow:
       0 24px 60px -20px rgba(0, 0, 0, 0.55),
       0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-    background-image: url('/splash.png');
-    background-size: cover;
-    background-position: center;
     overflow: hidden;
     cursor: pointer;
+    line-height: 0;
   }
   :global([data-theme='light']) .splash-card {
     border-color: rgba(42, 138, 74, 0.35);
+  }
+  .splash-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 86vh;
+    object-fit: contain;
   }
 
   /* "Press any key to enter" — small pill anchored at the bottom edge
