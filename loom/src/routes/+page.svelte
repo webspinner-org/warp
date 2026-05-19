@@ -1,22 +1,30 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { PageData } from './$types.js';
+  import AuthorDashboard from '$lib/components/AuthorDashboard.svelte';
+  let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head>
-  <title>Warp</title>
+  <title>{data.mode === 'dashboard' ? 'Your published Webbases' : 'Warp'}</title>
 </svelte:head>
 
-<a class="splash" href={resolve('/login')} aria-label="Click anywhere to authenticate your identity"
-></a>
+{#if data.mode === 'dashboard'}
+  <AuthorDashboard {data} />
+{:else}
+  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+  <a
+    class="splash"
+    href={resolve('/login')}
+    aria-label="Click anywhere to authenticate your identity"
+  ></a>
+{/if}
 
 <style>
   :global(html, body) {
     margin: 0;
     padding: 0;
-    background: #000;
-    overflow: hidden;
   }
-
   .splash {
     position: fixed;
     inset: 0;
@@ -30,7 +38,6 @@
     background-repeat: no-repeat;
     background-size: contain;
   }
-
   .splash:focus {
     outline: 2px solid #4af;
     outline-offset: -4px;

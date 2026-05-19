@@ -167,8 +167,8 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
         : `Your Webbase ${JSON.stringify(displayName)} is published and ready to share.\n\n`) +
       `Open it any time:\n\n` +
       `  ${openUrl}\n\n` +
-      `You can see this Webbase and any others you've published on the dashboard:\n\n` +
-      `  ${appBase}/me\n\n` +
+      `You can see this Webbase and any others you've published at:\n\n` +
+      `  ${appBase}\n\n` +
       (isUpdate
         ? `Anyone you already shared the link with will see the latest version on their next visit.\n\n`
         : `Forward the Open link to anyone you'd like to share it with. They can open it in their own Cell.\n\n`) +
