@@ -18,6 +18,7 @@
       items: [
         { href: '/admin', label: 'Status' },
         { href: '/admin/vault', label: 'Vault' },
+        { href: '/admin/vault-rotation', label: 'Vault rotation' },
         { href: '/admin/operations', label: 'Operations' },
         { href: '/admin/audit', label: 'Audit log' },
       ],

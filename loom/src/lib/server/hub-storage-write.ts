@@ -176,3 +176,43 @@ export async function writePublishedWebbaseToHub(input: {
     return { ok: false, reason };
   }
 }
+
+/* ──────────────────────────────────────────────────────────────
+ * Deletion — patron actions on their own work, originated from try.
+ *
+ * For sources: look up the directory by (appName, sessionId) and
+ * remove it (rm -rf semantics). Idempotent: missing directory is
+ * not an error.
+ *
+ * For published: same shape, by (appName, version, shortCode).
+ *
+ * The PB row deletion lives in the route handler; this just keeps
+ * the on-disk catalog in sync so hub doesn't show ghosts.
+ * ────────────────────────────────────────────────────────────── */
+
+export async function deleteProjectFromHub(meta: {
+  sessionId: string;
+  appName: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const dir = dirForSession(meta);
+    await fs.rm(dir, { recursive: true, force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+}
+
+export async function deletePublishedFromHub(input: {
+  shortCode: string;
+  appName: string;
+  version: number;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const dir = dirForPublished(input);
+    await fs.rm(dir, { recursive: true, force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+}
