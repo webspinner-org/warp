@@ -58,6 +58,12 @@ root.mkdir(parents=True, exist_ok=True)
 demo_cell = os.environ.get("DEMO_CELL_NAME", "Webspinner Cell")
 app_base = os.environ.get("APP_BASE", "https://app.webspinner.ai")
 
+import re
+
+def slugify(name, fallback="unnamed-webbase"):
+  s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:48]
+  return s or fallback
+
 written = 0
 for r in rows:
   short = r.get("short_code")
@@ -67,11 +73,13 @@ for r in rows:
   created_from = (bundle.get("createdFrom") or {})
   created_by = (bundle.get("createdBy") or {})
   install_token = r.get("install_token") or ""
+  app_name = r.get("app_name") or created_from.get("appName") or "(unnamed Webbase)"
+  version = r.get("version") or 1
   meta = {
     "shortCode": short,
-    "appName": r.get("app_name") or created_from.get("appName") or "(unnamed Webbase)",
+    "appName": app_name,
     "domain": r.get("domain") or "",
-    "version": r.get("version") or 1,
+    "version": version,
     "senderEmail": r.get("sender_email") or "",
     "cellName": created_by.get("cellName") or demo_cell,
     "cellKeyFingerprint": r.get("cell_key_fingerprint") or created_by.get("cellKeyFingerprint") or "",
@@ -85,12 +93,13 @@ for r in rows:
     "createdAt": r.get("created") or "",
     "updatedAt": r.get("updated") or r.get("created") or "",
   }
-  pkg = root / short
+  dir_name = f"{slugify(app_name)}--v{version}--{short}"
+  pkg = root / dir_name
   pkg.mkdir(parents=True, exist_ok=True)
   (pkg / "webbase.json").write_text(json.dumps(bundle, indent=2))
   (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
   written += 1
-  print(f"  wrote {short} — {meta['appName']} (v{meta['version']})")
+  print(f"  wrote {dir_name} — {app_name} (v{version})")
 
 print(f"[bootstrap] wrote {written} published webbase(s) into {root}")
 PY

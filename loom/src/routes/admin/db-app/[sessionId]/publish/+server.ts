@@ -27,6 +27,7 @@ import { upsertPackage } from '$lib/server/wsap-registry.js';
 import { writePublishedWebbaseToHub } from '$lib/server/hub-storage-write.js';
 import { verifyTicket } from '$lib/server/email-verify.js';
 import { sendEmail } from '$lib/server/email-adapter.js';
+import { setAuthorCookie } from '$lib/server/author-session.js';
 import type { RequestHandler } from './$types.js';
 
 export const POST: RequestHandler = async ({ params, request, cookies, fetch: f }) => {
@@ -180,7 +181,13 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
     bundle: signed,
   });
 
-  // 5. Email the Open link.
+  // 5. Mint the warp_author cookie so the patron is auto-signed-in
+  // for the "Your Webbases" panel + the app.webspinner.ai/me dashboard
+  // on subsequent visits — they verified email a moment ago, no
+  // reason to ask again.
+  setAuthorCookie(cookies, patronEmail, masterKey);
+
+  // 6. Email the Open link.
   const displayName = appName || 'your Webbase';
 
   const isUpdate = stored.action === 'updated';

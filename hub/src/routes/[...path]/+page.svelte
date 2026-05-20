@@ -2,6 +2,87 @@
   import type { PageData } from './$types.js';
   let { data }: { data: PageData } = $props();
 
+  // ── View Files modal state ──────────────────────────────────
+  interface FilesEntry {
+    name: string;
+    kind: 'dir' | 'file';
+    size: number;
+    mtime: string;
+    mode: string;
+  }
+  let viewFilesOpen = $state(false);
+  let viewListing = $state<{ relPath: string; entries: FilesEntry[] } | null>(null);
+  let viewFile = $state<{
+    relPath: string;
+    size: number;
+    mtime: string;
+    binary: boolean;
+    content?: string;
+    placeholder?: string;
+  } | null>(null);
+  let viewError = $state<string | null>(null);
+
+  async function openViewFiles(relPath: string) {
+    viewFilesOpen = true;
+    viewFile = null;
+    viewError = null;
+    viewListing = null;
+    try {
+      const r = await fetch('/api/storage/files?path=' + encodeURIComponent(relPath));
+      const b = (await r.json()) as
+        | { ok: true; listing: { relPath: string; entries: FilesEntry[] } }
+        | { ok: false; reason: string };
+      if (!r.ok || !('ok' in b) || b.ok !== true) {
+        viewError = ('reason' in b ? b.reason : null) ?? `HTTP ${r.status}`;
+        return;
+      }
+      viewListing = b.listing;
+    } catch (err) {
+      viewError = (err as Error).message;
+    }
+  }
+
+  async function selectFile(name: string) {
+    if (!viewListing) return;
+    const rel = viewListing.relPath + '/' + name;
+    viewError = null;
+    viewFile = null;
+    try {
+      const r = await fetch('/api/storage/file?path=' + encodeURIComponent(rel));
+      const b = (await r.json()) as
+        | {
+            ok: true;
+            relPath: string;
+            size: number;
+            mtime: string;
+            binary: boolean;
+            content?: string;
+            placeholder?: string;
+          }
+        | { ok: false; reason: string };
+      if (!r.ok || !('ok' in b) || b.ok !== true) {
+        viewError = ('reason' in b ? b.reason : null) ?? `HTTP ${r.status}`;
+        return;
+      }
+      viewFile = b;
+    } catch (err) {
+      viewError = (err as Error).message;
+    }
+  }
+
+  function closeViewFiles() {
+    viewFilesOpen = false;
+    viewFile = null;
+    viewListing = null;
+    viewError = null;
+  }
+
+  function fmtBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   let theme = $state<'light' | 'dark'>('dark');
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -205,11 +286,21 @@
                 </span>
               </div>
             </div>
-            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-            <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase Apps">
-              <span class="wb-close-x" aria-hidden="true">×</span>
-              <span class="wb-close-label">Close</span>
-            </a>
+            <div class="wb-head-actions">
+              <button
+                class="wb-files"
+                type="button"
+                onclick={() => openViewFiles(data.result.segments.join('/'))}
+              >
+                <span aria-hidden="true">📂</span>
+                <span>View Files</span>
+              </button>
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+              <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase App">
+                <span class="wb-close-x" aria-hidden="true">×</span>
+                <span class="wb-close-label">Close</span>
+              </a>
+            </div>
           </header>
 
           {#if data.result.meta.patronSentence}
@@ -272,11 +363,21 @@
                 {/if}
               </div>
             </div>
-            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-            <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase App">
-              <span class="wb-close-x" aria-hidden="true">×</span>
-              <span class="wb-close-label">Close</span>
-            </a>
+            <div class="wb-head-actions">
+              <button
+                class="wb-files"
+                type="button"
+                onclick={() => openViewFiles(data.result.segments.join('/'))}
+              >
+                <span aria-hidden="true">📂</span>
+                <span>View Files</span>
+              </button>
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+              <a class="wb-close" href={parentHref} aria-label="Close — back to Webbase App">
+                <span class="wb-close-x" aria-hidden="true">×</span>
+                <span class="wb-close-label">Close</span>
+              </a>
+            </div>
           </header>
 
           {#if data.result.meta.patronSentence}
@@ -324,6 +425,77 @@
     </div>
   </main>
 </div>
+
+<!-- View Files modal — Finder-like browser, two panes: file list + content -->
+{#if viewFilesOpen}
+  <div
+    class="vf-backdrop"
+    role="button"
+    tabindex="0"
+    onclick={closeViewFiles}
+    onkeydown={(e) => {
+      if (e.key === 'Escape') closeViewFiles();
+    }}
+  >
+    <div
+      class="vf-modal"
+      role="dialog"
+      aria-label="File browser"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
+      <header class="vf-bar">
+        <span class="vf-title mono">{viewListing?.relPath ?? '…'}</span>
+        <button class="vf-close" type="button" onclick={closeViewFiles} aria-label="Close">×</button
+        >
+      </header>
+      <div class="vf-body">
+        <aside class="vf-list">
+          {#if viewListing}
+            <ul>
+              {#each viewListing.entries as e (e.name)}
+                <li>
+                  <button
+                    class="vf-row"
+                    type="button"
+                    disabled={e.kind === 'dir'}
+                    onclick={() => selectFile(e.name)}
+                  >
+                    <span class="vf-icon">{e.kind === 'dir' ? '📁' : '📄'}</span>
+                    <span class="vf-name">{e.name}</span>
+                    <span class="vf-size mono">{fmtBytes(e.size)}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {:else if viewError}
+            <p class="vf-error">Couldn't list files: {viewError}</p>
+          {:else}
+            <p class="vf-empty">Loading…</p>
+          {/if}
+        </aside>
+        <section class="vf-content">
+          {#if viewFile}
+            <header class="vf-content-head mono">
+              <span>{viewFile.relPath}</span>
+              <span>{fmtBytes(viewFile.size)} · {viewFile.binary ? 'binary' : 'text'}</span>
+            </header>
+            {#if viewFile.binary}
+              <p class="vf-binary">
+                <span aria-hidden="true">🔒</span>
+                {viewFile.placeholder ?? 'binary file'}
+              </p>
+            {:else}
+              <pre class="vf-pre"><code>{viewFile.content}</code></pre>
+            {/if}
+          {:else}
+            <p class="vf-hint">Select a file on the left to view its contents.</p>
+          {/if}
+        </section>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* Tree list styling */
@@ -427,6 +599,186 @@
     font-size: 1.05rem;
     line-height: 1;
     text-transform: none;
+  }
+
+  .wb-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+  }
+  .wb-files {
+    appearance: none;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 0.32rem 0.75rem 0.32rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      background 120ms ease;
+  }
+  .wb-files:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--highlight);
+  }
+
+  /* View Files modal */
+  .vf-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(13, 20, 14, 0.55);
+    backdrop-filter: blur(2px);
+    display: grid;
+    place-items: center;
+    padding: clamp(1rem, 4vw, 2.4rem);
+    cursor: pointer;
+  }
+  :global([data-theme='light']) .vf-backdrop {
+    background: rgba(31, 46, 30, 0.35);
+  }
+  .vf-modal {
+    width: min(1100px, 96vw);
+    height: min(720px, 88vh);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    cursor: default;
+  }
+  .vf-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface-alt);
+  }
+  .vf-title {
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vf-close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--ink-muted);
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0.35rem;
+  }
+  .vf-close:hover {
+    color: var(--accent);
+  }
+  .vf-body {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    overflow: hidden;
+  }
+  .vf-list {
+    border-right: 1px solid var(--rule);
+    overflow-y: auto;
+    background: var(--surface);
+  }
+  .vf-list ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .vf-row {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr auto;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.5rem 0.85rem;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--rule-soft);
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+  }
+  .vf-row:hover:not(:disabled) {
+    background: var(--highlight);
+  }
+  .vf-row:disabled {
+    color: var(--ink-muted);
+    cursor: default;
+  }
+  .vf-icon {
+    font-size: 0.95rem;
+  }
+  .vf-name {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vf-size {
+    color: var(--ink-muted);
+    font-size: 0.74rem;
+  }
+  .vf-content {
+    overflow: auto;
+    padding: 1rem 1.2rem;
+  }
+  .vf-content-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--ink-muted);
+    font-size: 0.78rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.7rem;
+  }
+  .vf-pre {
+    margin: 0;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--ink);
+    max-height: calc(100% - 4rem);
+    white-space: pre;
+  }
+  .vf-binary {
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+  .vf-hint,
+  .vf-empty {
+    color: var(--ink-muted);
+    padding: 1rem;
+  }
+  .vf-error {
+    color: #c87268;
+    padding: 1rem;
   }
   .wb-badges {
     display: flex;

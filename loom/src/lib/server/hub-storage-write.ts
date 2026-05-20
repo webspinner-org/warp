@@ -49,8 +49,48 @@ function storageRoot(): string {
   return process.env['HUB_STORAGE_DIR'] ?? path.join(homedir(), 'webspinner-hub', 'storage');
 }
 
-function dirForSession(sessionId: string): string {
-  return path.join(storageRoot(), 'try-webspinner-projects', 'webbase-apps', sessionId);
+/**
+ * Slugify a human name for use as a filesystem-safe descriptive
+ * prefix. Lowercases, replaces non-alphanumeric runs with `-`,
+ * trims to 48 chars. Empty/whitespace names map to a stable
+ * fallback so the cryptic id appendage stays unique.
+ */
+export function slugify(name: string, fallback = 'unnamed-webbase'): string {
+  const cleaned = (name ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/**
+ * Extract the 8-hex compact ID from a demo session id like
+ * `demo-055039fa-8efa-47a2-bef3-a7c7bcb5822a` → `055039fa`. Anything
+ * unexpected falls through to the first 8 chars.
+ */
+export function shortSessionSuffix(sessionId: string): string {
+  const m = sessionId.match(/^demo-([0-9a-f]{8})/i);
+  if (m) return m[1]!;
+  return sessionId.replace(/[^a-z0-9]/gi, '').slice(0, 8);
+}
+
+export function projectDirName(appName: string, sessionId: string): string {
+  return `${slugify(appName)}--${shortSessionSuffix(sessionId)}`;
+}
+
+export function publishedDirName(appName: string, version: number, shortCode: string): string {
+  return `${slugify(appName)}--v${version}--${shortCode}`;
+}
+
+function dirForSession(meta: { sessionId: string; appName: string }): string {
+  return path.join(
+    storageRoot(),
+    'try-webspinner-projects',
+    'webbase-app',
+    projectDirName(meta.appName, meta.sessionId),
+  );
 }
 
 export async function writeProjectToHub(input: {
@@ -58,7 +98,7 @@ export async function writeProjectToHub(input: {
   source: ProjectSource;
 }): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
   try {
-    const dir = dirForSession(input.meta.sessionId);
+    const dir = dirForSession({ sessionId: input.meta.sessionId, appName: input.meta.appName });
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
       path.join(dir, 'project.json'),
@@ -101,8 +141,13 @@ export interface PublishedWebbaseMeta {
   readonly updatedAt: string;
 }
 
-function dirForPublished(shortCode: string): string {
-  return path.join(storageRoot(), 'published-work', 'webbase-app', shortCode);
+function dirForPublished(input: { shortCode: string; appName: string; version: number }): string {
+  return path.join(
+    storageRoot(),
+    'published-work',
+    'webbase-app',
+    publishedDirName(input.appName, input.version, input.shortCode),
+  );
 }
 
 export async function writePublishedWebbaseToHub(input: {
@@ -110,7 +155,11 @@ export async function writePublishedWebbaseToHub(input: {
   bundle: unknown;
 }): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
   try {
-    const dir = dirForPublished(input.meta.shortCode);
+    const dir = dirForPublished({
+      shortCode: input.meta.shortCode,
+      appName: input.meta.appName,
+      version: input.meta.version,
+    });
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
       path.join(dir, 'webbase.json'),

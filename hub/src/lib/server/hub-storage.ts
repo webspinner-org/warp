@@ -78,7 +78,7 @@ const ROOT_FOLDERS = [
 ] as const;
 
 const SUB_FOLDERS: Record<string, { slug: string; displayName: string }[]> = {
-  'try-webspinner-projects': [{ slug: 'webbase-apps', displayName: 'Webbase Apps' }],
+  'try-webspinner-projects': [{ slug: 'webbase-app', displayName: 'Webbase App' }],
   'published-work': [{ slug: 'webbase-app', displayName: 'Webbase App' }],
 };
 
@@ -137,9 +137,9 @@ export async function listTreeAt(segments: readonly string[]): Promise<TreeNode[
   if (
     segments.length === 2 &&
     segments[0] === 'try-webspinner-projects' &&
-    segments[1] === 'webbase-apps'
+    segments[1] === 'webbase-app'
   ) {
-    const dir = path.join(STORAGE_DIR, first, 'webbase-apps');
+    const dir = path.join(STORAGE_DIR, first, 'webbase-app');
     if (!(await dirExists(dir))) return [];
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const dirs = entries.filter((e) => e.isDirectory());
@@ -199,7 +199,7 @@ export async function getProjectMeta(sessionId: string): Promise<ProjectMeta | n
   const metaPath = path.join(
     STORAGE_DIR,
     'try-webspinner-projects',
-    'webbase-apps',
+    'webbase-app',
     sessionId,
     'meta.json',
   );
@@ -216,7 +216,7 @@ export async function readProjectSource(sessionId: string): Promise<ProjectSourc
   const srcPath = path.join(
     STORAGE_DIR,
     'try-webspinner-projects',
-    'webbase-apps',
+    'webbase-app',
     sessionId,
     'project.json',
   );

@@ -6,12 +6,12 @@
 # Reads every row in the demo Cell's wp_database_applications (the
 # patron's *source*, built but not necessarily published) and writes
 # each as a project directory under
-# $HUB_STORAGE_DIR/try-webspinner-projects/webbase-apps/<sessionId>/.
+# $HUB_STORAGE_DIR/try-webspinner-projects/webbase-app/<sessionId>/.
 # Subsequent builds auto-sync via the demo Loom's side-write in
 # createApp; this tool just gets the existing rows visible the first
 # time.
 #
-# Wipes any prior webbase-apps/ contents (publish-artifact bootstrap
+# Wipes any prior webbase-app/ contents (publish-artifact bootstrap
 # left stale data behind — projects use sessionId keys, packages
 # used shortCodes; clean slate is safest).
 #
@@ -33,7 +33,7 @@ if [ -z "$DEMO_EMAIL" ] || [ -z "$DEMO_PASS" ]; then
   exit 1
 fi
 
-WB_DIR="$HUB_STORAGE_DIR/try-webspinner-projects/webbase-apps"
+WB_DIR="$HUB_STORAGE_DIR/try-webspinner-projects/webbase-app"
 echo "[bootstrap] hub storage = $HUB_STORAGE_DIR"
 echo "[bootstrap] demo PB     = $DEMO_PB"
 echo "[bootstrap] wiping prior contents of $WB_DIR"
@@ -53,9 +53,20 @@ export HUB_STORAGE_DIR RESUME_BASE
 python3 - <<PY
 import json, os, pathlib
 rows = json.loads('''$ROWS''').get("items", [])
-root = pathlib.Path(os.environ["HUB_STORAGE_DIR"]) / "try-webspinner-projects" / "webbase-apps"
+root = pathlib.Path(os.environ["HUB_STORAGE_DIR"]) / "try-webspinner-projects" / "webbase-app"
 root.mkdir(parents=True, exist_ok=True)
 resume_base = os.environ.get("RESUME_BASE", "https://try.webspinner.ai")
+
+import re
+
+def slugify(name, fallback="unnamed-webbase"):
+  s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:48]
+  return s or fallback
+
+def short_suffix(sid):
+  m = re.match(r"^demo-([0-9a-f]{8})", sid or "")
+  if m: return m.group(1)
+  return re.sub(r"[^a-z0-9]", "", sid or "")[:8]
 
 written = 0
 for r in rows:
@@ -88,12 +99,13 @@ for r in rows:
     "branding": branding,
     "entities": entities,
   }
-  pkg = root / sid
+  dir_name = f"{slugify(app_name)}--{short_suffix(sid)}"
+  pkg = root / dir_name
   pkg.mkdir(parents=True, exist_ok=True)
   (pkg / "project.json").write_text(json.dumps(source, indent=2))
   (pkg / "meta.json").write_text(json.dumps(meta, indent=2))
   written += 1
-  print(f"  wrote {sid} — {app_name} ({meta['status']}, {meta['entityCount']} entities)")
+  print(f"  wrote {dir_name} — {app_name} ({meta['status']}, {meta['entityCount']} entities)")
 
 print(f"[bootstrap] wrote {written} project(s) into {root}")
 PY

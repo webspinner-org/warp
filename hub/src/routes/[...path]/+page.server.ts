@@ -52,7 +52,6 @@ export type CatchAllData =
 
 const DISPLAY_NAMES: Record<string, string> = {
   'try-webspinner-projects': 'Try Webspinner Projects',
-  'webbase-apps': 'Webbase Apps',
   'published-work': 'Published Work',
   'webbase-app': 'Webbase App',
 };
@@ -80,7 +79,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (
     segments.length === 3 &&
     segments[0] === 'try-webspinner-projects' &&
-    segments[1] === 'webbase-apps'
+    segments[1] === 'webbase-app'
   ) {
     const meta = await getProjectMeta(segments[2]!);
     if (!meta) throw error(404, 'Project not found in the hub.');
