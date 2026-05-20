@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Backfill: every wp_spinner_sessions row currently keyed to the demo
+# proxy's superuser identity is reassigned to the Wizard. The demo
+# Cell is single-patron — those sessions ARE his — they were just
+# tagged with the proxy's actor before the cookie-passthrough landed.
+set -euo pipefail
+PATRON_EMAIL="${1:-johndavidmarx@gmail.com}"
+OLD_EMAIL="${OLD_EMAIL:-wizard-demo@webspinner.foundation}"
+
+PB_EMAIL=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom-demo" | sed -n 's/.*WARP_PB_EMAIL *=> *\(.*\) *$/\1/p' | tr -d ' ')
+PB_PASSWORD=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom-demo" | sed -n 's/.*WARP_PB_PASSWORD *=> *\(.*\) *$/\1/p' | tr -d ' ')
+PB_URL=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom-demo" | sed -n 's/.*WARP_PB_URL *=> *\(.*\) *$/\1/p' | tr -d ' ')
+PB_URL=${PB_URL:-http://127.0.0.1:8091}
+
+echo "[backfill] reassigning actor_email='${OLD_EMAIL}' → '${PATRON_EMAIL}' in $PB_URL"
+
+curl -sS -o /tmp/auth-demo.json -X POST "$PB_URL/api/collections/_superusers/auth-with-password" \
+  -H "Content-Type: application/json" \
+  -d "{\"identity\":\"$PB_EMAIL\",\"password\":\"$PB_PASSWORD\"}"
+TOKEN=$(python3 -c 'import json; print(json.load(open("/tmp/auth-demo.json"))["token"])')
+
+# Query the rows to backfill — only those whose actor_email matches the proxy.
+export OLD_EMAIL PATRON_EMAIL
+FILTER=$(python3 -c 'import urllib.parse,os; e=os.environ["OLD_EMAIL"]; print(urllib.parse.quote("actor_email = \"" + e + "\""))')
+ROWS_JSON=$(curl -sS "$PB_URL/api/collections/wp_spinner_sessions/records?perPage=200&filter=$FILTER" -H "Authorization: $TOKEN")
+IDS=$(python3 -c "import json,sys; print(' '.join(r['id'] for r in json.loads(sys.argv[1])['items']))" "$ROWS_JSON")
+
+if [ -z "$IDS" ]; then
+  echo "[backfill] no rows match — nothing to do"
+  exit 0
+fi
+
+for ID in $IDS; do
+  curl -sS -o /dev/null -w "  $ID → %{http_code}\n" -X PATCH \
+    "$PB_URL/api/collections/wp_spinner_sessions/records/$ID" \
+    -H "Authorization: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"actor_email\":\"$PATRON_EMAIL\"}"
+done
+
+echo "[backfill] done; verifying:"
+VERIFY_FILTER=$(python3 -c 'import urllib.parse,os; e=os.environ["PATRON_EMAIL"]; print(urllib.parse.quote("actor_email = \"" + e + "\""))')
+curl -sS "$PB_URL/api/collections/wp_spinner_sessions/records?perPage=200&filter=$VERIFY_FILTER" \
+  -H "Authorization: $TOKEN" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(f"  rows with new email: {d.get(\"totalItems\")}")
+'
