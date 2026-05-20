@@ -777,3 +777,13 @@ When the next archetype Spinners ship (the iPhone App / Website / Simple Game / 
 **Design notes captured in full at `~/warp/SI-QUALITY-DESIGN.md`** — the persistence the Wizard asked for, including the meta-architecture observations: not the model, the architecture around the model (multi-step reasoning, schema critic, Foundation library of canonical patterns, structured-output enforcement, embeddings-driven retrieval, agentic tool use).
 
 **Future state:** When Pablo's review capability is extended to walk a Spinner bundle's `mission-lock.md` against VISION.md / WARP-CANON.md before sign + install, this class of drift gets caught structurally — not by manual review. Logged in OPEN_QUESTIONS.md.
+
+## 2026-05-19 — Master key rotation (operational, not architectural)
+
+**Decision:** Rotated `WARP_VAULT_MASTER_KEY` after the value transited a Claude Code session context during a deploy-path debugging step. Standard precaution per WARP-CANON §17.2 — Claude Code never writes secrets, but a value seen anywhere outside the vault is treated as compromised.
+**What:** New 32-byte AES-256 key generated on Kepler, never returned to the Claude session. All 3 `vault_secrets` rows in operator PB :8090 (`resend-api-key`, `cell-identity-key`, `webspinner-ai-try`) were decrypted with the old key and re-encrypted with the new key, with round-trip verification before any plist write. All 3 launchd plists (`foundation.webspinner.loom`, `foundation.webspinner.loom-demo`, `com.webspinner.hub`) updated to the new key across `WARP_VAULT_MASTER_KEY`, `WARP_HUB_COOKIE_KEY`, and `WARP_VAULT_LOOKUP_MASTER_KEY`. All 3 services bootout/bootstrap'd and smoke-tested 200. Vault decrypt verified via `/auth/email/start` returning `{ok:true}` (resend-api-key lookup succeeded with the new key).
+**Why:** §17.2 discipline. Treat any exposure as compromise; rotate rather than rationalise.
+**Side effects:** Existing `warp_hub` and `warp_author` cookies became invalid (HMAC'd with old key). Patrons (just the Wizard, currently) sign in again on hub.webspinner.ai. Admin `wp_session` cookies (PB token, not HMAC) survived.
+**Backup:** `~/.warp-key-rotation/20260519-174956/` on Kepler — pre-rotation `vault_secrets.json` snapshot + all 3 plists. Delete after the next clean cell-identity-derived operation confirms healthy.
+**Procedure:** `/tmp/rotate-master-key.sh` on Kepler — generates new key locally, re-encrypts vault, rewrites plists (single-line + multi-line forms), reloads launchd, smoke-tests. Designed to never return the new key value out of Kepler.
+**Follow-up:** Promote this procedure into a one-click admin utility (see task #48). Today it's a one-off shell script; key rotation should be a button in `/admin/operations` with the same backup + verify flow.

@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+#
+# Rotate WARP_VAULT_MASTER_KEY across all services on Kepler.
+#
+#   1. Pull OLD_KEY from running operator loom env.
+#   2. Generate NEW_KEY (32-byte base64) — never printed.
+#   3. Re-encrypt every vault_secrets row in operator PB :8090
+#      (decrypt with OLD, encrypt with NEW). Backup snapshot first.
+#   4. Rewrite all 3 plists (loom, loom-demo, hub) with NEW_KEY
+#      across WARP_VAULT_MASTER_KEY, WARP_HUB_COOKIE_KEY,
+#      WARP_VAULT_LOOKUP_MASTER_KEY (whichever each plist uses).
+#   5. Bootout + bootstrap all 3 services. Smoke test.
+#
+# Patrons' warp_hub / warp_author cookies become invalid (HMAC'd with
+# OLD_KEY). Admin wp_session (PB token, not HMAC) survives.
+#
+set -euo pipefail
+
+NODE="${NODE:-/opt/homebrew/bin/node}"
+TS=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="$HOME/.warp-key-rotation/$TS"
+mkdir -p "$BACKUP_DIR"
+echo "[rotate] backup dir: $BACKUP_DIR"
+
+# --- step 1: pull OLD_KEY from operator loom env ---
+OLD_KEY=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom" \
+  | sed -n 's/.*WARP_VAULT_MASTER_KEY *=> *\(.*\) *$/\1/p' | tr -d ' ')
+if [ -z "$OLD_KEY" ]; then
+  echo "[rotate] FATAL: could not read OLD_KEY from operator loom" >&2
+  exit 1
+fi
+echo "[rotate] OLD_KEY loaded (len=${#OLD_KEY})"
+
+# --- pull operator PB creds ---
+OPL_PB_EMAIL=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom" \
+  | sed -n 's/.*WARP_PB_EMAIL *=> *\(.*\) *$/\1/p' | tr -d ' ')
+OPL_PB_PASSWORD=$(launchctl print "gui/$(id -u)/foundation.webspinner.loom" \
+  | sed -n 's/.*WARP_PB_PASSWORD *=> *\(.*\) *$/\1/p' | tr -d ' ')
+
+# --- step 2-3: re-encrypt vault rows in Node (also generates NEW_KEY) ---
+export OLD_KEY OPL_PB_EMAIL OPL_PB_PASSWORD BACKUP_DIR
+NEW_KEY=$("$NODE" - <<'NODE_SCRIPT'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { OLD_KEY, OPL_PB_EMAIL, OPL_PB_PASSWORD, BACKUP_DIR } = process.env;
+
+function b64dec(s) { return Buffer.from(s, 'base64'); }
+function b64enc(b) { return Buffer.from(b).toString('base64'); }
+
+async function decrypt(keyB64, { ciphertext, iv }) {
+  const key = await crypto.subtle.importKey('raw', b64dec(keyB64), { name: 'AES-GCM' }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64dec(iv) }, key, b64dec(ciphertext));
+  return new TextDecoder().decode(plain);
+}
+async function encrypt(keyB64, plaintext) {
+  const key = await crypto.subtle.importKey('raw', b64dec(keyB64), { name: 'AES-GCM' }, false, ['encrypt']);
+  const iv = crypto.randomBytes(12);
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+  return { ciphertext: b64enc(new Uint8Array(cipher)), iv: b64enc(iv) };
+}
+
+(async () => {
+  // Auth to operator PB.
+  const authRes = await fetch('http://127.0.0.1:8090/api/collections/_superusers/auth-with-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identity: OPL_PB_EMAIL, password: OPL_PB_PASSWORD }),
+  });
+  if (!authRes.ok) { console.error('PB auth failed:', authRes.status); process.exit(2); }
+  const { token } = await authRes.json();
+
+  // Pull all rows + backup raw.
+  const listRes = await fetch('http://127.0.0.1:8090/api/collections/vault_secrets/records?perPage=500', {
+    headers: { Authorization: token },
+  });
+  const list = await listRes.json();
+  fs.writeFileSync(path.join(BACKUP_DIR, 'vault_secrets.json'), JSON.stringify(list, null, 2));
+  console.error(`[rotate] backed up ${list.totalItems} rows to ${BACKUP_DIR}/vault_secrets.json`);
+
+  // Decrypt every row with OLD_KEY (dry-run check before any write).
+  const decrypted = [];
+  for (const row of list.items) {
+    try {
+      const plain = await decrypt(OLD_KEY, { ciphertext: row.ciphertext, iv: row.iv });
+      decrypted.push({ id: row.id, name: row.name, plain });
+    } catch (e) {
+      console.error(`[rotate] FATAL: cannot decrypt ${row.name} with OLD_KEY: ${e.message}`);
+      process.exit(3);
+    }
+  }
+  console.error(`[rotate] all ${decrypted.length} rows decrypted OK`);
+
+  // Generate NEW_KEY. 32 bytes (AES-256) base64.
+  const NEW_KEY = crypto.randomBytes(32).toString('base64');
+
+  // Self-check: encrypt + decrypt a probe with NEW_KEY to catch entropy / impl issues.
+  const probeCipher = await encrypt(NEW_KEY, 'ROTATION-PROBE');
+  const probePlain = await decrypt(NEW_KEY, probeCipher);
+  if (probePlain !== 'ROTATION-PROBE') {
+    console.error('[rotate] FATAL: NEW_KEY self-check failed');
+    process.exit(4);
+  }
+
+  // Re-encrypt + PATCH each row.
+  for (const row of decrypted) {
+    const enc = await encrypt(NEW_KEY, row.plain);
+    const patchRes = await fetch(`http://127.0.0.1:8090/api/collections/vault_secrets/records/${row.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ciphertext: enc.ciphertext, iv: enc.iv }),
+    });
+    if (!patchRes.ok) {
+      console.error(`[rotate] FATAL: PATCH failed for ${row.name}: ${patchRes.status}`);
+      process.exit(5);
+    }
+    console.error(`[rotate] re-encrypted ${row.name}`);
+  }
+
+  // Verify by reading back + decrypting with NEW_KEY.
+  const verifyRes = await fetch('http://127.0.0.1:8090/api/collections/vault_secrets/records?perPage=500', {
+    headers: { Authorization: token },
+  });
+  const verifyList = await verifyRes.json();
+  for (const row of verifyList.items) {
+    const orig = decrypted.find((d) => d.id === row.id);
+    const plain = await decrypt(NEW_KEY, { ciphertext: row.ciphertext, iv: row.iv });
+    if (plain !== orig.plain) {
+      console.error(`[rotate] FATAL: round-trip mismatch for ${row.name}`);
+      process.exit(6);
+    }
+  }
+  console.error('[rotate] round-trip verified for all rows');
+
+  // Print NEW_KEY on stdout — the only output. Stderr carries logs.
+  process.stdout.write(NEW_KEY);
+})();
+NODE_SCRIPT
+)
+
+if [ -z "$NEW_KEY" ] || [ "${#NEW_KEY}" -ne 44 ]; then
+  echo "[rotate] FATAL: NEW_KEY generation failed (len=${#NEW_KEY})" >&2
+  exit 7
+fi
+echo "[rotate] NEW_KEY generated (len=${#NEW_KEY}); vault re-encrypted + verified"
+
+# --- step 4: update plists ---
+for plist in \
+  ~/Library/LaunchAgents/foundation.webspinner.loom.plist \
+  ~/Library/LaunchAgents/foundation.webspinner.loom-demo.plist \
+  ~/Library/LaunchAgents/com.webspinner.hub.plist; do
+  cp "$plist" "$BACKUP_DIR/$(basename "$plist")"
+done
+echo "[rotate] plists backed up to $BACKUP_DIR/"
+
+export NEW_KEY
+"$NODE" - <<'NODE_PLIST'
+const fs = require('node:fs');
+const path = require('node:path');
+const HOME = process.env.HOME;
+const NEW_KEY = process.env.NEW_KEY;
+const KEYS = ['WARP_VAULT_MASTER_KEY', 'WARP_HUB_COOKIE_KEY', 'WARP_VAULT_LOOKUP_MASTER_KEY'];
+
+const plists = [
+  'foundation.webspinner.loom.plist',
+  'foundation.webspinner.loom-demo.plist',
+  'com.webspinner.hub.plist',
+];
+
+for (const fname of plists) {
+  const p = path.join(HOME, 'Library', 'LaunchAgents', fname);
+  let text = fs.readFileSync(p, 'utf8');
+  let changes = 0;
+  for (const k of KEYS) {
+    // single-line form: <key>K</key><string>V</string>
+    const single = new RegExp(`(<key>${k}</key>)\\s*<string>[^<]*</string>`, 'g');
+    text = text.replace(single, (_, prefix) => { changes++; return `${prefix}<string>${NEW_KEY}</string>`; });
+    // multi-line form: <key>K</key>\n<whitespace><string>V</string>
+    const multi = new RegExp(`(<key>${k}</key>\\s*\\n\\s*)<string>[^<]*</string>`, 'g');
+    text = text.replace(multi, (_, prefix) => { changes++; return `${prefix}<string>${NEW_KEY}</string>`; });
+  }
+  fs.writeFileSync(p, text);
+  console.error(`[rotate] ${fname}: ${changes} key(s) rewritten`);
+}
+NODE_PLIST
+
+# --- step 5: bootout + bootstrap all 3 services ---
+for label in com.webspinner.hub foundation.webspinner.loom-demo foundation.webspinner.loom; do
+  echo "[rotate] reloading $label"
+  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+done
+sleep 2
+for label in foundation.webspinner.loom foundation.webspinner.loom-demo com.webspinner.hub; do
+  case "$label" in
+    foundation.webspinner.loom)        plist=~/Library/LaunchAgents/foundation.webspinner.loom.plist ;;
+    foundation.webspinner.loom-demo)   plist=~/Library/LaunchAgents/foundation.webspinner.loom-demo.plist ;;
+    com.webspinner.hub)                plist=~/Library/LaunchAgents/com.webspinner.hub.plist ;;
+  esac
+  launchctl bootstrap "gui/$(id -u)" "$plist"
+done
+sleep 4
+
+# --- step 6: smoke test ---
+echo "[rotate] smoke test:"
+for port in 3000 3010 3020; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" "http://127.0.0.1:$port/" || echo 0)
+  echo "  :$port = $code"
+done
+
+echo "[rotate] done. backup at $BACKUP_DIR (contains pre-rotation vault snapshot + plists)"
