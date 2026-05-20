@@ -121,7 +121,24 @@
           ? ''
           : 's'} into a Cell and expires on {new Date(data.expiresAt).toLocaleDateString()}.
       </p>
-      <button class="install-btn" onclick={openWebbase}> Open this Webbase </button>
+      <div class="app-actions">
+        <button class="install-btn" onclick={openWebbase}> Open in browser </button>
+        <!-- eslint-disable svelte/no-navigation-without-resolve -->
+        <a
+          class="install-btn install-btn--alt"
+          href={`/app/${data.shortCode}/standalone?t=${data.installToken}`}
+          download
+        >
+          Download a copy
+        </a>
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
+      </div>
+      <p class="app-note app-note--alt">
+        <strong>Open in browser</strong> runs the Webbase live from Webspinner; your data stays in
+        this browser.
+        <strong>Download a copy</strong> gives you the Webbase as a single .html file you can host anywhere
+        or keep for yourself. Both behave identically — same screens, same data, same trust.
+      </p>
     </footer>
   {/if}
 </section>
@@ -262,6 +279,34 @@
   .install-btn:disabled {
     opacity: 0.55;
     cursor: default;
+  }
+  .install-btn--alt {
+    background: transparent;
+    color: #e6c486;
+    border: 1px solid #b88a3a;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .install-btn--alt:hover {
+    background: rgba(184, 138, 58, 0.12);
+    filter: none;
+  }
+  .app-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-top: 0.4rem;
+  }
+  .app-note--alt {
+    margin-top: 0.8rem;
+    font-size: 0.78rem;
+    color: #80776e;
+    line-height: 1.55;
+  }
+  .app-note--alt strong {
+    color: #bba990;
+    font-weight: 600;
   }
   .app-result {
     margin-top: 1.6rem;

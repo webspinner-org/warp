@@ -24,6 +24,7 @@ import type { RequestHandler } from './$types.js';
 import { getHubSession } from '$lib/server/hub-session.js';
 import { loomPbToken } from '$lib/server/pocketbase.js';
 import { listPackagesBySender } from '$lib/server/wsap-registry.js';
+import { countDownloadsByShortCode } from '$lib/server/app-downloads.js';
 
 const PB_URL = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
 
@@ -61,10 +62,20 @@ interface PickerEntry {
   readonly installToken?: string;
   readonly version?: number;
   readonly openUrl?: string;
+  readonly downloadUrl?: string;
   readonly hasPassphrase?: boolean;
   readonly installCount?: number;
   readonly maxInstalls?: number;
+  readonly downloadCount?: number;
   readonly expiresAt?: string;
+}
+
+interface AccountStatus {
+  readonly publishedCount: number;
+  readonly totalInstalls: number;
+  readonly totalDownloads: number;
+  readonly threshold: number;
+  readonly aboveThreshold: boolean;
 }
 
 function pickInProgressAppName(row: PBSpinnerSessionRow): {
@@ -168,8 +179,12 @@ export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
     fetchFn: f,
     token,
   });
+  let totalInstalls = 0;
+  let totalDownloads = 0;
   if (published.ok) {
     const origin = process.env['WARP_PUBLIC_ORIGIN'] ?? 'https://app.webspinner.ai';
+    const codes = published.items.map((p) => p.shortCode);
+    const downloadCounts = await countDownloadsByShortCode(f, token, codes);
     for (const pkg of published.items) {
       const appName =
         (pkg.appName && pkg.appName.trim().length > 0 ? pkg.appName : null) ||
@@ -178,6 +193,9 @@ export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
           ? pkg.patronSentence.slice(0, 60)
           : null) ||
         '(untitled)';
+      const dlCount = downloadCounts[pkg.shortCode] ?? 0;
+      totalInstalls += pkg.installCount ?? 0;
+      totalDownloads += dlCount;
       entries.push({
         sessionId: null,
         appName,
@@ -190,9 +208,11 @@ export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
         installToken: pkg.installToken,
         version: pkg.version,
         openUrl: `${origin}/app/${pkg.shortCode}?t=${pkg.installToken}`,
+        downloadUrl: `${origin}/app/${pkg.shortCode}/standalone?t=${pkg.installToken}`,
         hasPassphrase: pkg.hasPassphrase,
         installCount: pkg.installCount,
         maxInstalls: pkg.maxInstalls,
+        downloadCount: dlCount,
         expiresAt: pkg.expiresAt,
       });
     }
@@ -202,5 +222,20 @@ export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
   //    others use updatedAt — both already populated.
   entries.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
 
-  return json({ authed: true, email: hub.email, sessions: entries });
+  // 6. Account Status. Soft threshold for "your use is generous";
+  //    above it we surface a future-monetization hint without ever
+  //    throttling. Threshold is env-tunable; default sized for the
+  //    bootstrap solo-patron Cell — bump for federation later.
+  const threshold = Number(process.env['WARP_ACCOUNT_HINT_THRESHOLD'] ?? 100);
+  const publishedCount = entries.filter((e) => e.kind === 'published').length;
+  const totalUse = totalInstalls + totalDownloads;
+  const accountStatus: AccountStatus = {
+    publishedCount,
+    totalInstalls,
+    totalDownloads,
+    threshold,
+    aboveThreshold: totalUse >= threshold,
+  };
+
+  return json({ authed: true, email: hub.email, sessions: entries, accountStatus });
 };

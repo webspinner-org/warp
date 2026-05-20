@@ -43,6 +43,21 @@ export const handle: Handle = async ({ event, resolve }) => {
     response.headers.set('expires', '0');
   }
 
+  // CORS on assets + standalone-runtime endpoints. The standalone
+  // .html downloaded from /app/<code>/standalone may be opened from
+  // file:// (origin `null`) or from any third-party host. Its inline
+  // SvelteKit bootstrapper imports /_app/immutable/* chunks and may
+  // fetch /app/<code>/{unlock,bundle,version} at runtime. All of
+  // those need permissive CORS for the offline-portable promise to
+  // hold. Immutable assets are content-addressed; opening them up
+  // is safe.
+  const p = event.url.pathname;
+  if (p.startsWith('/_app/immutable/') || p.startsWith('/app/') /* unlock, bundle, version */) {
+    response.headers.set('access-control-allow-origin', '*');
+    response.headers.set('access-control-allow-methods', 'GET, POST, OPTIONS');
+    response.headers.set('access-control-allow-headers', 'Content-Type');
+  }
+
   // Always-on security headers — cheap, broadly compatible.
   response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   response.headers.set('x-content-type-options', 'nosniff');
