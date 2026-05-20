@@ -67,6 +67,13 @@ export function verifyAuthorCookie(
   return { email, expiry };
 }
 
+/**
+ * When WARP_HUB_COOKIE_DOMAIN is set (e.g., ".webspinner.ai"), both
+ * warp_author AND warp_hub cookies are scoped to that domain so
+ * sign-in propagates across the ECO system (hub, app, try).
+ */
+const COOKIE_DOMAIN = process.env['WARP_HUB_COOKIE_DOMAIN'] || undefined;
+
 export function setAuthorCookie(cookies: Cookies, email: string, masterKey: string): void {
   const minted = mintAuthorCookie(email, masterKey);
   cookies.set(COOKIE_NAME, minted.value, {
@@ -75,17 +82,33 @@ export function setAuthorCookie(cookies: Cookies, email: string, masterKey: stri
     sameSite: 'lax',
     secure: process.env['NODE_ENV'] === 'production',
     maxAge: minted.maxAge,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
-}
-
-export function clearAuthorCookie(cookies: Cookies): void {
-  cookies.set(COOKIE_NAME, '', {
+  // ALSO mint the SSO warp_hub cookie keyed off the same master key
+  // (HUB_COOKIE_KEY=this masterKey when services are aligned). Cookie
+  // format is identical to the hub's: base64url("email|expiry|sig").
+  // The hub-side reader on services that trust SSO honours this.
+  cookies.set('warp_hub', minted.value, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env['NODE_ENV'] === 'production',
-    maxAge: 0,
+    maxAge: minted.maxAge,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
+}
+
+export function clearAuthorCookie(cookies: Cookies): void {
+  for (const name of [COOKIE_NAME, 'warp_hub']) {
+    cookies.set(name, '', {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env['NODE_ENV'] === 'production',
+      maxAge: 0,
+      ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
+    });
+  }
 }
 
 export function getAuthorSession(cookies: Cookies, masterKey: string): AuthorSession | null {

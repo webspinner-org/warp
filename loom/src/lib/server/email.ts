@@ -16,7 +16,12 @@ const RESEND_API = 'https://api.resend.com/emails';
 export type EmailSendResult =
   | { readonly ok: true; readonly id: string; readonly via: 'resend' }
   | { readonly ok: false; readonly kind: 'unsent-no-credentials' }
-  | { readonly ok: false; readonly kind: 'send-failed'; readonly status?: number; readonly detail: string };
+  | {
+      readonly ok: false;
+      readonly kind: 'send-failed';
+      readonly status?: number;
+      readonly detail: string;
+    };
 
 export interface EmailSendInput {
   readonly to: string;
@@ -36,12 +41,13 @@ const PB_URL = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
 
 async function vaultLookup(
   fetchFn: typeof fetch,
+  pbUrl: string,
   pbToken: string,
   masterKey: string,
   name: string,
 ): Promise<string | null> {
   try {
-    const url = `${PB_URL}/api/collections/vault_secrets/records?filter=${encodeURIComponent(`name = "${name}"`)}&perPage=1`;
+    const url = `${pbUrl}/api/collections/vault_secrets/records?filter=${encodeURIComponent(`name = "${name}"`)}&perPage=1`;
     const res = await fetchFn(url, { headers: { Authorization: pbToken } });
     if (!res.ok) return null;
     const body = (await res.json()) as { items?: readonly PBVaultRecord[] };
@@ -54,25 +60,51 @@ async function vaultLookup(
 }
 
 /**
- * Resolve the Resend API key. Vault first (canonical), then env-var
- * (operator-set fallback for the bootstrap), then null (caller must show
- * the bootstrap-fallback inline-link UX).
+ * Resolve the Resend API key.
+ *
+ * 1. RESEND_API_KEY env (operator override / bootstrap fallback).
+ * 2. Vault lookup. Default vault is the local PocketBase
+ *    (WARP_PB_URL + WARP_PB_EMAIL/PASSWORD + WARP_VAULT_MASTER_KEY).
+ *    Services whose data-PB and vault-PB differ (e.g., the demo Loom
+ *    uses operator PB for vault, demo PB for data) set the
+ *    WARP_VAULT_LOOKUP_* fall-throughs to point at the operator PB
+ *    without changing their data-PB connection.
+ * 3. null — the caller must surface the no-credentials path honestly.
  */
 export async function resolveResendKey(fetchFn: typeof fetch): Promise<string | null> {
   const envKey = process.env['RESEND_API_KEY'];
   if (envKey && envKey.length > 0) return envKey;
 
-  const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
-  if (!masterKey) return null;
+  const vaultPbUrl = process.env['WARP_VAULT_LOOKUP_URL'] ?? PB_URL;
+  const vaultEmail = process.env['WARP_VAULT_LOOKUP_EMAIL'] ?? process.env['WARP_PB_EMAIL'];
+  const vaultPassword =
+    process.env['WARP_VAULT_LOOKUP_PASSWORD'] ?? process.env['WARP_PB_PASSWORD'];
+  const vaultKey =
+    process.env['WARP_VAULT_LOOKUP_MASTER_KEY'] ?? process.env['WARP_VAULT_MASTER_KEY'];
+  if (!vaultEmail || !vaultPassword || !vaultKey) return null;
 
-  const pbToken = await loomPbToken(fetchFn);
+  // Authenticate against the vault PB (might be the same as data PB,
+  // might be a different host — service is responsible for the env).
+  let pbToken: string | null;
+  try {
+    const authRes = await fetchFn(`${vaultPbUrl}/api/collections/_superusers/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: vaultEmail, password: vaultPassword }),
+    });
+    if (!authRes.ok) return null;
+    const body = (await authRes.json()) as { token?: string };
+    pbToken = body.token ?? null;
+  } catch {
+    return null;
+  }
   if (!pbToken) return null;
 
-  // Touch the vault collection (idempotent ensure happens at register page level).
   void listSecrets;
-  const value = await vaultLookup(fetchFn, pbToken, masterKey, 'resend-api-key');
-  return value;
+  return await vaultLookup(fetchFn, vaultPbUrl, pbToken, vaultKey, 'resend-api-key');
 }
+
+void loomPbToken; // kept imported for potential future use; legacy local-vault helper
 
 const FROM_EMAIL = process.env['WARP_FROM_EMAIL'] ?? 'foundation@webspinner.foundation';
 const FROM_NAME = process.env['WARP_FROM_NAME'] ?? 'The Webspinner Foundation';
@@ -199,7 +231,10 @@ export function buildVerificationEmail(args: {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  );
 }
 function escapeAttr(s: string): string {
   return escapeHtml(s);

@@ -56,15 +56,34 @@ export async function sendEmailDev(msg: EmailMessage): Promise<EmailSendResult> 
 }
 
 /**
- * Top-level send — dispatches to the configured adapter. When
- * WARP_EMAIL_PROVIDER is unset or equals 'dev', uses sendEmailDev.
- * Other values reserved for future providers.
+ * Top-level send — dispatches to the configured adapter.
+ *   WARP_EMAIL_PROVIDER=dev (default) → sendEmailDev (JSONL outbox)
+ *   WARP_EMAIL_PROVIDER=resend        → delegates to email.ts (real
+ *                                       transactional send through
+ *                                       Resend; key resolved via
+ *                                       resolveResendKey)
  */
 export async function sendEmail(msg: EmailMessage): Promise<EmailSendResult> {
   const provider = process.env['WARP_EMAIL_PROVIDER'] ?? 'dev';
   if (provider === 'dev') return sendEmailDev(msg);
+  if (provider === 'resend') {
+    const { sendEmail: sendEmailResend } = await import('./email.js');
+    const html =
+      msg.htmlBody && msg.htmlBody.length > 0
+        ? msg.htmlBody
+        : msg.textBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+    const r = await sendEmailResend(globalThis.fetch, {
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.textBody,
+      html,
+    });
+    if (r.ok) return { ok: true, messageId: r.id };
+    if (r.kind === 'unsent-no-credentials') return { ok: false, reason: 'resend-no-credentials' };
+    return { ok: false, reason: `resend-send-failed: ${r.detail.slice(0, 200)}` };
+  }
   return {
     ok: false,
-    reason: `email-provider-unknown: ${provider} (only 'dev' is wired in v0.1)`,
+    reason: `email-provider-unknown: ${provider}`,
   };
 }

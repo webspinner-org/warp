@@ -56,6 +56,15 @@ export function verifyHubCookie(raw: string | undefined): HubSession | null {
   return { email, expiry };
 }
 
+/**
+ * Cookie domain — when set to `.webspinner.ai`, the cookie is shared
+ * across hub.webspinner.ai, app.webspinner.ai, try.webspinner.ai, etc.
+ * One sign-in at the hub propagates as identity throughout the
+ * Webspinner ECO system. Set via WARP_HUB_COOKIE_DOMAIN env; unset
+ * locally so dev `localhost` works without the leading-dot quirk.
+ */
+const COOKIE_DOMAIN = process.env['WARP_HUB_COOKIE_DOMAIN'] || undefined;
+
 export function setHubCookie(cookies: Cookies, email: string): void {
   const minted = mintHubCookie(email);
   cookies.set(COOKIE_NAME, minted.value, {
@@ -64,6 +73,7 @@ export function setHubCookie(cookies: Cookies, email: string): void {
     sameSite: 'lax',
     secure: process.env['NODE_ENV'] === 'production',
     maxAge: minted.maxAge,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 
@@ -74,6 +84,7 @@ export function clearHubCookie(cookies: Cookies): void {
     sameSite: 'lax',
     secure: process.env['NODE_ENV'] === 'production',
     maxAge: 0,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 

@@ -2,25 +2,36 @@
  * GET /api/owned
  *
  * Returns the published Webbases the caller owns (filtered by the
- * email on their `warp_author` cookie). Same data the /me page
- * renders server-side, served as JSON so try.webspinner.ai can
- * embed the listing in its own UX.
+ * email on their cookie). Authoritative identity is the warp_hub
+ * SSO cookie (signed by the hub, scoped .webspinner.ai); the older
+ * warp_author cookie is honoured as a fallback so in-flight
+ * sessions don't break.
  *
  * Response shape:
- *   { authed: true,  email, items: [ {id, shortCode, installToken,
- *     appName, domain, version, patronSentence, createdAt, updatedAt,
- *     expiresAt, installCount, maxInstalls, hasPassphrase, originAppId} ] }
- *   { authed: false }   ← caller has no valid author cookie yet
- *
- * The author cookie is minted by /author/login/finish (already
- * proxied through try.webspinner.ai).
+ *   { authed: true,  email, items: [...] }
+ *   { authed: false }
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { loadAuthorDashboard } from '$lib/server/author-dashboard.js';
+import { listPackagesBySender } from '$lib/server/wsap-registry.js';
+import { loomPbToken } from '$lib/server/pocketbase.js';
+import { getHubSession } from '$lib/server/hub-session.js';
+import { getAuthorSession } from '$lib/server/author-session.js';
 
 export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
-  const dash = await loadAuthorDashboard(cookies, f);
-  return json(dash);
+  const hub = getHubSession(cookies);
+  let email: string | null = hub?.email ?? null;
+  const masterKey = process.env['WARP_VAULT_MASTER_KEY'];
+  if (!email && masterKey) {
+    const author = getAuthorSession(cookies, masterKey);
+    email = author?.email ?? null;
+  }
+  if (!email) return json({ authed: false, items: [] });
+
+  const pbToken = await loomPbToken(f);
+  if (!pbToken) return json({ authed: true, email, items: [], reason: 'pb-auth' });
+  const list = await listPackagesBySender({ senderEmail: email, fetchFn: f, token: pbToken });
+  if (!list.ok) return json({ authed: true, email, items: [], reason: list.reason });
+  return json({ authed: true, email, items: list.items });
 };
