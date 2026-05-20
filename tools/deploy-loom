@@ -65,12 +65,16 @@ fi
 echo "→ pnpm build"
 pnpm -r --if-present build 2>&1 | tail -3
 
+# Build the standalone-runtime lib. Produces:
+#   loom/build/standalone/webbase-runtime.js   (IIFE; ~80-150 KB)
+#   loom/build/standalone/webbase-runtime.css  (component styles)
+# /app/<code>/standalone inlines both into the downloaded .html so
+# the file has zero runtime dependency on the Webspinner CDN.
+echo "→ pnpm build:standalone"
+(cd "$WARP_DIR/loom" && pnpm build:standalone 2>&1 | tail -5)
+
 # Replace adapter-node's generated entry with our CORS-wrapping
-# variant. The wrapper imports the same handler.js and listens the
-# same way; it just adds Access-Control-Allow-Origin: * on
-# /_app/immutable/* and /app/* requests before delegating. This is
-# what makes the standalone-download .html work cross-origin (file://
-# or 3rd-party hosting). Idempotent — re-runs after every build.
+# variant. Idempotent — re-runs after every build.
 WRAPPER="$WARP_DIR/tools/loom-cors-wrapper.mjs"
 TARGET="$WARP_DIR/loom/build/index.js"
 if [ -f "$WRAPPER" ] && [ -f "$TARGET" ]; then
