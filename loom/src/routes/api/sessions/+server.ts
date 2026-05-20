@@ -1,35 +1,29 @@
 /**
  * GET /api/sessions
  *
- * Returns the apps that belong to the authed patron — for the
- * try.webspinner.ai picker. The primary key is the *patron*; the
- * session id is an implementation detail per row. Mirrors what hub
- * shows under "Try Webspinner Projects → Webbase App".
+ * Returns ALL the work that belongs to the authed patron — for the
+ * try.webspinner.ai picker, which is the patron's entire surface
+ * (hub is a Wizard-only admin tool; patrons live in try). One row
+ * per artifact, the patron picks what to act on.
  *
- * Sources two PB tables and merges:
- *   - wp_database_applications  — built apps (rich metadata; kind='built')
- *   - wp_spinner_sessions       — in-progress propose/refine/ready rows
- *                                 with no built app yet (kind='in-progress')
+ * Three kinds in the response, distinguishable by `kind`:
+ *   - 'built'       — wp_database_applications: schema + screens, can
+ *                     be resumed for editing or published
+ *   - 'in-progress' — wp_spinner_sessions in propose/refine/ready,
+ *                     can be resumed to complete the build
+ *   - 'published'   — wp_app_packages: signed bundle behind a stable
+ *                     short_code URL, can be opened, shared, deleted
  *
- * The bridge between the two is `session_id`. We filter at the
- * spinner_sessions layer (where actor_email lives) and use that set
- * of session_ids to retrieve the corresponding built apps.
- *
- * Response shape:
- *   { authed: true, email, sessions: [{
- *       sessionId, appName, domain, kind, status, updatedAt, builtAt
- *   }] }
- *   { authed: false, sessions: [] }
- *
- * Anonymous spinner_sessions rows (no actor_email) are intentionally
- * not returned, even when the caller knows their session id. The
- * picker is a trust-after-sign-in surface.
+ * The bridge for built+in-progress is `session_id`; for published it's
+ * `sender_email`. Both filter on the patron's identity (warp_hub
+ * cookie). Anonymous rows are intentionally not returned.
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getHubSession } from '$lib/server/hub-session.js';
 import { loomPbToken } from '$lib/server/pocketbase.js';
+import { listPackagesBySender } from '$lib/server/wsap-registry.js';
 
 const PB_URL = process.env['WARP_PB_URL'] ?? 'http://localhost:8090';
 
@@ -55,13 +49,22 @@ interface PBDatabaseApplicationRow {
 }
 
 interface PickerEntry {
-  readonly sessionId: string;
+  readonly sessionId: string | null;
   readonly appName: string;
   readonly domain: string | null;
-  readonly kind: 'built' | 'in-progress';
+  readonly kind: 'built' | 'in-progress' | 'published';
   readonly status: string;
   readonly updatedAt: string;
   readonly builtAt: string | null;
+  // Populated only when kind === 'published'.
+  readonly shortCode?: string;
+  readonly installToken?: string;
+  readonly version?: number;
+  readonly openUrl?: string;
+  readonly hasPassphrase?: boolean;
+  readonly installCount?: number;
+  readonly maxInstalls?: number;
+  readonly expiresAt?: string;
 }
 
 function pickInProgressAppName(row: PBSpinnerSessionRow): {
@@ -157,8 +160,46 @@ export const GET: RequestHandler = async ({ cookies, fetch: f }) => {
     };
   });
 
-  // 4. Sort by recency (most recent first). Built rows use built_at;
-  //    in-progress rows use their updated_at — both already populated.
+  // 4. Published Webbases authored by this patron — wp_app_packages.
+  //    Each row is one version; the patron may have several. Open URL
+  //    is the stable short_code path served by the demo Loom.
+  const published = await listPackagesBySender({
+    senderEmail: hub.email,
+    fetchFn: f,
+    token,
+  });
+  if (published.ok) {
+    const origin = process.env['WARP_PUBLIC_ORIGIN'] ?? 'https://app.webspinner.ai';
+    for (const pkg of published.items) {
+      const appName =
+        (pkg.appName && pkg.appName.trim().length > 0 ? pkg.appName : null) ||
+        (pkg.domain && pkg.domain.trim().length > 0 ? pkg.domain : null) ||
+        (pkg.patronSentence && pkg.patronSentence.length > 0
+          ? pkg.patronSentence.slice(0, 60)
+          : null) ||
+        '(untitled)';
+      entries.push({
+        sessionId: null,
+        appName,
+        domain: pkg.domain || null,
+        kind: 'published',
+        status: 'published',
+        updatedAt: pkg.updatedAt,
+        builtAt: null,
+        shortCode: pkg.shortCode,
+        installToken: pkg.installToken,
+        version: pkg.version,
+        openUrl: `${origin}/app/${pkg.shortCode}?t=${pkg.installToken}`,
+        hasPassphrase: pkg.hasPassphrase,
+        installCount: pkg.installCount,
+        maxInstalls: pkg.maxInstalls,
+        expiresAt: pkg.expiresAt,
+      });
+    }
+  }
+
+  // 5. Sort by recency (most recent first). Built rows use built_at;
+  //    others use updatedAt — both already populated.
   entries.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
 
   return json({ authed: true, email: hub.email, sessions: entries });
