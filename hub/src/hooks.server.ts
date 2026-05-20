@@ -8,7 +8,7 @@
  */
 
 import type { Handle } from '@sveltejs/kit';
-import { getHubSession } from '$lib/server/hub-session.js';
+import { getHubSession, setHubCookie } from '$lib/server/hub-session.js';
 import { isWizard } from '$lib/server/wizard-allowlist.js';
 
 const NEVER_CACHE = 'private, no-cache, no-store, must-revalidate';
@@ -29,6 +29,12 @@ export const handle: Handle = async ({ event, resolve }) => {
         isWizard: isWizard(session.email),
       }
     : null;
+
+  // Refresh-on-load (mirrors admin: loom/src/routes/admin/+layout.server.ts:49,67).
+  // Re-emits warp_hub with the currently-configured WARP_HUB_COOKIE_DOMAIN, so
+  // a cookie minted before the .webspinner.ai SSO scope was wired up gets
+  // upgraded transparently on the next hub request — no sign-out cycle needed.
+  if (session) setHubCookie(event.cookies, session.email);
 
   const response = await resolve(event);
   if (shouldDisableCache(response, event.url.pathname)) {
