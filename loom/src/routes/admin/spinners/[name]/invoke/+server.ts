@@ -3,6 +3,7 @@ import { invoke } from '$lib/server/weaver.js';
 import { getSession } from '$lib/server/session.js';
 import { refreshSuperuser } from '$lib/server/pocketbase.js';
 import { refreshUser } from '$lib/server/users.js';
+import { getHubSession } from '$lib/server/hub-session.js';
 import type { RequestHandler } from './$types.js';
 
 export const POST: RequestHandler = async ({ request, params, cookies, fetch }) => {
@@ -22,6 +23,19 @@ export const POST: RequestHandler = async ({ request, params, cookies, fetch }) 
     if (!r.ok) throw error(401, 'Session expired.');
     actorEmail = r.auth.record.email;
     actorId = r.auth.record.id;
+  }
+
+  // Public-patron path: when try.webspinner.ai forwards a warp_hub
+  // cookie alongside its proxy-superuser session, the real actor is
+  // the patron, not the proxy. The wp_session is what authenticates
+  // to PocketBase (the proxy's superuser token); the warp_hub email
+  // is who the work belongs to. Recording the patron's email on
+  // wp_spinner_sessions.actor_email is what lets /api/sessions show
+  // them their prior work later.
+  const hub = getHubSession(cookies);
+  if (hub) {
+    actorEmail = hub.email;
+    actorId = `patron:${hub.email}`;
   }
 
   const body = (await request.json()) as {
