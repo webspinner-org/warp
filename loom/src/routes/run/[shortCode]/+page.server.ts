@@ -41,11 +41,17 @@ export const load: PageServerLoad = async ({ params, url, fetch: f }) => {
   const schema = (bundle['schema'] ?? {}) as Record<string, unknown>;
   const screensDraft = (design['screensDraft'] ?? {}) as Record<string, unknown>;
 
+  // When the /standalone endpoint fetches this page to splice into a
+  // downloadable .html, it sets ?standalone=1 — we strip the lock
+  // because the file IS the gift; the hosted URL is what passphrase
+  // gates. Per Wizard 2026-05-20: ease-of-use; patron decides.
+  const isStandaloneAssembly = url.searchParams.get('standalone') === '1';
+
   return {
     shortCode: pkg.row.shortCode,
     installToken,
     version: pkg.row.version,
-    locked: Boolean(pkg.row.passphraseHash),
+    locked: isStandaloneAssembly ? false : Boolean(pkg.row.passphraseHash),
     appName: pkg.row.appName || ((screensDraft['appName'] as string) ?? '(unnamed)'),
     domain: pkg.row.domain || ((screensDraft['domain'] as string) ?? ''),
     senderEmail: pkg.row.senderEmail,

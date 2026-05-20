@@ -250,8 +250,8 @@
   }
   .app-foot {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.8rem;
     padding-top: 1rem;
     border-top: 1px solid #34373d;
@@ -295,8 +295,12 @@
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
-    justify-content: flex-end;
     margin-top: 0.4rem;
+  }
+  .app-actions .install-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.7rem 1.4rem;
   }
   .app-note--alt {
     margin-top: 0.8rem;

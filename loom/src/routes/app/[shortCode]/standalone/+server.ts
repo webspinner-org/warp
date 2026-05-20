@@ -51,7 +51,7 @@ export const GET: RequestHandler = async ({ params, url, fetch: f, request }) =>
   // inlined and the screens are SSR'd. We just need to hardcode the
   // base for file:// + non-Webspinner-origin compatibility, rewrite
   // asset URLs to absolute, and add a freshness-check footer.
-  const runUrl = `${PUBLIC_ORIGIN}/run/${encodeURIComponent(shortCode)}?t=${encodeURIComponent(installToken)}`;
+  const runUrl = `${PUBLIC_ORIGIN}/run/${encodeURIComponent(shortCode)}?t=${encodeURIComponent(installToken)}&standalone=1`;
   const runRes = await f(runUrl);
   if (!runRes.ok) {
     throw error(502, `failed to render /run for standalone: HTTP ${runRes.status}`);
@@ -61,6 +61,11 @@ export const GET: RequestHandler = async ({ params, url, fetch: f, request }) =>
   // 1. Absolute asset URLs — patrons may host this anywhere, or open
   //    from file://; relative `../_app/...` won't resolve there.
   html = html.replace(/(["'(])\.\.\/_app\//g, `$1${PUBLIC_ORIGIN}/_app/`);
+
+  // 1b. Lock stripping happens server-side at /run via the
+  //    ?standalone=1 query above — page.server.ts forces locked=false
+  //    so the SSR'd HTML opens directly to the app, not the unlock
+  //    form. This is the patron-friendly path per Wizard 2026-05-20.
 
   // 2. Hard-code the SvelteKit base URL — the inline bootstrapper
   //    derives it from `location` by default, which breaks on

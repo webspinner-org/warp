@@ -65,6 +65,19 @@ fi
 echo "→ pnpm build"
 pnpm -r --if-present build 2>&1 | tail -3
 
+# Replace adapter-node's generated entry with our CORS-wrapping
+# variant. The wrapper imports the same handler.js and listens the
+# same way; it just adds Access-Control-Allow-Origin: * on
+# /_app/immutable/* and /app/* requests before delegating. This is
+# what makes the standalone-download .html work cross-origin (file://
+# or 3rd-party hosting). Idempotent — re-runs after every build.
+WRAPPER="$WARP_DIR/tools/loom-cors-wrapper.mjs"
+TARGET="$WARP_DIR/loom/build/index.js"
+if [ -f "$WRAPPER" ] && [ -f "$TARGET" ]; then
+  echo "→ swapping in CORS-wrapping entry over build/index.js"
+  cp "$WRAPPER" "$TARGET"
+fi
+
 UID_=$(id -u)
 echo "→ launchctl bootout $LABEL  (best effort)"
 launchctl bootout "gui/$UID_/$LABEL" 2>&1 || true
