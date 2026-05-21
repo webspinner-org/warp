@@ -1,0 +1,434 @@
+{
+  "appName": "Livestock Records",
+  "domain": "small-farm animal records",
+  "screens": [
+    {
+      "id": "form-animal",
+      "kind": "form",
+      "name": "Add Animal",
+      "describes": "Add an animal.",
+      "parentEntity": "animal",
+      "layout": {
+        "sections": [
+          {
+            "title": "Animal",
+            "fields": [
+              {
+                "id": "tag",
+                "label": "Tag",
+                "kind": "text",
+                "required": true,
+                "describes": "Ear tag or ID."
+              },
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text"
+              },
+              {
+                "id": "species",
+                "label": "Species",
+                "kind": "choice",
+                "options": [
+                  "cattle",
+                  "sheep",
+                  "goat",
+                  "pig",
+                  "chicken",
+                  "duck",
+                  "turkey",
+                  "rabbit",
+                  "other"
+                ]
+              },
+              {
+                "id": "breed",
+                "label": "Breed",
+                "kind": "text"
+              },
+              {
+                "id": "sex",
+                "label": "Sex",
+                "kind": "choice",
+                "options": ["male", "female"]
+              },
+              {
+                "id": "born_on",
+                "label": "Born On",
+                "kind": "date"
+              },
+              {
+                "id": "sire_tag",
+                "label": "Sire Tag",
+                "kind": "text"
+              },
+              {
+                "id": "dam_tag",
+                "label": "Dam Tag",
+                "kind": "text"
+              },
+              {
+                "id": "status",
+                "label": "Status",
+                "kind": "choice",
+                "options": ["active", "sold", "butchered", "died"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-animal",
+      "kind": "list",
+      "name": "All animals",
+      "describes": "Browse all animals.",
+      "parentEntity": "animal",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "tag"
+          },
+          {
+            "fieldId": "species"
+          },
+          {
+            "fieldId": "breed"
+          },
+          {
+            "fieldId": "sex"
+          },
+          {
+            "fieldId": "born_on"
+          },
+          {
+            "fieldId": "status"
+          }
+        ],
+        "defaultSort": {
+          "field": "born_on",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-animal",
+      "kind": "detail",
+      "name": "Animal details",
+      "describes": "View one animal.",
+      "parentEntity": "animal",
+      "layout": {
+        "showFields": [
+          "tag",
+          "name",
+          "species",
+          "breed",
+          "sex",
+          "born_on",
+          "sire_tag",
+          "dam_tag",
+          "status",
+          "notes"
+        ]
+      }
+    },
+    {
+      "id": "form-vet_visit",
+      "kind": "form",
+      "name": "Add Vet visit",
+      "describes": "Log a vet visit.",
+      "parentEntity": "vet_visit",
+      "layout": {
+        "sections": [
+          {
+            "title": "Vet visit",
+            "fields": [
+              {
+                "id": "animal",
+                "label": "Animal",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "animal"
+              },
+              {
+                "id": "visited_at",
+                "label": "Visited At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "reason",
+                "label": "Reason",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "treatment",
+                "label": "Treatment",
+                "kind": "long-text"
+              },
+              {
+                "id": "vet_name",
+                "label": "Vet Name",
+                "kind": "text"
+              },
+              {
+                "id": "cost",
+                "label": "Cost",
+                "kind": "money"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-vet_visit",
+      "kind": "list",
+      "name": "All vet_visits",
+      "describes": "Browse all vet_visits.",
+      "parentEntity": "vet_visit",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "animal"
+          },
+          {
+            "fieldId": "visited_at"
+          },
+          {
+            "fieldId": "reason"
+          },
+          {
+            "fieldId": "treatment"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-vet_visit",
+      "kind": "detail",
+      "name": "Vet visit details",
+      "describes": "View one vet_visit.",
+      "parentEntity": "vet_visit",
+      "layout": {
+        "showFields": ["animal", "visited_at", "reason", "treatment", "vet_name", "cost"]
+      }
+    },
+    {
+      "id": "form-breeding_event",
+      "kind": "form",
+      "name": "Add Breeding event",
+      "describes": "Record a breeding.",
+      "parentEntity": "breeding_event",
+      "layout": {
+        "sections": [
+          {
+            "title": "Breeding event",
+            "fields": [
+              {
+                "id": "female",
+                "label": "Female",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "animal"
+              },
+              {
+                "id": "male",
+                "label": "Male",
+                "kind": "link-to",
+                "linkTo": "animal"
+              },
+              {
+                "id": "bred_on",
+                "label": "Bred On",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "expected_birth_at",
+                "label": "Expected Birth At",
+                "kind": "date"
+              },
+              {
+                "id": "outcome",
+                "label": "Outcome",
+                "kind": "choice",
+                "options": ["pending", "birthed", "lost", "no-take"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-breeding_event",
+      "kind": "list",
+      "name": "All breeding_events",
+      "describes": "Browse all breeding_events.",
+      "parentEntity": "breeding_event",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "female"
+          },
+          {
+            "fieldId": "male"
+          },
+          {
+            "fieldId": "bred_on"
+          },
+          {
+            "fieldId": "expected_birth_at"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-breeding_event",
+      "kind": "detail",
+      "name": "Breeding event details",
+      "describes": "View one breeding_event.",
+      "parentEntity": "breeding_event",
+      "layout": {
+        "showFields": ["female", "male", "bred_on", "expected_birth_at", "outcome", "notes"]
+      }
+    },
+    {
+      "id": "form-sale",
+      "kind": "form",
+      "name": "Add Sale",
+      "describes": "Record a sale.",
+      "parentEntity": "sale",
+      "layout": {
+        "sections": [
+          {
+            "title": "Sale",
+            "fields": [
+              {
+                "id": "animal",
+                "label": "Animal",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "animal"
+              },
+              {
+                "id": "sold_at",
+                "label": "Sold At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "buyer",
+                "label": "Buyer",
+                "kind": "text"
+              },
+              {
+                "id": "price",
+                "label": "Price",
+                "kind": "money",
+                "required": true
+              },
+              {
+                "id": "weight_lbs",
+                "label": "Weight Lbs",
+                "kind": "number"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-sale",
+      "kind": "list",
+      "name": "All sales",
+      "describes": "Browse all sales.",
+      "parentEntity": "sale",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "animal"
+          },
+          {
+            "fieldId": "sold_at"
+          },
+          {
+            "fieldId": "buyer"
+          },
+          {
+            "fieldId": "price"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-sale",
+      "kind": "detail",
+      "name": "Sale details",
+      "describes": "View one sale.",
+      "parentEntity": "sale",
+      "layout": {
+        "showFields": ["animal", "sold_at", "buyer", "price", "weight_lbs", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Animals",
+      "primary": true,
+      "screens": ["form-animal", "list-animal"]
+    },
+    {
+      "label": "Vet_Visits",
+      "primary": false,
+      "screens": ["form-vet_visit", "list-vet_visit"]
+    },
+    {
+      "label": "Breeding_Events",
+      "primary": false,
+      "screens": ["form-breeding_event", "list-breeding_event"]
+    },
+    {
+      "label": "Sales",
+      "primary": false,
+      "screens": ["form-sale", "list-sale"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "cool-spring",
+        "name": "Spring Garden",
+        "mood": "cool",
+        "palette": {
+          "bg": "#0f1814",
+          "surface": "#162822",
+          "surfaceAlt": "#1f3a31",
+          "border": "#2a4a3f",
+          "text": "#dcefe2",
+          "textMuted": "#90b3a3",
+          "accent": "#7ac79c",
+          "accentSoft": "#a3dcb9",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "cool-spring"
+  }
+}

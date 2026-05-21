@@ -1,0 +1,317 @@
+{
+  "appName": "Recipe Box",
+  "domain": "home cooking",
+  "screens": [
+    {
+      "id": "form-recipe",
+      "kind": "form",
+      "name": "Add Recipe",
+      "describes": "Add a recipe.",
+      "parentEntity": "recipe",
+      "layout": {
+        "sections": [
+          {
+            "title": "Recipe",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "source",
+                "label": "Source",
+                "kind": "text",
+                "describes": "Book, website, family member."
+              },
+              {
+                "id": "servings",
+                "label": "Servings",
+                "kind": "number"
+              },
+              {
+                "id": "time_minutes",
+                "label": "Time Minutes",
+                "kind": "number"
+              },
+              {
+                "id": "cuisine",
+                "label": "Cuisine",
+                "kind": "choice",
+                "options": [
+                  "italian",
+                  "mexican",
+                  "chinese",
+                  "thai",
+                  "indian",
+                  "american",
+                  "mediterranean",
+                  "french",
+                  "japanese",
+                  "other"
+                ]
+              },
+              {
+                "id": "tags",
+                "label": "Tags",
+                "kind": "multi-choice",
+                "options": [
+                  "quick",
+                  "weeknight",
+                  "company",
+                  "leftovers",
+                  "vegetarian",
+                  "gluten-free"
+                ]
+              },
+              {
+                "id": "instructions",
+                "label": "Instructions",
+                "kind": "long-text",
+                "required": true
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              },
+              {
+                "id": "favorite",
+                "label": "Favorite",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-recipe",
+      "kind": "list",
+      "name": "All recipes",
+      "describes": "Browse all recipes.",
+      "parentEntity": "recipe",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "cuisine"
+          },
+          {
+            "fieldId": "time_minutes"
+          },
+          {
+            "fieldId": "favorite"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-recipe",
+      "kind": "detail",
+      "name": "Recipe details",
+      "describes": "View one recipe.",
+      "parentEntity": "recipe",
+      "layout": {
+        "showFields": [
+          "name",
+          "source",
+          "servings",
+          "time_minutes",
+          "cuisine",
+          "tags",
+          "instructions",
+          "notes",
+          "favorite"
+        ]
+      }
+    },
+    {
+      "id": "form-ingredient",
+      "kind": "form",
+      "name": "Add Ingredient",
+      "describes": "Add an ingredient line.",
+      "parentEntity": "ingredient",
+      "layout": {
+        "sections": [
+          {
+            "title": "Ingredient",
+            "fields": [
+              {
+                "id": "recipe",
+                "label": "Recipe",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "recipe"
+              },
+              {
+                "id": "item",
+                "label": "Item",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "quantity",
+                "label": "Quantity",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-ingredient",
+      "kind": "list",
+      "name": "All ingredients",
+      "describes": "Browse all ingredients.",
+      "parentEntity": "ingredient",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "recipe"
+          },
+          {
+            "fieldId": "item"
+          },
+          {
+            "fieldId": "quantity"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-ingredient",
+      "kind": "detail",
+      "name": "Ingredient details",
+      "describes": "View one ingredient.",
+      "parentEntity": "ingredient",
+      "layout": {
+        "showFields": ["recipe", "item", "quantity", "notes"]
+      }
+    },
+    {
+      "id": "form-cook",
+      "kind": "form",
+      "name": "Add Cooking session",
+      "describes": "Log when you cooked it.",
+      "parentEntity": "cook",
+      "layout": {
+        "sections": [
+          {
+            "title": "Cooking session",
+            "fields": [
+              {
+                "id": "recipe",
+                "label": "Recipe",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "recipe"
+              },
+              {
+                "id": "cooked_at",
+                "label": "Cooked At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "result",
+                "label": "Result",
+                "kind": "choice",
+                "options": ["great", "good", "okay", "not-again"]
+              },
+              {
+                "id": "changes",
+                "label": "Changes",
+                "kind": "long-text",
+                "describes": "What did you change vs the recipe?"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-cook",
+      "kind": "list",
+      "name": "All cooks",
+      "describes": "Browse all cooks.",
+      "parentEntity": "cook",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "recipe"
+          },
+          {
+            "fieldId": "cooked_at"
+          },
+          {
+            "fieldId": "result"
+          },
+          {
+            "fieldId": "changes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-cook",
+      "kind": "detail",
+      "name": "Cooking session details",
+      "describes": "View one cook.",
+      "parentEntity": "cook",
+      "layout": {
+        "showFields": ["recipe", "cooked_at", "result", "changes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Recipes",
+      "primary": true,
+      "screens": ["form-recipe", "list-recipe"]
+    },
+    {
+      "label": "Ingredients",
+      "primary": false,
+      "screens": ["form-ingredient", "list-ingredient"]
+    },
+    {
+      "label": "Cooks",
+      "primary": false,
+      "screens": ["form-cook", "list-cook"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "warm-bookkeeping",
+        "name": "Warm Books",
+        "mood": "warm",
+        "palette": {
+          "bg": "#1a1410",
+          "surface": "#241b15",
+          "surfaceAlt": "#2f231a",
+          "border": "#3d2f24",
+          "text": "#f0e6d4",
+          "textMuted": "#bba990",
+          "accent": "#d4a85a",
+          "accentSoft": "#e6c486",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "warm-bookkeeping"
+  }
+}

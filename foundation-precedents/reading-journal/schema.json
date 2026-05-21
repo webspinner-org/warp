@@ -1,0 +1,238 @@
+{
+  "appName": "Reading Journal",
+  "domain": "personal reading log",
+  "screens": [
+    {
+      "id": "form-book",
+      "kind": "form",
+      "name": "Add Book",
+      "describes": "Add a book.",
+      "parentEntity": "book",
+      "layout": {
+        "sections": [
+          {
+            "title": "Book",
+            "fields": [
+              {
+                "id": "title",
+                "label": "Title",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "author",
+                "label": "Author",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "genre",
+                "label": "Genre",
+                "kind": "choice",
+                "options": [
+                  "fiction",
+                  "literary-fiction",
+                  "sci-fi",
+                  "fantasy",
+                  "mystery",
+                  "biography",
+                  "history",
+                  "science",
+                  "philosophy",
+                  "self-help",
+                  "business",
+                  "poetry",
+                  "other"
+                ]
+              },
+              {
+                "id": "started_at",
+                "label": "Started At",
+                "kind": "date"
+              },
+              {
+                "id": "finished_at",
+                "label": "Finished At",
+                "kind": "date"
+              },
+              {
+                "id": "rating",
+                "label": "Rating",
+                "kind": "choice",
+                "options": ["1", "2", "3", "4", "5"]
+              },
+              {
+                "id": "format",
+                "label": "Format",
+                "kind": "choice",
+                "options": ["hardcover", "paperback", "ebook", "audiobook"]
+              },
+              {
+                "id": "review",
+                "label": "Review",
+                "kind": "long-text"
+              },
+              {
+                "id": "favorite",
+                "label": "Favorite",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-book",
+      "kind": "list",
+      "name": "All books",
+      "describes": "Browse all books.",
+      "parentEntity": "book",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "title"
+          },
+          {
+            "fieldId": "author"
+          },
+          {
+            "fieldId": "finished_at"
+          },
+          {
+            "fieldId": "rating"
+          }
+        ],
+        "defaultSort": {
+          "field": "finished_at",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-book",
+      "kind": "detail",
+      "name": "Book details",
+      "describes": "View one book.",
+      "parentEntity": "book",
+      "layout": {
+        "showFields": [
+          "title",
+          "author",
+          "genre",
+          "started_at",
+          "finished_at",
+          "rating",
+          "format",
+          "review",
+          "favorite"
+        ]
+      }
+    },
+    {
+      "id": "form-quote",
+      "kind": "form",
+      "name": "Add Quote",
+      "describes": "Save a quote.",
+      "parentEntity": "quote",
+      "layout": {
+        "sections": [
+          {
+            "title": "Quote",
+            "fields": [
+              {
+                "id": "book",
+                "label": "Book",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "book"
+              },
+              {
+                "id": "text",
+                "label": "Text",
+                "kind": "long-text",
+                "required": true
+              },
+              {
+                "id": "page",
+                "label": "Page",
+                "kind": "number"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-quote",
+      "kind": "list",
+      "name": "All quotes",
+      "describes": "Browse all quotes.",
+      "parentEntity": "quote",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "book"
+          },
+          {
+            "fieldId": "text"
+          },
+          {
+            "fieldId": "page"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-quote",
+      "kind": "detail",
+      "name": "Quote details",
+      "describes": "View one quote.",
+      "parentEntity": "quote",
+      "layout": {
+        "showFields": ["book", "text", "page", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Books",
+      "primary": true,
+      "screens": ["form-book", "list-book"]
+    },
+    {
+      "label": "Quotes",
+      "primary": false,
+      "screens": ["form-quote", "list-quote"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "warm-bookkeeping",
+        "name": "Warm Books",
+        "mood": "warm",
+        "palette": {
+          "bg": "#1a1410",
+          "surface": "#241b15",
+          "surfaceAlt": "#2f231a",
+          "border": "#3d2f24",
+          "text": "#f0e6d4",
+          "textMuted": "#bba990",
+          "accent": "#d4a85a",
+          "accentSoft": "#e6c486",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "warm-bookkeeping"
+  }
+}

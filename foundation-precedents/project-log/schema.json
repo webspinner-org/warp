@@ -1,0 +1,226 @@
+{
+  "appName": "Project Log",
+  "domain": "small-project tracking",
+  "screens": [
+    {
+      "id": "form-project",
+      "kind": "form",
+      "name": "Add Project",
+      "describes": "Open a project.",
+      "parentEntity": "project",
+      "layout": {
+        "sections": [
+          {
+            "title": "Project",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "description",
+                "label": "Description",
+                "kind": "long-text"
+              },
+              {
+                "id": "started_at",
+                "label": "Started At",
+                "kind": "date"
+              },
+              {
+                "id": "target_at",
+                "label": "Target At",
+                "kind": "date"
+              },
+              {
+                "id": "status",
+                "label": "Status",
+                "kind": "choice",
+                "options": ["planning", "active", "paused", "completed", "cancelled"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-project",
+      "kind": "list",
+      "name": "All projects",
+      "describes": "Browse all projects.",
+      "parentEntity": "project",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "description"
+          },
+          {
+            "fieldId": "started_at"
+          },
+          {
+            "fieldId": "target_at"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-project",
+      "kind": "detail",
+      "name": "Project details",
+      "describes": "View one project.",
+      "parentEntity": "project",
+      "layout": {
+        "showFields": ["name", "description", "started_at", "target_at", "status", "notes"]
+      }
+    },
+    {
+      "id": "form-task",
+      "kind": "form",
+      "name": "Add Task",
+      "describes": "Add a task.",
+      "parentEntity": "task",
+      "layout": {
+        "sections": [
+          {
+            "title": "Task",
+            "fields": [
+              {
+                "id": "project",
+                "label": "Project",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "project"
+              },
+              {
+                "id": "title",
+                "label": "Title",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "description",
+                "label": "Description",
+                "kind": "long-text"
+              },
+              {
+                "id": "assigned_to",
+                "label": "Assigned To",
+                "kind": "text"
+              },
+              {
+                "id": "due_at",
+                "label": "Due At",
+                "kind": "date"
+              },
+              {
+                "id": "status",
+                "label": "Status",
+                "kind": "choice",
+                "options": ["todo", "in-progress", "blocked", "done", "cancelled"]
+              },
+              {
+                "id": "blocked_by",
+                "label": "Blocked By",
+                "kind": "long-text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-task",
+      "kind": "list",
+      "name": "All tasks",
+      "describes": "Browse all tasks.",
+      "parentEntity": "task",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "title"
+          },
+          {
+            "fieldId": "project"
+          },
+          {
+            "fieldId": "status"
+          },
+          {
+            "fieldId": "due_at"
+          }
+        ],
+        "defaultSort": {
+          "field": "due_at",
+          "direction": "asc"
+        }
+      }
+    },
+    {
+      "id": "detail-task",
+      "kind": "detail",
+      "name": "Task details",
+      "describes": "View one task.",
+      "parentEntity": "task",
+      "layout": {
+        "showFields": [
+          "project",
+          "title",
+          "description",
+          "assigned_to",
+          "due_at",
+          "status",
+          "blocked_by",
+          "notes"
+        ]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Projects",
+      "primary": true,
+      "screens": ["form-project", "list-project"]
+    },
+    {
+      "label": "Tasks",
+      "primary": false,
+      "screens": ["form-task", "list-task"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "foundation-cyan",
+        "name": "Foundation",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1a262e",
+          "surface": "#233440",
+          "surfaceAlt": "#2c4250",
+          "border": "#34465290",
+          "text": "#ece4d4",
+          "textMuted": "#a4b4c0",
+          "accent": "#5fd2ed",
+          "accentSoft": "#88dff0",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "foundation-cyan"
+  }
+}

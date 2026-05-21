@@ -1,0 +1,504 @@
+{
+  "appName": "Service Tickets",
+  "domain": "service-and-repair operations",
+  "screens": [
+    {
+      "id": "form-ticket",
+      "kind": "form",
+      "name": "Add Ticket",
+      "describes": "Open a service ticket.",
+      "parentEntity": "ticket",
+      "layout": {
+        "sections": [
+          {
+            "title": "Ticket",
+            "fields": [
+              {
+                "id": "opened_at",
+                "label": "Opened At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "customer",
+                "label": "Customer",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "customer"
+              },
+              {
+                "id": "item",
+                "label": "Item",
+                "kind": "link-to",
+                "linkTo": "item"
+              },
+              {
+                "id": "reported_problem",
+                "label": "Reported Problem",
+                "kind": "long-text",
+                "required": true
+              },
+              {
+                "id": "status",
+                "label": "Status",
+                "kind": "choice",
+                "options": [
+                  "open",
+                  "waiting-on-parts",
+                  "in-progress",
+                  "completed",
+                  "invoiced",
+                  "closed"
+                ]
+              },
+              {
+                "id": "technician",
+                "label": "Technician",
+                "kind": "link-to",
+                "linkTo": "technician"
+              },
+              {
+                "id": "priority",
+                "label": "Priority",
+                "kind": "choice",
+                "options": ["low", "normal", "high", "urgent"]
+              },
+              {
+                "id": "completed_at",
+                "label": "Completed At",
+                "kind": "date"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-ticket",
+      "kind": "list",
+      "name": "All tickets",
+      "describes": "Browse all tickets.",
+      "parentEntity": "ticket",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "opened_at"
+          },
+          {
+            "fieldId": "customer"
+          },
+          {
+            "fieldId": "status"
+          },
+          {
+            "fieldId": "priority"
+          },
+          {
+            "fieldId": "technician"
+          }
+        ],
+        "defaultSort": {
+          "field": "opened_at",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-ticket",
+      "kind": "detail",
+      "name": "Ticket details",
+      "describes": "View one ticket.",
+      "parentEntity": "ticket",
+      "layout": {
+        "showFields": [
+          "opened_at",
+          "customer",
+          "item",
+          "reported_problem",
+          "status",
+          "technician",
+          "priority",
+          "completed_at",
+          "notes"
+        ]
+      }
+    },
+    {
+      "id": "form-customer",
+      "kind": "form",
+      "name": "Add Customer",
+      "describes": "Add a customer.",
+      "parentEntity": "customer",
+      "layout": {
+        "sections": [
+          {
+            "title": "Customer",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "phone",
+                "label": "Phone",
+                "kind": "text"
+              },
+              {
+                "id": "address",
+                "label": "Address",
+                "kind": "long-text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-customer",
+      "kind": "list",
+      "name": "All customers",
+      "describes": "Browse all customers.",
+      "parentEntity": "customer",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "email"
+          },
+          {
+            "fieldId": "phone"
+          },
+          {
+            "fieldId": "address"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-customer",
+      "kind": "detail",
+      "name": "Customer details",
+      "describes": "View one customer.",
+      "parentEntity": "customer",
+      "layout": {
+        "showFields": ["name", "email", "phone", "address", "notes"]
+      }
+    },
+    {
+      "id": "form-item",
+      "kind": "form",
+      "name": "Add Item",
+      "describes": "Customer's item (vehicle, appliance, etc.).",
+      "parentEntity": "item",
+      "layout": {
+        "sections": [
+          {
+            "title": "Item",
+            "fields": [
+              {
+                "id": "owner",
+                "label": "Owner",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "customer"
+              },
+              {
+                "id": "description",
+                "label": "Description",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "identifier",
+                "label": "Identifier",
+                "kind": "text",
+                "describes": "VIN, serial number, etc."
+              },
+              {
+                "id": "year",
+                "label": "Year",
+                "kind": "number"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-item",
+      "kind": "list",
+      "name": "All items",
+      "describes": "Browse all items.",
+      "parentEntity": "item",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "owner"
+          },
+          {
+            "fieldId": "description"
+          },
+          {
+            "fieldId": "identifier"
+          },
+          {
+            "fieldId": "year"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-item",
+      "kind": "detail",
+      "name": "Item details",
+      "describes": "View one item.",
+      "parentEntity": "item",
+      "layout": {
+        "showFields": ["owner", "description", "identifier", "year", "notes"]
+      }
+    },
+    {
+      "id": "form-technician",
+      "kind": "form",
+      "name": "Add Technician",
+      "describes": "Add a technician.",
+      "parentEntity": "technician",
+      "layout": {
+        "sections": [
+          {
+            "title": "Technician",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "specialty",
+                "label": "Specialty",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-technician",
+      "kind": "list",
+      "name": "All technicians",
+      "describes": "Browse all technicians.",
+      "parentEntity": "technician",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "email"
+          },
+          {
+            "fieldId": "specialty"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-technician",
+      "kind": "detail",
+      "name": "Technician details",
+      "describes": "View one technician.",
+      "parentEntity": "technician",
+      "layout": {
+        "showFields": ["name", "email", "specialty"]
+      }
+    },
+    {
+      "id": "form-part_used",
+      "kind": "form",
+      "name": "Add Part Used",
+      "describes": "Record a part used on a ticket.",
+      "parentEntity": "part_used",
+      "layout": {
+        "sections": [
+          {
+            "title": "Part Used",
+            "fields": [
+              {
+                "id": "ticket",
+                "label": "Ticket",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "ticket"
+              },
+              {
+                "id": "part_name",
+                "label": "Part Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "quantity",
+                "label": "Quantity",
+                "kind": "number",
+                "required": true
+              },
+              {
+                "id": "unit_cost",
+                "label": "Unit Cost",
+                "kind": "money"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-part_used",
+      "kind": "list",
+      "name": "All part_useds",
+      "describes": "Browse all part_useds.",
+      "parentEntity": "part_used",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "ticket"
+          },
+          {
+            "fieldId": "part_name"
+          },
+          {
+            "fieldId": "quantity"
+          },
+          {
+            "fieldId": "unit_cost"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-part_used",
+      "kind": "detail",
+      "name": "Part Used details",
+      "describes": "View one part_used.",
+      "parentEntity": "part_used",
+      "layout": {
+        "showFields": ["ticket", "part_name", "quantity", "unit_cost", "notes"]
+      }
+    },
+    {
+      "id": "report-tickets-by-status",
+      "kind": "report",
+      "name": "Tickets by Status",
+      "describes": "Count open by status.",
+      "parentEntity": "ticket",
+      "layout": {
+        "describes": "Count open by status.",
+        "sourceEntities": ["ticket"],
+        "groupBy": "status",
+        "aggregations": ["count"]
+      }
+    },
+    {
+      "id": "report-tickets-by-technician",
+      "kind": "report",
+      "name": "Tickets by Technician",
+      "describes": "Ticket count by tech.",
+      "parentEntity": "ticket",
+      "layout": {
+        "describes": "Ticket count by tech.",
+        "sourceEntities": ["ticket"],
+        "groupBy": "technician",
+        "aggregations": ["count"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Tickets",
+      "primary": true,
+      "screens": ["form-ticket", "list-ticket"]
+    },
+    {
+      "label": "Customers",
+      "primary": false,
+      "screens": ["form-customer", "list-customer"]
+    },
+    {
+      "label": "Items",
+      "primary": false,
+      "screens": ["form-item", "list-item"]
+    },
+    {
+      "label": "Technicians",
+      "primary": false,
+      "screens": ["form-technician", "list-technician"]
+    },
+    {
+      "label": "Part_Useds",
+      "primary": false,
+      "screens": ["form-part_used", "list-part_used"]
+    },
+    {
+      "label": "Reports",
+      "primary": false,
+      "screens": ["report-tickets-by-status", "report-tickets-by-technician"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1d1d1a",
+          "surface": "#2a2a26",
+          "surfaceAlt": "#363632",
+          "border": "#4a4a45",
+          "text": "#e8e5dd",
+          "textMuted": "#a8a59c",
+          "accent": "#a89060",
+          "accentSoft": "#c4b080",
+          "gold": "#c4b080"
+        }
+      }
+    ],
+    "selectedPaletteId": "stone"
+  }
+}

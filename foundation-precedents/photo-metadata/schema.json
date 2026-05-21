@@ -1,0 +1,212 @@
+{
+  "appName": "Photo Notes",
+  "domain": "photo organization and notes",
+  "screens": [
+    {
+      "id": "form-photo",
+      "kind": "form",
+      "name": "Add Photo",
+      "describes": "Catalog a photo.",
+      "parentEntity": "photo",
+      "layout": {
+        "sections": [
+          {
+            "title": "Photo",
+            "fields": [
+              {
+                "id": "title",
+                "label": "Title",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "taken_on",
+                "label": "Taken On",
+                "kind": "date"
+              },
+              {
+                "id": "location",
+                "label": "Location",
+                "kind": "text"
+              },
+              {
+                "id": "photographer",
+                "label": "Photographer",
+                "kind": "text"
+              },
+              {
+                "id": "story",
+                "label": "Story",
+                "kind": "long-text",
+                "describes": "What was happening when this was taken?"
+              },
+              {
+                "id": "roll_or_album",
+                "label": "Roll Or Album",
+                "kind": "text"
+              },
+              {
+                "id": "physical_location",
+                "label": "Physical Location",
+                "kind": "text",
+                "describes": "Where is the print or negative now?"
+              },
+              {
+                "id": "digital_path",
+                "label": "Digital Path",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-photo",
+      "kind": "list",
+      "name": "All photos",
+      "describes": "Browse all photos.",
+      "parentEntity": "photo",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "title"
+          },
+          {
+            "fieldId": "taken_on"
+          },
+          {
+            "fieldId": "location"
+          },
+          {
+            "fieldId": "photographer"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-photo",
+      "kind": "detail",
+      "name": "Photo details",
+      "describes": "View one photo.",
+      "parentEntity": "photo",
+      "layout": {
+        "showFields": [
+          "title",
+          "taken_on",
+          "location",
+          "photographer",
+          "story",
+          "roll_or_album",
+          "physical_location",
+          "digital_path"
+        ]
+      }
+    },
+    {
+      "id": "form-person_in_photo",
+      "kind": "form",
+      "name": "Add Person in photo",
+      "describes": "Tag a person in a photo.",
+      "parentEntity": "person_in_photo",
+      "layout": {
+        "sections": [
+          {
+            "title": "Person in photo",
+            "fields": [
+              {
+                "id": "photo",
+                "label": "Photo",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "photo"
+              },
+              {
+                "id": "person_name",
+                "label": "Person Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "relationship",
+                "label": "Relationship",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-person_in_photo",
+      "kind": "list",
+      "name": "All people in photos",
+      "describes": "Browse all people in photos.",
+      "parentEntity": "person_in_photo",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "photo"
+          },
+          {
+            "fieldId": "person_name"
+          },
+          {
+            "fieldId": "relationship"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-person_in_photo",
+      "kind": "detail",
+      "name": "Person in photo details",
+      "describes": "View one person_in_photo.",
+      "parentEntity": "person_in_photo",
+      "layout": {
+        "showFields": ["photo", "person_name", "relationship", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Photos",
+      "primary": true,
+      "screens": ["form-photo", "list-photo"]
+    },
+    {
+      "label": "People In Photos",
+      "primary": false,
+      "screens": ["form-person_in_photo", "list-person_in_photo"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1d1d1a",
+          "surface": "#2a2a26",
+          "surfaceAlt": "#363632",
+          "border": "#4a4a45",
+          "text": "#e8e5dd",
+          "textMuted": "#a8a59c",
+          "accent": "#a89060",
+          "accentSoft": "#c4b080",
+          "gold": "#c4b080"
+        }
+      }
+    ],
+    "selectedPaletteId": "stone"
+  }
+}

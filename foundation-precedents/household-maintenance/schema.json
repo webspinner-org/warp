@@ -1,0 +1,227 @@
+{
+  "appName": "Home Care",
+  "domain": "household maintenance",
+  "screens": [
+    {
+      "id": "form-item",
+      "kind": "form",
+      "name": "Add Item",
+      "describes": "Add a maintenance item.",
+      "parentEntity": "item",
+      "layout": {
+        "sections": [
+          {
+            "title": "Item",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "location",
+                "label": "Location",
+                "kind": "text",
+                "describes": "Kitchen, garage, attic, etc."
+              },
+              {
+                "id": "kind",
+                "label": "Kind",
+                "kind": "choice",
+                "options": ["filter", "battery", "appliance", "system", "consumable", "other"]
+              },
+              {
+                "id": "install_at",
+                "label": "Install At",
+                "kind": "date"
+              },
+              {
+                "id": "replace_every_months",
+                "label": "Replace Every Months",
+                "kind": "number"
+              },
+              {
+                "id": "last_serviced_at",
+                "label": "Last Serviced At",
+                "kind": "date"
+              },
+              {
+                "id": "next_due_at",
+                "label": "Next Due At",
+                "kind": "date"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-item",
+      "kind": "list",
+      "name": "All items",
+      "describes": "Browse all items.",
+      "parentEntity": "item",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "location"
+          },
+          {
+            "fieldId": "next_due_at"
+          },
+          {
+            "fieldId": "kind"
+          }
+        ],
+        "defaultSort": {
+          "field": "next_due_at",
+          "direction": "asc"
+        }
+      }
+    },
+    {
+      "id": "detail-item",
+      "kind": "detail",
+      "name": "Item details",
+      "describes": "View one item.",
+      "parentEntity": "item",
+      "layout": {
+        "showFields": [
+          "name",
+          "location",
+          "kind",
+          "install_at",
+          "replace_every_months",
+          "last_serviced_at",
+          "next_due_at",
+          "notes"
+        ]
+      }
+    },
+    {
+      "id": "form-service_log",
+      "kind": "form",
+      "name": "Add Service log",
+      "describes": "Log a service action.",
+      "parentEntity": "service_log",
+      "layout": {
+        "sections": [
+          {
+            "title": "Service log",
+            "fields": [
+              {
+                "id": "item",
+                "label": "Item",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "item"
+              },
+              {
+                "id": "serviced_at",
+                "label": "Serviced At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "action",
+                "label": "Action",
+                "kind": "choice",
+                "options": ["replaced", "cleaned", "repaired", "inspected"]
+              },
+              {
+                "id": "cost",
+                "label": "Cost",
+                "kind": "money"
+              },
+              {
+                "id": "serviced_by",
+                "label": "Serviced By",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-service_log",
+      "kind": "list",
+      "name": "All service_logs",
+      "describes": "Browse all service_logs.",
+      "parentEntity": "service_log",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "item"
+          },
+          {
+            "fieldId": "serviced_at"
+          },
+          {
+            "fieldId": "action"
+          },
+          {
+            "fieldId": "cost"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-service_log",
+      "kind": "detail",
+      "name": "Service log details",
+      "describes": "View one service_log.",
+      "parentEntity": "service_log",
+      "layout": {
+        "showFields": ["item", "serviced_at", "action", "cost", "serviced_by", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Items",
+      "primary": true,
+      "screens": ["form-item", "list-item"]
+    },
+    {
+      "label": "Service_Logs",
+      "primary": false,
+      "screens": ["form-service_log", "list-service_log"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1d1d1a",
+          "surface": "#2a2a26",
+          "surfaceAlt": "#363632",
+          "border": "#4a4a45",
+          "text": "#e8e5dd",
+          "textMuted": "#a8a59c",
+          "accent": "#a89060",
+          "accentSoft": "#c4b080",
+          "gold": "#c4b080"
+        }
+      }
+    ],
+    "selectedPaletteId": "stone"
+  }
+}

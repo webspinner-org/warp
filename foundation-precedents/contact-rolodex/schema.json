@@ -1,0 +1,243 @@
+{
+  "appName": "Contacts",
+  "domain": "personal contact management",
+  "screens": [
+    {
+      "id": "form-contact",
+      "kind": "form",
+      "name": "Add Contact",
+      "describes": "Add a contact.",
+      "parentEntity": "contact",
+      "layout": {
+        "sections": [
+          {
+            "title": "Contact",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "relationship",
+                "label": "Relationship",
+                "kind": "choice",
+                "options": [
+                  "family",
+                  "close-friend",
+                  "friend",
+                  "colleague",
+                  "former-colleague",
+                  "mentor",
+                  "mentee",
+                  "professional",
+                  "acquaintance"
+                ]
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "phone",
+                "label": "Phone",
+                "kind": "text"
+              },
+              {
+                "id": "city",
+                "label": "City",
+                "kind": "text"
+              },
+              {
+                "id": "met_at",
+                "label": "Met At",
+                "kind": "date"
+              },
+              {
+                "id": "met_how",
+                "label": "Met How",
+                "kind": "text"
+              },
+              {
+                "id": "birthday",
+                "label": "Birthday",
+                "kind": "date"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              },
+              {
+                "id": "do_not_contact",
+                "label": "Do Not Contact",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-contact",
+      "kind": "list",
+      "name": "All contacts",
+      "describes": "Browse all contacts.",
+      "parentEntity": "contact",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "relationship"
+          },
+          {
+            "fieldId": "city"
+          },
+          {
+            "fieldId": "met_at"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-contact",
+      "kind": "detail",
+      "name": "Contact details",
+      "describes": "View one contact.",
+      "parentEntity": "contact",
+      "layout": {
+        "showFields": [
+          "name",
+          "relationship",
+          "email",
+          "phone",
+          "city",
+          "met_at",
+          "met_how",
+          "birthday",
+          "notes",
+          "do_not_contact"
+        ]
+      }
+    },
+    {
+      "id": "form-interaction",
+      "kind": "form",
+      "name": "Add Interaction",
+      "describes": "Log a conversation or interaction.",
+      "parentEntity": "interaction",
+      "layout": {
+        "sections": [
+          {
+            "title": "Interaction",
+            "fields": [
+              {
+                "id": "contact",
+                "label": "Contact",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "contact"
+              },
+              {
+                "id": "happened_at",
+                "label": "Happened At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "kind",
+                "label": "Kind",
+                "kind": "choice",
+                "options": ["call", "in-person", "email", "message", "letter", "card"]
+              },
+              {
+                "id": "topic",
+                "label": "Topic",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-interaction",
+      "kind": "list",
+      "name": "All interactions",
+      "describes": "Browse all interactions.",
+      "parentEntity": "interaction",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "contact"
+          },
+          {
+            "fieldId": "happened_at"
+          },
+          {
+            "fieldId": "kind"
+          },
+          {
+            "fieldId": "topic"
+          }
+        ],
+        "defaultSort": {
+          "field": "happened_at",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-interaction",
+      "kind": "detail",
+      "name": "Interaction details",
+      "describes": "View one interaction.",
+      "parentEntity": "interaction",
+      "layout": {
+        "showFields": ["contact", "happened_at", "kind", "topic", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Contacts",
+      "primary": true,
+      "screens": ["form-contact", "list-contact"]
+    },
+    {
+      "label": "Interactions",
+      "primary": false,
+      "screens": ["form-interaction", "list-interaction"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "paper",
+        "name": "Paper",
+        "mood": "warm",
+        "palette": {
+          "bg": "#f8f5ed",
+          "surface": "#ffffff",
+          "surfaceAlt": "#f0e9d8",
+          "border": "#d4c8b0",
+          "text": "#1f1a14",
+          "textMuted": "#6a5d4a",
+          "accent": "#8a6a3a",
+          "accentSoft": "#b8965f",
+          "gold": "#b8965f"
+        }
+      }
+    ],
+    "selectedPaletteId": "paper"
+  }
+}

@@ -1,0 +1,383 @@
+{
+  "appName": "Garden Log",
+  "domain": "garden tracking",
+  "screens": [
+    {
+      "id": "form-plant",
+      "kind": "form",
+      "name": "Add Plant",
+      "describes": "Record a plant.",
+      "parentEntity": "plant",
+      "layout": {
+        "sections": [
+          {
+            "title": "Plant",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "variety",
+                "label": "Variety",
+                "kind": "text"
+              },
+              {
+                "id": "planted_at",
+                "label": "Planted At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "location",
+                "label": "Location",
+                "kind": "choice",
+                "options": [
+                  "front-bed",
+                  "back-bed",
+                  "side-bed",
+                  "container",
+                  "raised-bed",
+                  "greenhouse"
+                ]
+              },
+              {
+                "id": "sun",
+                "label": "Sun",
+                "kind": "choice",
+                "options": ["full-sun", "part-sun", "shade"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              },
+              {
+                "id": "removed",
+                "label": "Removed",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-plant",
+      "kind": "list",
+      "name": "All plants",
+      "describes": "Browse all plants.",
+      "parentEntity": "plant",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "variety"
+          },
+          {
+            "fieldId": "planted_at"
+          },
+          {
+            "fieldId": "location"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-plant",
+      "kind": "detail",
+      "name": "Plant details",
+      "describes": "View one plant.",
+      "parentEntity": "plant",
+      "layout": {
+        "showFields": ["name", "variety", "planted_at", "location", "sun", "notes", "removed"]
+      }
+    },
+    {
+      "id": "form-watering",
+      "kind": "form",
+      "name": "Add Watering",
+      "describes": "Log a watering.",
+      "parentEntity": "watering",
+      "layout": {
+        "sections": [
+          {
+            "title": "Watering",
+            "fields": [
+              {
+                "id": "plant",
+                "label": "Plant",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "plant"
+              },
+              {
+                "id": "watered_at",
+                "label": "Watered At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "method",
+                "label": "Method",
+                "kind": "choice",
+                "options": ["hand", "drip", "sprinkler", "rainwater"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-watering",
+      "kind": "list",
+      "name": "All waterings",
+      "describes": "Browse all waterings.",
+      "parentEntity": "watering",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "plant"
+          },
+          {
+            "fieldId": "watered_at"
+          },
+          {
+            "fieldId": "method"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-watering",
+      "kind": "detail",
+      "name": "Watering details",
+      "describes": "View one watering.",
+      "parentEntity": "watering",
+      "layout": {
+        "showFields": ["plant", "watered_at", "method", "notes"]
+      }
+    },
+    {
+      "id": "form-feeding",
+      "kind": "form",
+      "name": "Add Feeding",
+      "describes": "Log a feeding or amendment.",
+      "parentEntity": "feeding",
+      "layout": {
+        "sections": [
+          {
+            "title": "Feeding",
+            "fields": [
+              {
+                "id": "plant",
+                "label": "Plant",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "plant"
+              },
+              {
+                "id": "fed_at",
+                "label": "Fed At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "product",
+                "label": "Product",
+                "kind": "text"
+              },
+              {
+                "id": "amount",
+                "label": "Amount",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-feeding",
+      "kind": "list",
+      "name": "All feedings",
+      "describes": "Browse all feedings.",
+      "parentEntity": "feeding",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "plant"
+          },
+          {
+            "fieldId": "fed_at"
+          },
+          {
+            "fieldId": "product"
+          },
+          {
+            "fieldId": "amount"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-feeding",
+      "kind": "detail",
+      "name": "Feeding details",
+      "describes": "View one feeding.",
+      "parentEntity": "feeding",
+      "layout": {
+        "showFields": ["plant", "fed_at", "product", "amount", "notes"]
+      }
+    },
+    {
+      "id": "form-harvest",
+      "kind": "form",
+      "name": "Add Harvest",
+      "describes": "Log a harvest.",
+      "parentEntity": "harvest",
+      "layout": {
+        "sections": [
+          {
+            "title": "Harvest",
+            "fields": [
+              {
+                "id": "plant",
+                "label": "Plant",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "plant"
+              },
+              {
+                "id": "harvested_at",
+                "label": "Harvested At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "quantity",
+                "label": "Quantity",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-harvest",
+      "kind": "list",
+      "name": "All harvests",
+      "describes": "Browse all harvests.",
+      "parentEntity": "harvest",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "plant"
+          },
+          {
+            "fieldId": "harvested_at"
+          },
+          {
+            "fieldId": "quantity"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-harvest",
+      "kind": "detail",
+      "name": "Harvest details",
+      "describes": "View one harvest.",
+      "parentEntity": "harvest",
+      "layout": {
+        "showFields": ["plant", "harvested_at", "quantity", "notes"]
+      }
+    },
+    {
+      "id": "report-harvest-by-plant",
+      "kind": "report",
+      "name": "Harvest by Plant",
+      "describes": "Total harvest per plant.",
+      "parentEntity": "plant",
+      "layout": {
+        "describes": "Total harvest per plant.",
+        "sourceEntities": ["harvest"],
+        "groupBy": "plant"
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Plants",
+      "primary": true,
+      "screens": ["form-plant", "list-plant"]
+    },
+    {
+      "label": "Waterings",
+      "primary": false,
+      "screens": ["form-watering", "list-watering"]
+    },
+    {
+      "label": "Feedings",
+      "primary": false,
+      "screens": ["form-feeding", "list-feeding"]
+    },
+    {
+      "label": "Harvests",
+      "primary": false,
+      "screens": ["form-harvest", "list-harvest"]
+    },
+    {
+      "label": "Reports",
+      "primary": false,
+      "screens": ["report-harvest-by-plant"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "cool-spring",
+        "name": "Spring Garden",
+        "mood": "cool",
+        "palette": {
+          "bg": "#0f1814",
+          "surface": "#162822",
+          "surfaceAlt": "#1f3a31",
+          "border": "#2a4a3f",
+          "text": "#dcefe2",
+          "textMuted": "#90b3a3",
+          "accent": "#7ac79c",
+          "accentSoft": "#a3dcb9",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "cool-spring"
+  }
+}

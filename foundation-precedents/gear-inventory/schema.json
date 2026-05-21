@@ -1,0 +1,318 @@
+{
+  "appName": "Gear Inventory",
+  "domain": "outdoor / craft gear tracking",
+  "screens": [
+    {
+      "id": "form-item",
+      "kind": "form",
+      "name": "Add Item",
+      "describes": "Add an item.",
+      "parentEntity": "item",
+      "layout": {
+        "sections": [
+          {
+            "title": "Item",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "category",
+                "label": "Category",
+                "kind": "choice",
+                "options": [
+                  "shelter",
+                  "sleep",
+                  "cook",
+                  "water",
+                  "navigation",
+                  "first-aid",
+                  "apparel",
+                  "electronics",
+                  "tools",
+                  "other"
+                ]
+              },
+              {
+                "id": "brand",
+                "label": "Brand",
+                "kind": "text"
+              },
+              {
+                "id": "model",
+                "label": "Model",
+                "kind": "text"
+              },
+              {
+                "id": "acquired_at",
+                "label": "Acquired At",
+                "kind": "date"
+              },
+              {
+                "id": "cost",
+                "label": "Cost",
+                "kind": "money"
+              },
+              {
+                "id": "location",
+                "label": "Location",
+                "kind": "choice",
+                "options": ["gear-room", "closet", "truck", "shed", "storage-unit", "on-loan"]
+              },
+              {
+                "id": "condition",
+                "label": "Condition",
+                "kind": "choice",
+                "options": ["new", "excellent", "good", "fair", "poor", "retired"]
+              },
+              {
+                "id": "last_inspected_at",
+                "label": "Last Inspected At",
+                "kind": "date"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-item",
+      "kind": "list",
+      "name": "All items",
+      "describes": "Browse all items.",
+      "parentEntity": "item",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "category"
+          },
+          {
+            "fieldId": "location"
+          },
+          {
+            "fieldId": "condition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-item",
+      "kind": "detail",
+      "name": "Item details",
+      "describes": "View one item.",
+      "parentEntity": "item",
+      "layout": {
+        "showFields": [
+          "name",
+          "category",
+          "brand",
+          "model",
+          "acquired_at",
+          "cost",
+          "location",
+          "condition",
+          "last_inspected_at",
+          "notes"
+        ]
+      }
+    },
+    {
+      "id": "form-trip",
+      "kind": "form",
+      "name": "Add Trip",
+      "describes": "Record a trip.",
+      "parentEntity": "trip",
+      "layout": {
+        "sections": [
+          {
+            "title": "Trip",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "started_at",
+                "label": "Started At",
+                "kind": "date"
+              },
+              {
+                "id": "ended_at",
+                "label": "Ended At",
+                "kind": "date"
+              },
+              {
+                "id": "location",
+                "label": "Location",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-trip",
+      "kind": "list",
+      "name": "All trips",
+      "describes": "Browse all trips.",
+      "parentEntity": "trip",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "started_at"
+          },
+          {
+            "fieldId": "ended_at"
+          },
+          {
+            "fieldId": "location"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-trip",
+      "kind": "detail",
+      "name": "Trip details",
+      "describes": "View one trip.",
+      "parentEntity": "trip",
+      "layout": {
+        "showFields": ["name", "started_at", "ended_at", "location", "notes"]
+      }
+    },
+    {
+      "id": "form-packing_list_item",
+      "kind": "form",
+      "name": "Add Packing list item",
+      "describes": "Item taken on a trip.",
+      "parentEntity": "packing_list_item",
+      "layout": {
+        "sections": [
+          {
+            "title": "Packing list item",
+            "fields": [
+              {
+                "id": "trip",
+                "label": "Trip",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "trip"
+              },
+              {
+                "id": "item",
+                "label": "Item",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "item"
+              },
+              {
+                "id": "outcome",
+                "label": "Outcome",
+                "kind": "choice",
+                "options": ["used", "unused", "broke", "lost"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-packing_list_item",
+      "kind": "list",
+      "name": "All packing_list_items",
+      "describes": "Browse all packing_list_items.",
+      "parentEntity": "packing_list_item",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "trip"
+          },
+          {
+            "fieldId": "item"
+          },
+          {
+            "fieldId": "outcome"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-packing_list_item",
+      "kind": "detail",
+      "name": "Packing list item details",
+      "describes": "View one packing_list_item.",
+      "parentEntity": "packing_list_item",
+      "layout": {
+        "showFields": ["trip", "item", "outcome", "notes"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Items",
+      "primary": true,
+      "screens": ["form-item", "list-item"]
+    },
+    {
+      "label": "Trips",
+      "primary": false,
+      "screens": ["form-trip", "list-trip"]
+    },
+    {
+      "label": "Packing_List_Items",
+      "primary": false,
+      "screens": ["form-packing_list_item", "list-packing_list_item"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "stone",
+        "name": "Stone",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1d1d1a",
+          "surface": "#2a2a26",
+          "surfaceAlt": "#363632",
+          "border": "#4a4a45",
+          "text": "#e8e5dd",
+          "textMuted": "#a8a59c",
+          "accent": "#a89060",
+          "accentSoft": "#c4b080",
+          "gold": "#c4b080"
+        }
+      }
+    ],
+    "selectedPaletteId": "stone"
+  }
+}

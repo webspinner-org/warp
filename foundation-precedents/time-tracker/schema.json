@@ -1,0 +1,324 @@
+{
+  "appName": "Time Log",
+  "domain": "consulting / project time tracking",
+  "screens": [
+    {
+      "id": "form-client",
+      "kind": "form",
+      "name": "Add Client",
+      "describes": "Add a client.",
+      "parentEntity": "client",
+      "layout": {
+        "sections": [
+          {
+            "title": "Client",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "hourly_rate",
+                "label": "Hourly Rate",
+                "kind": "money"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-client",
+      "kind": "list",
+      "name": "All clients",
+      "describes": "Browse all clients.",
+      "parentEntity": "client",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "email"
+          },
+          {
+            "fieldId": "hourly_rate"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-client",
+      "kind": "detail",
+      "name": "Client details",
+      "describes": "View one client.",
+      "parentEntity": "client",
+      "layout": {
+        "showFields": ["name", "email", "hourly_rate", "notes"]
+      }
+    },
+    {
+      "id": "form-project",
+      "kind": "form",
+      "name": "Add Project",
+      "describes": "Add a project.",
+      "parentEntity": "project",
+      "layout": {
+        "sections": [
+          {
+            "title": "Project",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "client",
+                "label": "Client",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "client"
+              },
+              {
+                "id": "budget_hours",
+                "label": "Budget Hours",
+                "kind": "number"
+              },
+              {
+                "id": "status",
+                "label": "Status",
+                "kind": "choice",
+                "options": ["active", "paused", "completed", "archived"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-project",
+      "kind": "list",
+      "name": "All projects",
+      "describes": "Browse all projects.",
+      "parentEntity": "project",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "client"
+          },
+          {
+            "fieldId": "budget_hours"
+          },
+          {
+            "fieldId": "status"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-project",
+      "kind": "detail",
+      "name": "Project details",
+      "describes": "View one project.",
+      "parentEntity": "project",
+      "layout": {
+        "showFields": ["name", "client", "budget_hours", "status", "notes"]
+      }
+    },
+    {
+      "id": "form-time_entry",
+      "kind": "form",
+      "name": "Add Time entry",
+      "describes": "Log time.",
+      "parentEntity": "time_entry",
+      "layout": {
+        "sections": [
+          {
+            "title": "Time entry",
+            "fields": [
+              {
+                "id": "project",
+                "label": "Project",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "project"
+              },
+              {
+                "id": "worked_on",
+                "label": "Worked On",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "hours",
+                "label": "Hours",
+                "kind": "number",
+                "required": true
+              },
+              {
+                "id": "description",
+                "label": "Description",
+                "kind": "long-text",
+                "required": true
+              },
+              {
+                "id": "billable",
+                "label": "Billable",
+                "kind": "yes-no"
+              },
+              {
+                "id": "invoiced",
+                "label": "Invoiced",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-time_entry",
+      "kind": "list",
+      "name": "All time entries",
+      "describes": "Browse all time entries.",
+      "parentEntity": "time_entry",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "worked_on"
+          },
+          {
+            "fieldId": "project"
+          },
+          {
+            "fieldId": "hours"
+          },
+          {
+            "fieldId": "billable"
+          }
+        ],
+        "defaultSort": {
+          "field": "worked_on",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-time_entry",
+      "kind": "detail",
+      "name": "Time entry details",
+      "describes": "View one time_entry.",
+      "parentEntity": "time_entry",
+      "layout": {
+        "showFields": ["project", "worked_on", "hours", "description", "billable", "invoiced"]
+      }
+    },
+    {
+      "id": "report-hours-by-project",
+      "kind": "report",
+      "name": "Hours by Project",
+      "describes": "Total hours per project.",
+      "parentEntity": "client",
+      "layout": {
+        "describes": "Total hours per project.",
+        "sourceEntities": ["time_entry"],
+        "groupBy": "project",
+        "aggregations": ["sum:hours"]
+      }
+    },
+    {
+      "id": "report-hours-by-client",
+      "kind": "report",
+      "name": "Hours by Client",
+      "describes": "Total hours per client.",
+      "parentEntity": "client",
+      "layout": {
+        "describes": "Total hours per client.",
+        "sourceEntities": ["time_entry"],
+        "groupBy": "project",
+        "aggregations": ["sum:hours"]
+      }
+    },
+    {
+      "id": "report-unbilled-time",
+      "kind": "report",
+      "name": "Unbilled Time",
+      "describes": "Billable hours not yet invoiced.",
+      "parentEntity": "client",
+      "layout": {
+        "describes": "Billable hours not yet invoiced.",
+        "sourceEntities": ["time_entry"],
+        "groupBy": "project",
+        "aggregations": ["sum:hours"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Clients",
+      "primary": true,
+      "screens": ["form-client", "list-client"]
+    },
+    {
+      "label": "Projects",
+      "primary": false,
+      "screens": ["form-project", "list-project"]
+    },
+    {
+      "label": "Time Entries",
+      "primary": false,
+      "screens": ["form-time_entry", "list-time_entry"]
+    },
+    {
+      "label": "Reports",
+      "primary": false,
+      "screens": ["report-hours-by-project", "report-hours-by-client", "report-unbilled-time"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "paper",
+        "name": "Paper",
+        "mood": "warm",
+        "palette": {
+          "bg": "#f8f5ed",
+          "surface": "#ffffff",
+          "surfaceAlt": "#f0e9d8",
+          "border": "#d4c8b0",
+          "text": "#1f1a14",
+          "textMuted": "#6a5d4a",
+          "accent": "#8a6a3a",
+          "accentSoft": "#b8965f",
+          "gold": "#b8965f"
+        }
+      }
+    ],
+    "selectedPaletteId": "paper"
+  }
+}

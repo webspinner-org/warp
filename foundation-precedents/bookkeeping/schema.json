@@ -1,0 +1,328 @@
+{
+  "appName": "Business Ledger",
+  "domain": "small-business bookkeeping",
+  "screens": [
+    {
+      "id": "form-transaction",
+      "kind": "form",
+      "name": "Add Transaction",
+      "describes": "Record a transaction.",
+      "parentEntity": "transaction",
+      "layout": {
+        "sections": [
+          {
+            "title": "Transaction",
+            "fields": [
+              {
+                "id": "date",
+                "label": "Date",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "amount",
+                "label": "Amount",
+                "kind": "money",
+                "required": true
+              },
+              {
+                "id": "direction",
+                "label": "Direction",
+                "kind": "choice",
+                "options": ["income", "expense"]
+              },
+              {
+                "id": "account",
+                "label": "Account",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "account"
+              },
+              {
+                "id": "customer",
+                "label": "Customer",
+                "kind": "link-to",
+                "linkTo": "customer"
+              },
+              {
+                "id": "category",
+                "label": "Category",
+                "kind": "choice",
+                "options": ["sales", "cogs", "rent", "utilities", "wages", "marketing", "other"]
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              },
+              {
+                "id": "reconciled",
+                "label": "Reconciled",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-transaction",
+      "kind": "list",
+      "name": "All transactions",
+      "describes": "Browse all transactions.",
+      "parentEntity": "transaction",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "date"
+          },
+          {
+            "fieldId": "amount"
+          },
+          {
+            "fieldId": "direction"
+          },
+          {
+            "fieldId": "category"
+          },
+          {
+            "fieldId": "customer"
+          }
+        ],
+        "defaultSort": {
+          "field": "date",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-transaction",
+      "kind": "detail",
+      "name": "Transaction details",
+      "describes": "View one transaction.",
+      "parentEntity": "transaction",
+      "layout": {
+        "showFields": [
+          "date",
+          "amount",
+          "direction",
+          "account",
+          "customer",
+          "category",
+          "notes",
+          "reconciled"
+        ]
+      }
+    },
+    {
+      "id": "form-account",
+      "kind": "form",
+      "name": "Add Account",
+      "describes": "Name an account.",
+      "parentEntity": "account",
+      "layout": {
+        "sections": [
+          {
+            "title": "Account",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "kind",
+                "label": "Kind",
+                "kind": "choice",
+                "options": ["checking", "savings", "credit", "cash"]
+              },
+              {
+                "id": "opening_balance",
+                "label": "Opening Balance",
+                "kind": "money"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-account",
+      "kind": "list",
+      "name": "All accounts",
+      "describes": "Browse all accounts.",
+      "parentEntity": "account",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "kind"
+          },
+          {
+            "fieldId": "opening_balance"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-account",
+      "kind": "detail",
+      "name": "Account details",
+      "describes": "View one account.",
+      "parentEntity": "account",
+      "layout": {
+        "showFields": ["name", "kind", "opening_balance", "notes"]
+      }
+    },
+    {
+      "id": "form-customer",
+      "kind": "form",
+      "name": "Add Customer",
+      "describes": "Add a customer.",
+      "parentEntity": "customer",
+      "layout": {
+        "sections": [
+          {
+            "title": "Customer",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "phone",
+                "label": "Phone",
+                "kind": "text"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-customer",
+      "kind": "list",
+      "name": "All customers",
+      "describes": "Browse all customers.",
+      "parentEntity": "customer",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "email"
+          },
+          {
+            "fieldId": "phone"
+          },
+          {
+            "fieldId": "notes"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-customer",
+      "kind": "detail",
+      "name": "Customer details",
+      "describes": "View one customer.",
+      "parentEntity": "customer",
+      "layout": {
+        "showFields": ["name", "email", "phone", "notes"]
+      }
+    },
+    {
+      "id": "report-profit-and-loss",
+      "kind": "report",
+      "name": "Profit and Loss",
+      "describes": "Income minus expenses by period.",
+      "parentEntity": "transaction",
+      "layout": {
+        "describes": "Income minus expenses by period.",
+        "sourceEntities": ["transaction"],
+        "groupBy": "category",
+        "aggregations": ["sum:amount"]
+      }
+    },
+    {
+      "id": "report-cash-flow",
+      "kind": "report",
+      "name": "Cash Flow",
+      "describes": "Net cash movement by account by month.",
+      "parentEntity": "transaction",
+      "layout": {
+        "describes": "Net cash movement by account by month.",
+        "sourceEntities": ["transaction"],
+        "groupBy": "account",
+        "aggregations": ["sum:amount"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Transactions",
+      "primary": true,
+      "screens": ["form-transaction", "list-transaction"]
+    },
+    {
+      "label": "Accounts",
+      "primary": false,
+      "screens": ["form-account", "list-account"]
+    },
+    {
+      "label": "Customers",
+      "primary": false,
+      "screens": ["form-customer", "list-customer"]
+    },
+    {
+      "label": "Reports",
+      "primary": false,
+      "screens": ["report-profit-and-loss", "report-cash-flow"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "warm-bookkeeping",
+        "name": "Warm Books",
+        "mood": "warm",
+        "palette": {
+          "bg": "#1a1410",
+          "surface": "#241b15",
+          "surfaceAlt": "#2f231a",
+          "border": "#3d2f24",
+          "text": "#f0e6d4",
+          "textMuted": "#bba990",
+          "accent": "#d4a85a",
+          "accentSoft": "#e6c486",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "warm-bookkeeping"
+  }
+}

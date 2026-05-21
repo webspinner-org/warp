@@ -1,0 +1,348 @@
+{
+  "appName": "Donor Records",
+  "domain": "nonprofit donor tracking",
+  "screens": [
+    {
+      "id": "form-donor",
+      "kind": "form",
+      "name": "Add Donor",
+      "describes": "Add a donor.",
+      "parentEntity": "donor",
+      "layout": {
+        "sections": [
+          {
+            "title": "Donor",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "email",
+                "label": "Email",
+                "kind": "text"
+              },
+              {
+                "id": "phone",
+                "label": "Phone",
+                "kind": "text"
+              },
+              {
+                "id": "address",
+                "label": "Address",
+                "kind": "long-text"
+              },
+              {
+                "id": "first_gift_at",
+                "label": "First Gift At",
+                "kind": "date"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              },
+              {
+                "id": "do_not_contact",
+                "label": "Do Not Contact",
+                "kind": "yes-no"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-donor",
+      "kind": "list",
+      "name": "All donors",
+      "describes": "Browse all donors.",
+      "parentEntity": "donor",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "email"
+          },
+          {
+            "fieldId": "first_gift_at"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-donor",
+      "kind": "detail",
+      "name": "Donor details",
+      "describes": "View one donor.",
+      "parentEntity": "donor",
+      "layout": {
+        "showFields": [
+          "name",
+          "email",
+          "phone",
+          "address",
+          "first_gift_at",
+          "notes",
+          "do_not_contact"
+        ]
+      }
+    },
+    {
+      "id": "form-gift",
+      "kind": "form",
+      "name": "Add Gift",
+      "describes": "Record a gift.",
+      "parentEntity": "gift",
+      "layout": {
+        "sections": [
+          {
+            "title": "Gift",
+            "fields": [
+              {
+                "id": "donor",
+                "label": "Donor",
+                "kind": "link-to",
+                "required": true,
+                "linkTo": "donor"
+              },
+              {
+                "id": "amount",
+                "label": "Amount",
+                "kind": "money",
+                "required": true
+              },
+              {
+                "id": "received_at",
+                "label": "Received At",
+                "kind": "date",
+                "required": true
+              },
+              {
+                "id": "campaign",
+                "label": "Campaign",
+                "kind": "link-to",
+                "linkTo": "campaign"
+              },
+              {
+                "id": "method",
+                "label": "Method",
+                "kind": "choice",
+                "options": ["check", "card", "cash", "wire", "stock", "in-kind"]
+              },
+              {
+                "id": "restricted",
+                "label": "Restricted",
+                "kind": "yes-no"
+              },
+              {
+                "id": "thank_you_sent",
+                "label": "Thank You Sent",
+                "kind": "yes-no"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-gift",
+      "kind": "list",
+      "name": "All gifts",
+      "describes": "Browse all gifts.",
+      "parentEntity": "gift",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "received_at"
+          },
+          {
+            "fieldId": "donor"
+          },
+          {
+            "fieldId": "amount"
+          },
+          {
+            "fieldId": "campaign"
+          }
+        ],
+        "defaultSort": {
+          "field": "received_at",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "detail-gift",
+      "kind": "detail",
+      "name": "Gift details",
+      "describes": "View one gift.",
+      "parentEntity": "gift",
+      "layout": {
+        "showFields": [
+          "donor",
+          "amount",
+          "received_at",
+          "campaign",
+          "method",
+          "restricted",
+          "thank_you_sent",
+          "notes"
+        ]
+      }
+    },
+    {
+      "id": "form-campaign",
+      "kind": "form",
+      "name": "Add Campaign",
+      "describes": "Name a campaign.",
+      "parentEntity": "campaign",
+      "layout": {
+        "sections": [
+          {
+            "title": "Campaign",
+            "fields": [
+              {
+                "id": "name",
+                "label": "Name",
+                "kind": "text",
+                "required": true
+              },
+              {
+                "id": "starts_at",
+                "label": "Starts At",
+                "kind": "date"
+              },
+              {
+                "id": "ends_at",
+                "label": "Ends At",
+                "kind": "date"
+              },
+              {
+                "id": "goal_amount",
+                "label": "Goal Amount",
+                "kind": "money"
+              },
+              {
+                "id": "notes",
+                "label": "Notes",
+                "kind": "long-text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list-campaign",
+      "kind": "list",
+      "name": "All campaigns",
+      "describes": "Browse all campaigns.",
+      "parentEntity": "campaign",
+      "layout": {
+        "columns": [
+          {
+            "fieldId": "name"
+          },
+          {
+            "fieldId": "starts_at"
+          },
+          {
+            "fieldId": "ends_at"
+          },
+          {
+            "fieldId": "goal_amount"
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail-campaign",
+      "kind": "detail",
+      "name": "Campaign details",
+      "describes": "View one campaign.",
+      "parentEntity": "campaign",
+      "layout": {
+        "showFields": ["name", "starts_at", "ends_at", "goal_amount", "notes"]
+      }
+    },
+    {
+      "id": "report-gifts-by-campaign",
+      "kind": "report",
+      "name": "Gifts by Campaign",
+      "describes": "Sum of gifts per campaign.",
+      "parentEntity": "donor",
+      "layout": {
+        "describes": "Sum of gifts per campaign.",
+        "sourceEntities": ["gift"],
+        "groupBy": "campaign",
+        "aggregations": ["sum:amount"]
+      }
+    },
+    {
+      "id": "report-gifts-by-donor",
+      "kind": "report",
+      "name": "Gifts by Donor",
+      "describes": "Total giving per donor.",
+      "parentEntity": "donor",
+      "layout": {
+        "describes": "Total giving per donor.",
+        "sourceEntities": ["gift"],
+        "groupBy": "donor",
+        "aggregations": ["sum:amount"]
+      }
+    }
+  ],
+  "navigation": [
+    {
+      "label": "Donors",
+      "primary": true,
+      "screens": ["form-donor", "list-donor"]
+    },
+    {
+      "label": "Gifts",
+      "primary": false,
+      "screens": ["form-gift", "list-gift"]
+    },
+    {
+      "label": "Campaigns",
+      "primary": false,
+      "screens": ["form-campaign", "list-campaign"]
+    },
+    {
+      "label": "Reports",
+      "primary": false,
+      "screens": ["report-gifts-by-campaign", "report-gifts-by-donor"]
+    }
+  ],
+  "branding": {
+    "options": [
+      {
+        "id": "foundation-cyan",
+        "name": "Foundation",
+        "mood": "cool",
+        "palette": {
+          "bg": "#1a262e",
+          "surface": "#233440",
+          "surfaceAlt": "#2c4250",
+          "border": "#34465290",
+          "text": "#ece4d4",
+          "textMuted": "#a4b4c0",
+          "accent": "#5fd2ed",
+          "accentSoft": "#88dff0",
+          "gold": "#d4a85a"
+        }
+      }
+    ],
+    "selectedPaletteId": "foundation-cyan"
+  }
+}
