@@ -787,3 +787,9 @@ When the next archetype Spinners ship (the iPhone App / Website / Simple Game / 
 **Backup:** `~/.warp-key-rotation/20260519-174956/` on Kepler — pre-rotation `vault_secrets.json` snapshot + all 3 plists. Delete after the next clean cell-identity-derived operation confirms healthy.
 **Procedure:** `/tmp/rotate-master-key.sh` on Kepler — generates new key locally, re-encrypts vault, rewrites plists (single-line + multi-line forms), reloads launchd, smoke-tests. Designed to never return the new key value out of Kepler.
 **Follow-up:** Promote this procedure into a one-click admin utility (see task #48). Today it's a one-off shell script; key rotation should be a button in `/admin/operations` with the same backup + verify flow.
+
+## 2026-05-20 — Patron-facing UX is the Loom (in-app rename; tunnel preserved)
+
+**Decision:** The patron-facing surface formerly branded "Try Webspinner" is the Loom. Page title, brand badge, splash, sign-in card — all rename. The tunnel hostname `try.webspinner.ai`, the source repo `webspinner-try/`, the launchd plist `com.webspinner.try`, and the `webspinner-try-*` localStorage keys keep their historical "try" prefix to avoid breaking running deploys and patron data; those identifiers are operator concerns the patron never sees.
+**Why:** Per WARP-CANON §2 vocabulary, Loom is canonically the authoring surface (Node + SvelteKit). The "Try" framing was always a working name. With patron sovereignty, file browser, delete, vault rotation, and standalone download all in place, this surface is no longer a sampler — it's the authoring tool. Calling it Loom names what it actually is.
+**Operator-facing identifiers:** unchanged for now. A future rename of the repo + plist label is possible but not urgent and is its own work block.
