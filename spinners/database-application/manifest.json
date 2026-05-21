@@ -157,6 +157,54 @@
       "emitsAudit": ["wp.spinner.invoke", "wp.spinner.outbound.fetch", "wp.spinner.session.save"]
     },
     {
+      "name": "edit",
+      "displayName": "Edit (chat)",
+      "description": "Chat-driven natural-language edit of the patron's screensDraft. Single LLM call, no clarifying questions. The patron types 'rename Title to Headline' or 'add a Tags field to the Note form' while Form Studio is open; the Spinner returns the updated screensDraft + a one-sentence narration. Schema-preserving: cannot remove or invent entities, cannot drop primary navigation. Use propose/refine for structural changes.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:edit:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["instruction"],
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The patron's natural-language edit, e.g. 'rename Title to Headline' or 'add a Tags field to the Note form'."
+          },
+          "screensDraft": {
+            "type": "object",
+            "description": "Optional — the patron's current screensDraft (post direct-edits in Form Studio). When present, the Spinner amends THIS version, not the session-state one. Same shape as propose/refine screensDraft."
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:edit:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "screensDraft", "deltas", "phase"],
+        "properties": {
+          "narration": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One sentence — what changed, in patron-readable words. Surfaced in the Form Studio chat panel."
+          },
+          "screensDraft": {
+            "type": "object",
+            "description": "The full updated screensDraft. Same shape as propose/refine."
+          },
+          "deltas": {
+            "type": "array",
+            "maxItems": 16,
+            "description": "Short bullet list of concrete changes — what fields were renamed, what was added/removed.",
+            "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+          },
+          "phase": { "const": "edited" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.session.save"]
+    },
+    {
       "name": "build",
       "displayName": "Build",
       "description": "Final turn — reads the settled screens + branding from session state, derives the schema from the screens (form fields → columns, link-to fields → relations), creates the Cell-side collections, writes the screens + branding to wp_database_applications, and returns the surface URL the patron lands on. Saves session state at phase 'built' with status 'completed'.",

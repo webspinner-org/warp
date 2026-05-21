@@ -135,7 +135,7 @@ const DISPATCH = new Map<SpinnerName, Set<string>>([
   ],
   [
     '@webspinner-foundation/database-application' as SpinnerName,
-    new Set(['propose', 'refine', 'build']),
+    new Set(['propose', 'refine', 'edit', 'build']),
   ],
 ]);
 
@@ -162,10 +162,10 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
       'deployLoom',
     ]),
   ],
-  // database-application: full loop wired — propose + refine + build.
+  // database-application: full loop wired — propose + refine + edit + build.
   [
     '@webspinner-foundation/database-application' as SpinnerName,
-    new Set(['propose', 'refine', 'build']),
+    new Set(['propose', 'refine', 'edit', 'build']),
   ],
 ]);
 
@@ -2550,6 +2550,8 @@ async function dispatchDatabaseApplication(
       return databaseAppPropose(input, ctx, fetcher, session, keplerModel);
     case 'refine':
       return databaseAppRefine(input, ctx, session, keplerModel);
+    case 'edit':
+      return databaseAppEdit(input, session, keplerModel);
     case 'build':
       return databaseAppBuild(input, ctx, session);
     default:
@@ -3816,6 +3818,198 @@ async function databaseAppRefine(
     modelTokens: {
       input: refineResult.inputTokens,
       output: refineResult.outputTokens,
+    },
+  };
+}
+
+/**
+ * `edit` — Block 8: chat-driven natural-language edit of the
+ * patron's screensDraft. Single LLM call, no clarifying questions.
+ *
+ * The patron types "rename Title to Headline" or "add a Tags field
+ * to the Note form" while the Form Studio is open; the frontend
+ * sends the instruction + the current screensDraft (the version
+ * they're looking at, including any prior direct-edit deltas they
+ * already applied) to this capability. The Spinner produces an
+ * updated screensDraft + a short narration of what changed.
+ *
+ * The LLM is constrained to schema-preserving edits — it can't
+ * invent new entities or remove primary navigation. Anything more
+ * structural belongs in propose/refine, not edit. Validation
+ * rejects responses that fail those invariants.
+ *
+ * The session's `screensDraft` is updated on success so the next
+ * call (another edit, build, etc.) sees the latest version. No
+ * progressLog is appended — edits are conversational, not phased.
+ */
+async function databaseAppEdit(
+  rawInput: unknown,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+  keplerModel: string,
+): Promise<DispatchOutput> {
+  const input = rawInput as {
+    instruction?: unknown;
+    screensDraft?: unknown;
+  };
+  if (typeof input?.instruction !== 'string' || input.instruction.trim().length === 0) {
+    throw new Error('edit requires an `instruction` string.');
+  }
+  const instruction = input.instruction.trim();
+  if (instruction.length > 1024) {
+    throw new Error(`edit instruction is ${instruction.length} chars; max is 1024.`);
+  }
+
+  // The patron's version of the screensDraft (post direct-edits) is
+  // the source of truth. If they didn't send one, fall back to the
+  // session-state version — propose / refine / prior edit. Either
+  // way, the LLM sees ONE current shape it needs to amend.
+  const priorState = (session.state ?? {}) as Record<string, unknown>;
+  const sessionDraft = priorState['screensDraft'];
+  const currentDraft =
+    typeof input.screensDraft === 'object' &&
+    input.screensDraft !== null &&
+    !Array.isArray(input.screensDraft)
+      ? (input.screensDraft as Record<string, unknown>)
+      : typeof sessionDraft === 'object' && sessionDraft !== null && !Array.isArray(sessionDraft)
+        ? (sessionDraft as Record<string, unknown>)
+        : null;
+
+  if (!currentDraft || !Array.isArray(currentDraft['screens'])) {
+    throw new Error(
+      'edit needs a screensDraft to amend — call propose first, or include screensDraft in the request.',
+    );
+  }
+
+  // Compose the prompt. Keep it tight; one call, no precedents
+  // (those framed the initial design — edits are about the existing
+  // shape, not the canon).
+  const screensJson = JSON.stringify(currentDraft, null, 2);
+  if (screensJson.length > 80_000) {
+    throw new Error(
+      `edit: screensDraft is ${screensJson.length} chars; max is 80000 (the LLM context budget).`,
+    );
+  }
+
+  const userMessage =
+    `The patron is editing their application. Their current screensDraft is below, followed by their natural-language edit instruction. Apply the instruction as a SURGICAL change — keep every entity, every navigation group, every screen that wasn't named in the instruction. Output strict JSON.\n\n` +
+    `## Current screensDraft\n\n\`\`\`json\n${screensJson}\n\`\`\`\n\n` +
+    `## Patron's edit instruction\n\n${JSON.stringify(instruction)}\n\n` +
+    `## Output shape\n\n` +
+    `{\n` +
+    `  "narration": "One sentence — what you changed, in patron-readable words. No markdown.",\n` +
+    `  "screensDraft": { ...the FULL updated screensDraft, same shape as input },\n` +
+    `  "deltas": ["short bullet — what changed", "...one per delta"]\n` +
+    `}\n\n` +
+    `Rules:\n` +
+    `- Preserve every screen, section, and field that the instruction doesn't touch.\n` +
+    `- Preserve the screen ids; only the labels / kinds / required-ness change for renamed fields. New fields get NEW ids (e.g. "field_tags").\n` +
+    `- Keep entity coverage — every parentEntity that had a form/list/detail should still have all three.\n` +
+    `- Never invent new entities. If the instruction asks for something that needs a new entity, fold it into an existing entity as a field instead. (Refine + rebuild are for new entities.)\n` +
+    `- Never alter the navigation order unless the instruction explicitly reorders it.\n` +
+    `- If the instruction is ambiguous, pick the most charitable interpretation and note it in narration.\n` +
+    `- Do NOT echo prose, do NOT wrap in markdown fences. Open with "{".`;
+
+  const editCall = await quietLoomChat({
+    system:
+      'You are the Webspinner Database Application Spinner, applying surgical edits to a patron-facing screensDraft. Output strict JSON matching the requested shape. Never invent new entities.',
+    userMessage,
+    model: keplerModel,
+    maxTokens: 8192,
+    temperature: 0.2,
+  });
+
+  const parsed = parseStrictJson(editCall.text);
+  if (!parsed) {
+    throw new Error(
+      `edit: LLM returned invalid JSON. First 500 chars: ${editCall.text.slice(0, 500)}`,
+    );
+  }
+
+  const narration = typeof parsed['narration'] === 'string' ? parsed['narration'] : '';
+  const updatedDraft =
+    typeof parsed['screensDraft'] === 'object' &&
+    parsed['screensDraft'] !== null &&
+    !Array.isArray(parsed['screensDraft'])
+      ? (parsed['screensDraft'] as Record<string, unknown>)
+      : null;
+  if (!updatedDraft || !Array.isArray(updatedDraft['screens'])) {
+    throw new Error('edit: LLM output missing screensDraft.screens array');
+  }
+
+  // Invariant 1: every original entity still has at least one screen.
+  const priorEntities = new Set(
+    (currentDraft['screens'] as { parentEntity?: unknown }[])
+      .map((s) => (typeof s.parentEntity === 'string' ? s.parentEntity : null))
+      .filter((e): e is string => e !== null),
+  );
+  const nextEntities = new Set(
+    (updatedDraft['screens'] as { parentEntity?: unknown }[])
+      .map((s) => (typeof s.parentEntity === 'string' ? s.parentEntity : null))
+      .filter((e): e is string => e !== null),
+  );
+  for (const entity of priorEntities) {
+    if (!nextEntities.has(entity)) {
+      throw new Error(
+        `edit: LLM dropped entity "${entity}" — entity-removal is out of scope. Re-prompt the patron.`,
+      );
+    }
+  }
+  // Invariant 2: no surprise new entities (only the existing set).
+  for (const entity of nextEntities) {
+    if (!priorEntities.has(entity)) {
+      throw new Error(
+        `edit: LLM invented entity "${entity}" — new entities belong in refine/rebuild, not edit.`,
+      );
+    }
+  }
+
+  const deltas = Array.isArray(parsed['deltas'])
+    ? (parsed['deltas'] as unknown[])
+        .filter((d) => typeof d === 'string')
+        .slice(0, 16)
+        .map((d) => d as string)
+    : [];
+
+  // Persist into session state alongside the prior structure so
+  // future propose-resume / build reads the patron's edited version.
+  const nowIso = new Date().toISOString();
+  const editLog = Array.isArray(priorState['editLog'])
+    ? [...(priorState['editLog'] as unknown[])]
+    : [];
+  editLog.push({
+    capability: 'edit',
+    instruction,
+    deltas,
+    narration,
+    timestamp: nowIso,
+  });
+  await session.save({
+    state: {
+      ...priorState,
+      screensDraft: updatedDraft,
+      screensDraftEditedAt: nowIso,
+      editLog,
+    },
+    phase: typeof priorState['phase'] === 'string' ? (priorState['phase'] as string) : 'proposed',
+  });
+
+  return {
+    output: {
+      narration,
+      screensDraft: updatedDraft,
+      deltas,
+      phase: 'edited',
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: editCall.model,
+        sessionId: session.id,
+        capability: 'edit',
+        modelCalls: 1,
+      },
+    },
+    modelTokens: {
+      input: editCall.inputTokens,
+      output: editCall.outputTokens,
     },
   };
 }
