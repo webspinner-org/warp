@@ -395,35 +395,6 @@ code,
   text-transform: uppercase;
 }
 
-.btn-google {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  background: var(--ink);
-  color: var(--bg);
-  border: 0;
-  border-radius: var(--radius-md);
-  padding: 0.7rem 1.2rem;
-  width: 100%;
-  font-family: var(--font-prose);
-  font-size: 0.96rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-  border-bottom: 0;
-  transition: filter 120ms ease;
-}
-.btn-google:hover {
-  filter: brightness(1.06);
-  border-bottom: 0;
-}
-.btn-google svg {
-  width: 18px;
-  height: 18px;
-}
-
 .login-error {
   margin-top: 1rem;
   padding: 0.7rem 0.9rem;

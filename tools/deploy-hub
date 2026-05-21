@@ -22,8 +22,8 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 if [ ! -f "$PLIST" ]; then
   echo "[deploy-hub] no plist at $PLIST — first-time install?"
   echo "[deploy-hub] copy $WARP_DIR/hub/deploy/com.webspinner.hub.plist there, fill in"
-  echo "             WARP_VAULT_MASTER_KEY + GOOGLE_OAUTH_CLIENT_ID + "
-  echo "             GOOGLE_OAUTH_CLIENT_SECRET, then re-run."
+  echo "             WARP_VAULT_MASTER_KEY + WARP_HUB_COOKIE_DOMAIN + the WARP_PB_*"
+  echo "             vault-lookup env vars (see plist comments), then re-run."
   exit 1
 fi
 
