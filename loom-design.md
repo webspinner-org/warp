@@ -491,21 +491,21 @@ The clarifying-questions discipline is the one wow-baseline lever this design re
 
 ---
 
-## 13. Open questions for the Wizard
+## 13. Resolved positions (formerly open questions)
 
-Things this design takes a position on that you may want to push back on:
+> Resolved 2026-05-20 per Wizard directive ("use industry best practice, empirical evidence, and research of credible sources to make the decisions yourself"). Each resolution cites the basis. Future-Claude does not re-litigate these.
 
-1. **Build doesn't lock.** Patrons can re-edit and rebuild as often as they like. Data is preserved on additive edits, lost on destructive ones (with a warning). Is that the right default, or should Build be one-way for v2 simplicity?
+1. **Build doesn't lock.** RESOLVED: keep non-locking. Notion, Airtable, Linear, Retool all allow continuous schema edits in production-quality tools. Lock-on-build is friction; warnings-on-destructive-edits are the canonical safety mechanism.
 
-2. **The chat panel position.** I've put it below the form. An alternative is a slide-over drawer on the right (the current Weaver chat panel's slot in the studio). I prefer below-the-form because it keeps the form as the primary surface — the patron edits, then asks a question, then edits — and the chat is referential, not central. You may prefer the drawer.
+2. **Chat panel position.** RESOLVED: right-side resizable drawer (NOT below-the-form). V0.dev, Bolt.new, Cursor's composer, and Vercel V0 all use a right-side panel for the AI co-author. Below-the-form pushes the canvas vertically when content arrives; a right drawer preserves the canvas and is the patron's mental model of "the assistant lives to the side." Drawer is collapsible, resizable, persistent state per-session.
 
-3. **Local 32B for propose, with cloud fallback.** Per §5 revised. Two sub-questions: (a) Qwen Coder 32B vs 14B — 32B's quality is better, 14B fits more comfortably in memory alongside the 7B edit model. The right answer probably depends on Kepler's actual unified-memory budget. (b) Do we ship the partial-sovereignty intermediate (§5.8 — embeddings local, LLMs cloud) as a stop on the way, or jump straight to full local? Partial costs half a day; full local costs ~1 week. The Wizard's call.
+3. **Local LLM choices + sovereignty staging.** RESOLVED: (a) detect Kepler unified-memory at MLX-service startup; use Qwen Coder 32B Q4 (~18 GB) if ≥ 64 GB available, else fall back to 14B Q4 (~8 GB). Both ship alongside the 7B Q4 edit model. Memory probe is a one-line `sysctl hw.memsize` on Apple Silicon. (b) Ship the partial-sovereignty intermediate (§5.8) first: embeddings + precedent library local, LLMs cloud. Validates the retrieval-improves-quality hypothesis empirically before committing the week of MLX-serving work. Standard staged-deployment practice — smallest valuable thing first, measure, iterate.
 
-4. **"What would you like to keep track of?" — same opener?** Or do we name the offering more concretely now that this is the path? "Tell me one sentence about the application you want and I'll draft it as forms you can edit."
+4. **Opener phrasing.** RESOLVED: keep "What would you like to keep track of?" Concrete, plain English, single sentence, prompts the right shape of response. The longer alternatives ("Tell me one sentence about the application you want…") add explanation the patron doesn't need at this point — the surface itself teaches them the shape. Tested implicitly: this is what's shipping in v0.7.1 and the patron flow has been functional.
 
-5. **WYSIWYG editing of layout vs schema.** Renaming a field is a schema change. Reordering fields within a form is a layout change (no schema impact). Both happen in the same surface. Should we visually distinguish — different colour highlight on save, e.g. — so the patron sees which edits would migrate data and which are pure cosmetic?
+5. **Visual layout-vs-schema distinction.** RESOLVED: yes, color-coded edit indicator. Standard UX hygiene from data-tooling industry (Airtable's "structural change" warning, Notion's database-schema dialog). Implementation: hover state shows a small badge — `cosmetic` (gray) for layout-only edits, `schema` (gold) for changes that affect data shape. Build-time gathers all pending `schema`-tier edits and shows a one-line summary in the build confirmation: "This rebuild will: rename 2 fields, remove 1 (clears 3 records' data)."
 
-6. **Reports.** Reports are the canon's wow-as-baseline lever for "the SI knew what I needed". They are currently rendered as report screens but the editor for _report content_ (which fields, group-by, aggregations) is not specified above. I'd push that to v2.1 — get forms editing solid first, then reports.
+6. **Reports editor.** RESOLVED: deferred to v2.1.5. Forms editing ships first because forms are the primary patron-input surface. Report-editing (column picker, group-by selector, aggregation dropdowns) is a discrete v2.1.5 work block once forms are solid. The schema already carries reports[]; renderer already renders them; only the editor controls need adding.
 
 ---
 

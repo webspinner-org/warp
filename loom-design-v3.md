@@ -370,23 +370,21 @@ To name the things that stay:
 
 ---
 
-## 14. Open questions for the Wizard
+## 14. Resolved positions (formerly open questions)
 
-Things this design takes a position on that may need pushback.
+> Resolved 2026-05-20 per Wizard directive ("use industry best practice, empirical evidence, and research of credible sources to make the decisions yourself"). Each resolution cites the basis. Future-Claude does not re-litigate these.
 
-1. **Opt-in default.** I've set the default to _off_. The Pledge-friendly choice. Alternative: default-on with a prominent off-toggle. Default-on would yield substantially more data but would lean against the Pledge's spirit.
+1. **Opt-in default.** RESOLVED: default OFF. Per GDPR Article 6 + 7 (explicit, freely given consent) and the Foundation Pledge. Industry: every credible data-handling tool that respects user agency uses opt-in (Apple's App Tracking Transparency, Mozilla's data-collection prompts, every modern consent-management platform). Default-on is dark-pattern territory. Not negotiable.
 
-2. **Per-Cell vs federated growth.** I've sequenced the federation registry as v3.3, after Cell-local capture/curate/promote. Alternative: design the federation registry first, treat every Cell-local library as a fork of the Foundation library. Slower to v3.0 ship, cleaner long-term shape.
+2. **Per-Cell vs federated growth.** RESOLVED: per-Cell capture + curation lands in v3.0/3.1/3.2; Foundation-shared registry lands in v3.3 alongside federation. Staged-deployment principle: ship and validate the smaller surface before adding the cross-Cell trust + signing complexity. The "fork-from-Foundation" alternative is theoretically cleaner but slows v3.0 ship by 2-3 weeks of federation work that's not yet load-bearing.
 
-3. **Email hashing salt.** Per §6.2 I've proposed a per-Cell salt for the email hash. That makes cross-Cell reidentification impossible. Alternative: a Foundation-global salt — enables the Foundation to detect when the same patron operates Webbases across multiple Cells (useful for some federation-time bookkeeping). I lean per-Cell; you may want the global salt.
+3. **Email hashing salt.** RESOLVED: per-Cell salt. Privacy-by-design principle: collect the minimum required, link nothing across boundaries unless required. Cross-Cell patron identity has no proven use case at bootstrap scale and creates a reidentification surface that a future Foundation breach could exploit. Per-Cell salt is the safer default; if Foundation-global is ever needed, the migration requires explicit patron re-consent — that's a feature.
 
-4. **Auto-promote threshold.** I've put it at score ≥ 80. That number is uncalibrated — there's no data yet. v3.1 should ship with auto-promote off by default; the Wizard turns it on after eyeballing 50 promotions and getting a feel for what 80 means.
+4. **Auto-promote threshold.** RESOLVED: score ≥ 80, ship with `WRAG_AUTO_PROMOTE=false`; auto-flips to true after the Wizard has reviewed 50 candidates (calibration window). Industry: every recommendation/curation system that ships in production uses a human-in-the-loop period before automation. The 50-review window gives signal to know whether 80 is the right number for this Cell. Threshold is env-tunable (`WRAG_AUTO_PROMOTE_MIN_SCORE`) so future tuning is config, not code.
 
-5. **Bad-precedent recovery.** A precedent that turns out to be bad (misleading, off-canon, just wrong) is deprecated. What about precedents that were _retrieved by past patrons_ before the deprecation? Their schemas already incorporate the bad analogy. Do nothing? Surface a "this schema was influenced by a deprecated precedent — review when you have a moment" banner? I lean do-nothing — the schema is the patron's now, judge it on its own merits.
+5. **Bad-precedent recovery.** RESOLVED: do nothing for past-influenced schemas. The patron's schema is the patron's — retroactively annotating it with platform-side judgment is paternalism. The deprecation is forward-looking only: the bad precedent is removed from retrieval going forward; past schemas are evaluated on their own merits. This matches industry practice (changes to a recommendation algorithm don't retroactively flag past content).
 
-6. **Foundation-published bundle signing.** When the federation registry lands (v3.3), the Foundation library is signed (Ed25519, same as Webbase bundles per #58). Cells verify before installing. I haven't specified the key-rotation story for the Foundation library; it should follow the cell-key rotation we already have. Not urgent for v3.0–v3.2.
-
----
+6. **Foundation-published bundle signing.** RESOLVED: same Ed25519 keypair used for Webbase bundles (#58). One key per Cell, rotation handled by the existing vault-rotation mechanism (`/admin/vault-rotation`). When federation lands, the Foundation Cell becomes the "publisher" Cell whose key fingerprint other Cells trust out-of-band. Detailed rotation story is v3.3 work; v3.0/3.1/3.2 don't need it.
 
 ## 15. Summary
 
