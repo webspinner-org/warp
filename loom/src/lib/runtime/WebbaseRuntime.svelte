@@ -28,7 +28,29 @@
     entities?: readonly unknown[];
     branding?: unknown;
   }
-  let { data }: { data: WebbaseData } = $props();
+
+  // editable: when true, render direct-edit affordances on each form
+  // field (inline-rename label, remove field, add field). When false
+  // (default), the component renders as the run-time it has always
+  // been — no affordances, no edit hooks, zero visual change.
+  //
+  // onEdit: invoked on every direct edit with the FULL updated
+  // screensDraft. The caller decides what to do (debounce + PATCH,
+  // local cache, etc.). The renderer does not own persistence.
+  //
+  // Per loom-design.md §4.1 + §13 Q5: edits are color-coded by
+  // impact (gray=cosmetic layout, gold=schema). For v2.0 we treat
+  // every field-shape change as schema; layout-only ops (reorder)
+  // ship in v2.0.1.
+  let {
+    data,
+    editable = false,
+    onEdit = undefined,
+  }: {
+    data: WebbaseData;
+    editable?: boolean;
+    onEdit?: (nextScreensDraft: Record<string, unknown>) => void;
+  } = $props();
 
   // ─── Types ──────────────────────────────────────────────────
   interface EntityField {
@@ -79,10 +101,93 @@
     [key: string]: unknown;
   }
 
-  const screensDraft = (data.screensDraft ?? {}) as Record<string, unknown>;
+  // In editable mode the screensDraft is mutated in place; we keep a
+  // live $state copy that backs both the renderer and the onEdit emit.
+  // In read-only mode the same state is initialized once and never
+  // changed — zero overhead vs the const-based runtime that shipped
+  // before.
+  let liveScreensDraft = $state<Record<string, unknown>>(
+    JSON.parse(JSON.stringify((data.screensDraft ?? {}) as Record<string, unknown>)),
+  );
   const entities = (data.entities ?? []) as Entity[];
-  const screens = (screensDraft['screens'] ?? []) as Screen[];
-  const navigation = (screensDraft['navigation'] ?? []) as NavGroup[];
+  let screens = $derived((liveScreensDraft['screens'] ?? []) as Screen[]);
+  let navigation = $derived((liveScreensDraft['navigation'] ?? []) as NavGroup[]);
+
+  function emitChange() {
+    if (!editable || !onEdit) return;
+    // Hand the caller a plain object, not a Svelte reactive proxy.
+    onEdit($state.snapshot(liveScreensDraft) as Record<string, unknown>);
+  }
+
+  // ─── Edit operations (deterministic, no LLM) ─────────────────
+  // Each operation mutates liveScreensDraft in place AND triggers
+  // reactivity by reassigning the screens array (Svelte 5's
+  // shallow-tracking $state needs a top-level write to notice).
+
+  function findFieldInDraft(
+    fieldId: string,
+  ): { screenIdx: number; sectionIdx: number; fieldIdx: number } | null {
+    const scrs = (liveScreensDraft['screens'] ?? []) as Screen[];
+    for (let si = 0; si < scrs.length; si++) {
+      const s = scrs[si];
+      if (s.kind !== 'form') continue;
+      const sections = s.layout?.sections ?? [];
+      for (let sx = 0; sx < sections.length; sx++) {
+        const fields = sections[sx].fields ?? [];
+        for (let fi = 0; fi < fields.length; fi++) {
+          if (fields[fi].id === fieldId) return { screenIdx: si, sectionIdx: sx, fieldIdx: fi };
+        }
+      }
+    }
+    return null;
+  }
+
+  function renameField(fieldId: string, newLabel: string) {
+    const loc = findFieldInDraft(fieldId);
+    if (!loc) return;
+    // $state.snapshot strips the Svelte 5 reactive proxy so structuredClone
+    // works (proxies aren't cloneable).
+    const next = structuredClone($state.snapshot(liveScreensDraft)) as Record<string, unknown>;
+    const scrs = next['screens'] as Screen[];
+    const fld = scrs[loc.screenIdx].layout!.sections![loc.sectionIdx].fields[loc.fieldIdx];
+    if (fld.label === newLabel || newLabel.trim().length === 0) return;
+    fld.label = newLabel.trim();
+    liveScreensDraft = next;
+    emitChange();
+  }
+
+  function removeField(fieldId: string) {
+    const loc = findFieldInDraft(fieldId);
+    if (!loc) return;
+    // $state.snapshot strips the Svelte 5 reactive proxy so structuredClone
+    // works (proxies aren't cloneable).
+    const next = structuredClone($state.snapshot(liveScreensDraft)) as Record<string, unknown>;
+    const scrs = next['screens'] as Screen[];
+    scrs[loc.screenIdx].layout!.sections![loc.sectionIdx].fields.splice(loc.fieldIdx, 1);
+    liveScreensDraft = next;
+    emitChange();
+  }
+
+  function addField(screenId: string) {
+    // $state.snapshot strips the Svelte 5 reactive proxy so structuredClone
+    // works (proxies aren't cloneable).
+    const next = structuredClone($state.snapshot(liveScreensDraft)) as Record<string, unknown>;
+    const scrs = next['screens'] as Screen[];
+    const screen = scrs.find((s) => s.id === screenId);
+    if (!screen || screen.kind !== 'form') return;
+    const sections = screen.layout?.sections;
+    if (!sections || sections.length === 0) return;
+    // Append to the last section. Default field is plain text with
+    // a unique id; the patron renames it immediately.
+    const newId = `field_${Date.now().toString(36)}`;
+    sections[sections.length - 1].fields.push({
+      id: newId,
+      label: 'New field',
+      kind: 'text',
+    });
+    liveScreensDraft = next;
+    emitChange();
+  }
 
   // ─── Unlock ──────────────────────────────────────────────────
   let unlocked = $state(!data.locked);
@@ -502,10 +607,36 @@
               }}
             >
               {#each activeFormFields as f (f.id)}
-                <label class="field">
+                <label class="field" class:field--editable={editable}>
                   <span class="field-label">
-                    {fieldLabel(f, findEntityField(activeEntityVal, f.id))}
-                    {#if f.required}<em class="req">·</em>{/if}
+                    {#if editable}
+                      <input
+                        class="field-label-input"
+                        type="text"
+                        value={fieldLabel(f, findEntityField(activeEntityVal, f.id))}
+                        onblur={(e) =>
+                          renameField(f.id, (e.currentTarget as HTMLInputElement).value)}
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            (e.currentTarget as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        class="field-del"
+                        title="Remove this field"
+                        aria-label="Remove this field"
+                        onclick={(e) => {
+                          e.preventDefault();
+                          removeField(f.id);
+                        }}>×</button
+                      >
+                    {:else}
+                      {fieldLabel(f, findEntityField(activeEntityVal, f.id))}
+                      {#if f.required}<em class="req">·</em>{/if}
+                    {/if}
                   </span>
                   {#if f.kind === 'choice'}
                     <select name={f.id} required={f.required}>
@@ -536,8 +667,19 @@
                   {#if f.describes}<small class="field-hint">{f.describes}</small>{/if}
                 </label>
               {/each}
+              {#if editable && activeScreenVal}
+                <button
+                  type="button"
+                  class="field-add"
+                  onclick={() => addField(activeScreenVal!.id)}>+ Add field</button
+                >
+              {/if}
               <div class="form-actions">
-                <button type="submit" class="btn-primary">Save</button>
+                {#if editable}
+                  <span class="edit-mode-hint">Edit mode — your changes save automatically.</span>
+                {:else}
+                  <button type="submit" class="btn-primary">Save</button>
+                {/if}
               </div>
               {#if savedFlash?.screenId === activeScreenVal.id}
                 <p class="saved">Saved.</p>
@@ -818,10 +960,89 @@
     text-transform: uppercase;
     color: var(--muted);
     font-family: ui-monospace, monospace;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   .field-label .req {
     color: var(--accent);
     font-style: normal;
+  }
+  /* ── Editor affordances (only when editable=true) ────────────── */
+  .field--editable {
+    position: relative;
+    padding: 0.25rem 0.4rem;
+    border: 1px dashed transparent;
+    border-radius: 6px;
+    margin: 0 -0.4rem;
+    transition: border-color 100ms ease;
+  }
+  .field--editable:hover,
+  .field--editable:focus-within {
+    border-color: var(--accent);
+  }
+  .field-label-input {
+    flex: 1 1 auto;
+    appearance: none;
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    border-bottom: 1px solid transparent;
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.1rem 0;
+    min-width: 4rem;
+  }
+  .field-label-input:hover,
+  .field-label-input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+    color: var(--accent);
+  }
+  .field-del {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .field--editable:hover .field-del,
+  .field--editable:focus-within .field-del {
+    opacity: 1;
+  }
+  .field-del:hover {
+    background: color-mix(in oklab, #c33 18%, transparent);
+    border-color: #c33;
+    color: #f4a8a8;
+  }
+  .field-add {
+    align-self: flex-start;
+    appearance: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    border-radius: 6px;
+    padding: 0.45rem 0.8rem;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-top: 0.3rem;
+  }
+  .field-add:hover {
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
+  }
+  .edit-mode-hint {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-style: italic;
   }
   .field input,
   .field select,
