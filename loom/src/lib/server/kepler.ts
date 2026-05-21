@@ -43,10 +43,17 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingResult> 
       body: JSON.stringify({ texts }),
     });
   } catch (e) {
-    throw new KeplerCallError('embeddings', `Embeddings sidecar unreachable at ${EMBEDDINGS_URL}: ${(e as Error).message}`, e);
+    throw new KeplerCallError(
+      'embeddings',
+      `Embeddings sidecar unreachable at ${EMBEDDINGS_URL}: ${(e as Error).message}`,
+      e,
+    );
   }
   if (!r.ok) {
-    throw new KeplerCallError('embeddings', `Embeddings sidecar /embed -> HTTP ${r.status}: ${await r.text()}`);
+    throw new KeplerCallError(
+      'embeddings',
+      `Embeddings sidecar /embed -> HTTP ${r.status}: ${await r.text()}`,
+    );
   }
   const d = (await r.json()) as { vectors: number[][]; model?: string };
   return {
@@ -135,6 +142,14 @@ const KEPLER_MODEL_MAP: Readonly<Record<string, string>> = {
   'qwen-2.5-7b-instruct': 'mlx-community/Qwen2.5-7B-Instruct-4bit',
   'qwen-2.5-14b': 'mlx-community/Qwen2.5-14B-Instruct-4bit',
   'qwen-2.5-14b-instruct': 'mlx-community/Qwen2.5-14B-Instruct-4bit',
+  // Qwen3 generation — preferred for new Spinners. The Coder variants
+  // are tuned for structured / JSON output and outperform the base
+  // chat models on Webbase schema synthesis; pick them by manifest
+  // model: 'kepler/qwen3-coder-30b' to opt in.
+  'qwen3-14b': 'mlx-community/Qwen3-14B-4bit',
+  'qwen3-32b': 'mlx-community/Qwen3-32B-4bit',
+  'qwen3-coder-30b': 'mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit',
+  'qwen3-coder-next': 'mlx-community/Qwen3-Coder-Next-mxfp4',
 };
 
 export function resolveKeplerModel(manifestModel: string | undefined): string | null {
