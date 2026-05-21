@@ -25,7 +25,10 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { homedir } from 'node:os';
 
-const EMBEDDINGS_URL = process.env['WARP_EMBEDDINGS_URL'] ?? 'http://127.0.0.1:8101';
+// Note: NOT WARP_EMBEDDINGS_URL — that env var already points at an
+// older MiniLM service used by spool retrieval. The Foundation BGE-M3
+// service is its own thing on its own port; use a dedicated env var.
+const EMBEDDINGS_URL = process.env['WARP_FOUNDATION_EMBEDDINGS_URL'] ?? 'http://127.0.0.1:8101';
 const PRECEDENTS_DIR =
   process.env['WARP_PRECEDENTS_DIR'] ?? path.join(homedir(), 'warp', 'foundation-precedents');
 const INDEX_PATH = path.join(PRECEDENTS_DIR, '.index.json');
@@ -87,10 +90,24 @@ async function embedQuery(text: string, fetchFn: typeof fetch): Promise<readonly
     body: JSON.stringify({ texts: [text] }),
   });
   if (!res.ok) {
-    throw new Error(`embeddings service: HTTP ${res.status}`);
+    const txt = await res.text().catch(() => '<unreadable>');
+    throw new Error(`embeddings service: HTTP ${res.status} body=${txt.slice(0, 200)}`);
   }
-  const body = (await res.json()) as { embeddings: number[][]; dim: number };
-  if (!body.embeddings?.[0]) throw new Error('embeddings service: empty response');
+  const raw = await res.text();
+  let body: { embeddings?: number[][]; dim?: number };
+  try {
+    body = JSON.parse(raw) as { embeddings?: number[][]; dim?: number };
+  } catch (e) {
+    throw new Error(
+      `embeddings service: invalid JSON body=${raw.slice(0, 200)} err=${(e as Error).message}`,
+      { cause: e },
+    );
+  }
+  if (!body.embeddings || !Array.isArray(body.embeddings) || !body.embeddings[0]) {
+    throw new Error(
+      `embeddings service: empty response keys=${Object.keys(body).join(',')} body=${raw.slice(0, 200)}`,
+    );
+  }
   return body.embeddings[0];
 }
 

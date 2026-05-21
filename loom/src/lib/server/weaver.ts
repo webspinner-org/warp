@@ -36,6 +36,7 @@ import {
   type EntityMap as DbAppEntityMap,
 } from './database-applications.js';
 import { retrieveTopK, spoolToSourceFile, type RetrievedPassage } from './embedding-retrieval.js';
+import { retrievePrecedents } from './precedent-retrieval.js';
 import { readSpool, knownSpools } from './spools.js';
 import { dispatchCellAuthored } from './weaver-cell-dispatch.js';
 import {
@@ -2614,6 +2615,19 @@ async function databaseAppPropose(
   }
   const sentence = input.patronSentence.trim();
 
+  // ── v2 branch ────────────────────────────────────────────────────
+  // Per loom-design.md §5 + the 2026-05-20 decisions: when WARP_LOOM_FLOW
+  // is set to 'v2', skip the multi-stage v1 path (identify-domain +
+  // wikipedia + domain-model + screens + branding — four LLM calls)
+  // and go directly to a retrieval-augmented single-call synthesis.
+  // Clarifications are dropped; the patron edits the forms instead.
+  //
+  // v1 path is preserved below; v2 is its own self-contained function
+  // so the two paths don't entangle.
+  if (process.env['WARP_LOOM_FLOW'] === 'v2') {
+    return databaseAppProposeV2(sentence, session, keplerModel);
+  }
+
   // ── Progress tracking ───────────────────────────────────────────
   // Per the Wizard's directive — pull, never push; the polling is also
   // the heartbeat. Each `advance()` is a `wp_spinner_sessions` row
@@ -3244,6 +3258,235 @@ function stripWikipediaHtml(html: string): string {
     .replace(/&[a-z]+;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * `propose` v2 — retrieval-augmented single-call synthesis.
+ *
+ * Per loom-design.md §5 (revised 2026-05-20): patron sentence →
+ * BGE-M3 → top-3 Foundation-library precedents → local LLM
+ * conditioned on the precedents as in-context examples → schemaDraft.
+ * No clarifying questions are generated; the patron edits the forms
+ * after this returns (Block 5/6/7 wire the editor).
+ *
+ * Enabled by WARP_LOOM_FLOW=v2 environment variable. When unset,
+ * databaseAppPropose falls through to the v1 (multi-stage) path.
+ *
+ * One LLM call (vs v1's four). Comparable quality because the
+ * precedents carry the design discipline that v1's multi-stage
+ * prompting had to elicit from cold context.
+ */
+async function databaseAppProposeV2(
+  sentence: string,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+  keplerModel: string,
+): Promise<DispatchOutput> {
+  const sessionStartedAt = new Date().toISOString();
+  interface ProgressEntry {
+    phase: string;
+    narration: string;
+    startedAt: string;
+    endedAt?: string;
+  }
+  const progressLog: ProgressEntry[] = [];
+  async function advance(
+    phase: string,
+    narration: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    if (progressLog.length > 0) {
+      const prev = progressLog[progressLog.length - 1]!;
+      if (!prev.endedAt) prev.endedAt = now;
+    }
+    progressLog.push({ phase, narration, startedAt: now });
+    await session.save({
+      state: {
+        version: 2,
+        flow: 'v2',
+        patronSentence: sentence,
+        sessionStartedAt,
+        progressLog,
+        ...extra,
+      },
+      phase,
+    });
+  }
+
+  await advance(
+    'retrieving-precedents',
+    `Finding the Foundation precedents that match what you described — these become the design examples the Weaver works from.`,
+  );
+
+  // Step 1: retrieve top-3 precedents.
+  let precedents: Awaited<ReturnType<typeof retrievePrecedents>>;
+  try {
+    precedents = await retrievePrecedents(sentence, 3);
+  } catch (e) {
+    // If the embeddings service is unreachable, fall back to v1 by
+    // throwing — the caller will surface the error. Better to fail
+    // loud than silently degrade to a precedent-less call that will
+    // produce a worse schema.
+    throw new Error(
+      `v2 propose: precedent retrieval failed (is foundation.webspinner.embeddings running on 127.0.0.1:8101?): ${(e as Error).message}`,
+      { cause: e },
+    );
+  }
+  if (precedents.length === 0) {
+    throw new Error('v2 propose: no precedents retrieved — check the index file');
+  }
+
+  // Inferred domain comes from the top precedent's domain field —
+  // cheap and accurate enough at this stage. The patron can rename
+  // their app freely in the editor.
+  const topPrecedent = precedents[0]!;
+  const inferredDomain = topPrecedent.domain;
+
+  await advance(
+    'synthesising-from-precedents',
+    `Synthesising your application from ${precedents.length} canonical examples — ${precedents.map((p) => p.appName).join(', ')}.`,
+    {
+      domain: inferredDomain,
+      precedents: precedents.map((p) => ({
+        slug: p.slug,
+        score: p.score,
+        appName: p.appName,
+        domain: p.domain,
+      })),
+    },
+  );
+
+  // Step 2: compose the prompt with precedents in-context.
+  const precedentsBlock = precedents
+    .map((p, i) => {
+      return (
+        `### Precedent ${i + 1}: ${p.appName} (${p.domain}) — similarity ${p.score.toFixed(2)}\n` +
+        `Original patron sentence: ${JSON.stringify(p.sentence)}\n\n` +
+        `Schema:\n\`\`\`json\n${JSON.stringify(p.schema, null, 2)}\n\`\`\`\n\n` +
+        `Why these entities, not others:\n${p.narrative}\n`
+      );
+    })
+    .join('\n---\n\n');
+
+  const userMessage =
+    `The patron just said: ${JSON.stringify(sentence)}\n\n` +
+    `Below are 3 Foundation precedents most relevant to what they want. Use them as the design template — match the level of entity decomposition, the field count per entity (6-12), the use of link-to relationships, the report selection, and the branding palette quality. Adapt to the patron's SPECIFIC intent, but stay at this quality bar.\n\n` +
+    `${precedentsBlock}\n\n` +
+    `Now produce a schemaDraft for the patron. Output strict JSON, no prose, no markdown fences:\n` +
+    `{\n` +
+    `  "narration": "2-3 sentences describing what you built — name the entities and the canonical reports. Match the tone of the precedent narratives.",\n` +
+    `  "domain": "specific phrase like \\"small-business bookkeeping\\" or \\"home garden tracking\\"",\n` +
+    `  "screensDraft": { appName, domain, screens, navigation } — same shape as the precedents above,\n` +
+    `  "branding": { options: [{id, name, mood, palette}], selectedPaletteId } — same shape\n` +
+    `}\n\n` +
+    `Rules:\n` +
+    `- Every entity needs a form-screen AND list-screen AND detail-screen.\n` +
+    `- Every link-to field's linkTo target must be a known entity (one of the screen parentEntity values).\n` +
+    `- Every navigation screen id must exist.\n` +
+    `- Forms 6-12 fields each, sections used for grouping when there are 8+ fields.\n` +
+    `- Do NOT ask clarifying questions. Pick reasonable defaults. The patron edits afterwards.\n` +
+    `- Match the patron's SPECIFIC sentence, not the precedents verbatim. If they said "track plants in my garden including bonsai," include a bonsai-relevant field or screen the generic garden-log precedent didn't have.\n\n` +
+    `Open with "{".`;
+
+  const synthCall = await quietLoomChat({
+    system:
+      "You are the Webspinner Database Application Spinner. You design Webbase applications by extending Foundation precedents to fit a patron's specific intent. Output strict JSON matching the requested schema. Never ask clarifying questions.",
+    userMessage,
+    model: keplerModel,
+    maxTokens: 8192,
+    temperature: 0.5,
+  });
+
+  // Step 3: parse + validate.
+  const parsed = parseStrictJson(synthCall.text);
+  if (!parsed) {
+    throw new Error(
+      `v2 propose: LLM returned invalid JSON. First 500 chars: ${synthCall.text.slice(0, 500)}`,
+    );
+  }
+
+  const narration = typeof parsed['narration'] === 'string' ? parsed['narration'] : '';
+  const domain = typeof parsed['domain'] === 'string' ? parsed['domain'] : inferredDomain;
+  const screensDraft =
+    typeof parsed['screensDraft'] === 'object' && parsed['screensDraft'] !== null
+      ? (parsed['screensDraft'] as Record<string, unknown>)
+      : null;
+  const branding =
+    typeof parsed['branding'] === 'object' && parsed['branding'] !== null
+      ? (parsed['branding'] as Record<string, unknown>)
+      : null;
+
+  if (!screensDraft || !Array.isArray(screensDraft['screens'])) {
+    throw new Error('v2 propose: LLM output missing screensDraft.screens array');
+  }
+  if (!Array.isArray(screensDraft['navigation'])) {
+    throw new Error('v2 propose: LLM output missing screensDraft.navigation array');
+  }
+
+  await advance(
+    'proposed',
+    `Drafted your application — ${(screensDraft['screens'] as unknown[]).length} screens across the entities the domain expects.`,
+    {
+      domain,
+      screensDraft,
+      branding,
+    },
+  );
+
+  const nowIso = new Date().toISOString();
+  await session.save({
+    state: {
+      version: 2,
+      flow: 'v2',
+      patronSentence: sentence,
+      sessionStartedAt,
+      progressLog,
+      domain,
+      screensDraft,
+      branding,
+      narration,
+      clarifications: [],
+      precedents: precedents.map((p) => ({
+        slug: p.slug,
+        score: p.score,
+        appName: p.appName,
+        domain: p.domain,
+      })),
+      turns: [
+        {
+          capability: 'propose',
+          flow: 'v2',
+          clarifications: [],
+          precedents: precedents.map((p) => p.slug),
+          timestamp: nowIso,
+        },
+      ],
+    },
+    phase: 'proposed',
+  });
+
+  return {
+    output: {
+      narration,
+      domain,
+      screensDraft,
+      branding,
+      clarifications: [],
+      phase: 'proposed',
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: synthCall.model,
+        sessionId: session.id,
+        flow: 'v2',
+        precedents: precedents.map((p) => ({ slug: p.slug, score: p.score })),
+        modelCalls: 1,
+      },
+    },
+    modelTokens: {
+      input: synthCall.inputTokens,
+      output: synthCall.outputTokens,
+    },
+  };
 }
 
 /**
