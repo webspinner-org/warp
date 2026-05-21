@@ -7,9 +7,11 @@ This document proposes an architectural change to how a Webspinner Cell authors 
 1. The **Observatory schema cards** are a metaphor of the application, not the application itself. The patron evaluates a representation, not the thing. Decisions made against the metaphor sometimes fail to survive contact with the real running app.
 2. The **clarifying-questions modal** has been inconsequential in practice — most patrons accept defaults; the questions slow the propose→build loop without reliably improving the result.
 
-The new flow proposed here is forms-first. The patron sees the actual forms (rendered by the same engine the running app will use), edits them WYSIWYG, optionally chats with an LLM to make broader changes, and clicks Build when they are satisfied. Clarifying questions are removed.
+The new flow proposed here is forms-first. The patron sees the actual forms (rendered by the same engine the running app will use), edits them WYSIWYG, optionally chats with the Weaver to make broader changes, and clicks Build when they are satisfied. Clarifying questions are removed.
 
-This is faithful to the Warp architecture (canon §2 vocabulary, §17 production-candidate quality, §19 Spinners run capabilities). It builds on the renderer extraction in #58 — the same renderer that serves `/run/<code>` and the standalone download is reused in edit mode. Schema remains the canonical artifact; only the surface the patron sees while editing it changes.
+**The LLM that powers all of this stays on Kepler.** Per Wizard pushback 2026-05-20: cloud isn't a default, it's a fallback. The chain is `BGE-M3 embeddings → Foundation-library precedent retrieval → local Qwen Coder model → JSON validation`, with Anthropic Claude as the safety net when local validation fails or the local service is unreachable. §5 is the load-bearing section for that move.
+
+This is faithful to the Warp architecture (canon §2 vocabulary, §17 production-candidate quality, §19 Spinners run capabilities) and to the operative principle that Spinners run without paid MCP LLMs. It builds on the renderer extraction in #58 — the same renderer that serves `/run/<code>` and the standalone download is reused in edit mode. Schema remains the canonical artifact; only the surface the patron sees while editing it, and the model that produces it, change.
 
 ---
 
@@ -208,82 +210,142 @@ A single button. Always available. Always honest:
 
 ---
 
-## 5. LLM architecture
+## 5. LLM architecture — local-first, cloud-as-fallback
+
+> Revised 2026-05-20 per Wizard pushback. Original draft defaulted to Anthropic cloud for all three capabilities; the canon's operative principle is the inverse — local first, cloud only for the irreducible. This section is rewritten end-to-end. Cloud is now the safety net, never the primary path.
 
 ### 5.1 What we already have
 
-- Anthropic Claude is wired (`loom/src/lib/server/anthropic.ts`).
+- **Anthropic Claude** is wired (`loom/src/lib/server/anthropic.ts`) — kept, but demoted from primary to fallback.
 - Capability dispatch in `weaver.ts:2547`: `propose | refine | build`.
-- Per-Spinner `manifest.model` selects which model the dispatch calls.
-- Local-Kepler MLX is wired as a fallback path, intentionally unused in the bootstrap Cell ("we only use Anthropic now to get the Spinner done" — operative principle).
+- Per-Spinner `manifest.model` selects which model the dispatch calls — the same mechanism now points at a local endpoint.
+- **MLX serving on Kepler** is named in the canon's stack and in `DECISIONS.md` 2026-05-10 ("vLLM for local model serving when GPU hardware lands"). It exists as scaffolding; the bootstrap Cell hasn't set it up yet. Setting it up is part of this design.
+- **BGE-M3** is the canon's embeddings model — small, fast on Apple Silicon, runs on CPU or Metal.
 
 ### 5.2 What changes
 
-Add one capability, remove the role of one, keep two:
+Same capability moves as before — drop `refine`'s role, add `edit`, keep `build` — plus a new piece: every capability that touches an LLM goes through a **retrieval-augmented** pipeline. The chain is `embeddings → retrieve precedents → local LLM → validate`. Cloud sits outside this chain as a fallback.
 
-| Capability | Role in v2                 | Notes                                                                                                                                                                                                                                                                                                     |
-| ---------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `propose`  | Same shape, simpler prompt | Drops the clarifications synthesis. The prompt becomes: "Given this sentence, produce the most likely useful schema. Never ask the patron a clarifying question; pick reasonable defaults; the patron will edit afterwards." Output: `screensDraft` + `branding`. No `clarifications`, no `readyToBuild`. |
-| `edit`     | **New**                    | Input: current `screensDraft` + patron's natural-language edit request + recent dialogue history. Output: updated `screensDraft` + a one-sentence narration of what changed ("I added a phone field to the customer form"). Used in the chat-driven editing loop.                                         |
-| `refine`   | Deprecated, then removed   | Kept in the codebase for one cycle to honor in-flight sessions; new sessions never hit it. Eventually deleted.                                                                                                                                                                                            |
-| `build`    | Unchanged                  | Reads the current `screensDraft` from the session; creates the PB collections + wp_database_applications row.                                                                                                                                                                                             |
+| Capability | Role in v2                             | Notes                                                                                                                                                                                       |
+| ---------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `propose`  | Same shape, retrieval-augmented prompt | Drops clarifications. Patron's sentence → BGE-M3 → top-K Foundation-library precedent schemas → local 32B-class model produces the schema by analogy. Cloud-fallback on validation failure. |
+| `edit`     | **New**                                | Patron's natural-language edit + current schemaDraft → local 7B-class model produces JSON patch. Cloud-fallback on retry. The "many times per session" call.                                |
+| `refine`   | Deprecated, then removed               | Kept one cycle for in-flight sessions; new sessions never hit it.                                                                                                                           |
+| `build`    | Unchanged, no LLM                      | Reads the current schemaDraft; creates PB collections + wp_database_applications row.                                                                                                       |
+| `redesign` | **New** (patron-initiated)             | Used only when the patron explicitly asks for a substantial redesign. Same local-first chain as propose; cloud-fallback is less likely to fire because the operation is rare.               |
 
-### 5.3 What LLM to use for each
+### 5.3 The three local pieces
 
-The Wizard's question. Empirical observations + the canon's "Anthropic until Kepler-local lands":
+#### 5.3.1 Embeddings — BGE-M3 on Kepler
 
-**Initial `propose` — synthesis from one sentence into a multi-entity, multi-screen schema.**
+- **Model:** `BAAI/bge-m3` (~500 MB, multilingual, dense + sparse + ColBERT-style late interaction). Per the canon's default stack.
+- **Service:** a small HTTP server on Kepler. Either `mlx-embeddings` or a tiny Python FastAPI wrapper around `FlagEmbedding`. ~50 lines, runs under a launchd agent next to the operator Loom.
+- **Latency:** sub-100 ms per query on Apple Silicon. Negligible compared to the LLM step that follows.
+- **Index:** the Foundation library of canonical applications. Stored as JSON files under `~/warp/foundation-precedents/<slug>/{schema.json, narrative.md}`. Indexed into Qdrant on Kepler (or a simpler flat-file faiss-like store at bootstrap scale; Qdrant lands when wp_database_applications outgrows it per `DECISIONS.md` 2026-05-10).
 
-- Recommended: **Claude Sonnet 4.6** (`claude-sonnet-4-6`).
-- Reasoning: this is the hard call. One sentence → ~10 screens, ~6–8 entities, ~50 fields, palette + navigation. Sonnet's strength is synthesis with structured output. Latency ~15–30s for a worked-out schema is acceptable on a one-time call. Cost per propose is low (~$0.02–0.05 estimated).
-- Alternative: Opus 4.7 if the patron's sentence is gnarly. Auto-escalate when the proposed schema has fewer than 2 entities (i.e., the model couldn't decompose the domain) and re-call with Opus.
+#### 5.3.2 The Foundation-library precedent index
 
-**Conversational `edit` — small, frequent transformations of an existing schema.**
+The hard problem of "one sentence → useful schema" is _not_ a model-capability problem. It's a domain-knowledge problem. The Foundation can do this for the SI by curating canonical applications.
 
-- Recommended: **Claude Haiku 4.5** (`claude-haiku-4-5`).
-- Reasoning: edits are local transforms. "Add a phone field" is a 50-line schema mutation against a 5000-line schema context. Haiku is ~10× faster (~1–2s round-trip) and ~10× cheaper than Sonnet at this shape. The patron will hit Send many times; Haiku is what makes that affordable and snappy. Haiku has the structured-JSON output discipline we need.
-- Fallback: if Haiku returns invalid JSON or fails to apply (no field matches the patron's reference, etc.), one automatic retry on Sonnet with the same prompt. If that also fails, surface the failure honestly: "I couldn't make that change. Try rephrasing, or do it directly."
+- Seed at ~15-20 schemas covering the common domains: bookkeeping, garden log, donor CRM, service-ticket tracker, recipe collection, club roster, gear inventory, time tracker, prayer list, reading journal, contact rolodex, project log, household maintenance, photo metadata, livestock records, etc.
+- Each precedent carries: the patron-style sentence(s) that would describe it, the schemaDraft a competent practitioner would produce, a short narrative on why those entities and not others.
+- The precedent isn't a template — it's an example for the LLM to learn from in-context. The local model takes the patron's sentence + the 3-5 closest precedent schemas and produces a _new_ schema that fits the patron's specific intent.
+- New precedents are added with a one-line `tools/foundation-precedent-add <slug>` that re-embeds and re-indexes. The library grows over time as the Foundation encounters domains it didn't have yet.
 
-**Optional `redesign` — patron says "start over with a new sentence" or "I want this to be much bigger".**
+#### 5.3.3 Local LLM serving — MLX on Kepler
 
-- Recommended: **Claude Opus 4.7** (`claude-opus-4-7`).
-- Reasoning: rare, expensive, deserves the heaviest reasoning. Patron-initiated only.
+- **Server:** `mlx-server` (or `mlx-lm.server`, OpenAI-compatible). Single launchd agent: `foundation.webspinner.mlx`. Listens on `127.0.0.1:8100`.
+- **Model for `propose` and `redesign`:** **Qwen 2.5 Coder 32B Instruct** Q4 (~18 GB resident; runs on M2/M3 Ultra with headroom). Strong JSON discipline, code-style fluency that maps well to schema synthesis.
+  - Alternative if memory is tight: **Qwen 2.5 Coder 14B** Q4 (~8 GB). Smaller-domain decomposition; usually fine with strong precedent retrieval, less reliable for off-the-beaten-path domains.
+- **Model for `edit`:** **Qwen 2.5 Coder 7B** Q4 (~4 GB). Resident alongside the bigger model. Latency under 1 second for a 200-token JSON patch.
+- Both models hot-loaded at service start. No cold-start latency.
+- **Concurrency:** the bootstrap Cell is single-Wizard; serial requests are fine. When patron concurrency arrives (federation, summer 2026 per `DECISIONS.md`), MLX's continuous-batching can handle ~4-8 concurrent requests on a 192 GB Ultra; harder concurrency moves to vLLM-on-Apple-Silicon or to the Hetzner box.
 
-### 5.4 The chain in one paragraph
+### 5.4 The chain, end-to-end
 
-The patron's first sentence goes to **Sonnet**, which seeds the schema. From there, **Haiku** is the workhorse — every chat-driven edit, every retry, every iteration. **Opus** is on standby for the "redesign" verb or for a propose retry when Sonnet's first pass came out too thin. The patron never sees these names; they see "the Weaver." The model identifiers live in `manifest.model` per capability, exactly as today.
+```
+patron sentence ─▶ BGE-M3 ─▶ top-3 precedent schemas (~3-5 KB each)
+                                     │
+                                     ▼
+                              prompt assembled:
+                              [system + precedents + patron-sentence]
+                                     │
+                                     ▼
+                       local Qwen Coder 32B (MLX, :8100)
+                                     │
+                                     ├─▶ valid JSON ─▶ return to Loom
+                                     │
+                                     └─▶ invalid (after 1 retry)
+                                              │
+                                              ▼
+                                  Anthropic Sonnet 4.6 (cloud)
+                                              │
+                                              └─▶ return + audit "cloud-fallback"
+```
 
-### 5.5 Future state (post-WWDC reassessment per `DECISIONS.md`)
+The `edit` chain is the same shape with smaller models and lighter retrieval (the current schemaDraft IS the context; embeddings retrieve from the dialogue history only).
 
-When the Kepler GPU lands and MLX hosts a local model good enough for the `edit` shape, the chain becomes:
+### 5.5 Cloud-fallback policy, explicit
 
-- `propose` → Sonnet (still cloud — synthesis-heavy)
-- `edit` → Kepler-local MLX (the cheap iteration moves on-box)
-- `build` → no LLM
-- `redesign` → Opus (still cloud)
+Cloud is honored as a degradation path, not a default. Three triggers:
 
-This is the operative principle "we use the LLMs… without any paid MCP LLM" cashed out concretely.
+1. **Validation failure.** Local model returns JSON that doesn't parse or fails schema validation, twice in a row. Capability falls back to the cloud-equivalent model (Sonnet for propose/redesign, Haiku for edit). Audit row: `{ kind: 'cloud-fallback', reason: 'invalid-output', local_model, cloud_model }`.
+2. **Local service unavailable.** `foundation.webspinner.mlx` is down (crashed, restarting, model unloading). Capability tries 5 times over 30 seconds; if still unavailable, fall back to cloud with a banner: "The local model is unreachable; the Weaver is using cloud assistance." Patron sees this honestly.
+3. **Patron escalation.** Explicit verb in the editor — "this draft isn't right, try harder" — bypasses local and calls Opus directly. Used rarely; audit row.
 
-### 5.6 Prompt sketches (not the prompts themselves — the _shape_)
+Every fallback is visible — in the audit chain, in the Wizard's admin Operations log, and (for #2) in the patron UI. Cloud is never the silent default.
 
-**propose** (Sonnet):
+### 5.6 Why this works at 32B local
 
-- System: "You are the Webspinner Database Application Spinner. Your job is to design a database application from a single patron sentence. Never ask clarifying questions. Pick the most useful defaults. Output JSON exactly matching this schema: { screensDraft, branding }. The patron will edit afterwards — design for editability, not for ambition."
+A 32B model with 3-5 strong in-context examples and a well-defined output schema operates in a _different regime_ than the same model on a cold-start free-form task. The hard work moves from raw parameters to:
+
+- **Retrieval quality** — the precedent library carries the design discipline.
+- **Output structure** — JSON-mode + schema validation force valid output or trigger fallback.
+- **Task narrowness** — `edit` is a 50-token transform; `propose` is a 2000-token synthesis but bounded by the schema interface.
+
+We've been over-modeling. Sonnet-class capability is needed for _open-ended_ synthesis; we are doing _constrained_ synthesis with retrieval. The constraint plus retrieval substitutes for the model size.
+
+### 5.7 Prompt sketches (local edition)
+
+**propose** (Qwen Coder 32B):
+
+- System: "You are the Webspinner Database Application Spinner. You design a database application by extending one of the Foundation precedents below to fit the patron's specific intent. Never ask clarifying questions. Pick reasonable defaults; the patron edits afterwards. Output exactly the JSON shape demonstrated by the precedents."
+- Context: top-3 precedent schemas + their narrative notes.
 - User: the patron's sentence.
+- Output: `{ screensDraft, branding }` strictly matching the precedent shape.
 
-**edit** (Haiku):
+**edit** (Qwen Coder 7B):
 
-- System: "You are the Weaver. The patron is editing a Webbase via natural language. You produce JSON patches to a screensDraft. Output JSON: { screensDraft, narration, kind }. `kind` is 'edit' | 'clarify' | 'no-change'. If the patron asks a question, set kind='clarify' and answer in narration without touching the schema. If the patron's request is ambiguous (multiple ways to interpret), make the safest interpretation and say so in narration."
-- User: current screensDraft + last 5 turns of dialogue + the new patron message.
+- System: "You produce JSON patches to a screensDraft based on a patron's natural-language edit request. Output `{ screensDraft, narration, kind }` where `kind` is 'edit' | 'clarify' | 'no-change'. If the request is ambiguous, make the safest interpretation and say so in narration."
+- Context: current schemaDraft + last 5 dialogue turns.
+- User: the patron's edit request.
 
-**redesign** (Opus):
+**redesign** (Qwen Coder 32B):
 
-- System: "The patron wants a substantial redesign. Treat the existing schema as one option and the new sentence/intent as the brief. You may keep, modify, or discard the prior design."
-- User: prior screensDraft + new sentence.
+- System: "The patron wants a substantial redesign. Use the existing schema as one option and the new intent as the brief. You may keep, modify, or discard the prior design."
+- Context: prior schemaDraft + top-3 precedents matching the new intent.
+- User: the new sentence.
 
-### 5.7 Structured output discipline
+### 5.8 Partial-sovereignty path — embeddings-local-now, LLMs-cloud-for-now
 
-All three capabilities use Anthropic's tool-use / JSON-mode discipline to force-valid output. The frontend validates against the schema interfaces in `database-applications.ts:104` before accepting. Invalid output → automatic one-shot retry with the same prompt → if still invalid, surface honestly ("the Weaver returned something I couldn't apply; try rephrasing").
+If the full local stack (~1 week of setup) is more work than the moment allows, there is an intermediate step that buys ~70% of the sovereignty win for half a day of work:
+
+- Set up **BGE-M3 only** on Kepler.
+- Build the precedent index.
+- The patron's sentence is embedded locally; the top-3 precedent schemas are retrieved locally.
+- The cloud LLM call (Sonnet/Haiku/Opus) receives the precedents as in-context examples. The patron's _raw intent_ doesn't leak directly; what goes to cloud is "produce a schema like THESE precedents, conditioned on a sentence whose embedding nearest-neighbours THESE precedents."
+
+This is meaningfully better than the v1 design. Cloud still sees the patron sentence, but the cloud call is framed as a precedent-recombination rather than an open synthesis. And it cuts the cloud bill substantially — a 32B model conditioned on 3 strong examples produces better output with fewer tokens than a frontier model on a cold prompt.
+
+If the Wizard wants to start here and migrate to full-local later, that's a coherent first step.
+
+### 5.9 Structured output discipline (unchanged)
+
+Both local and cloud paths use strict JSON-schema validation against the interfaces in `database-applications.ts:104`. Invalid output → one automatic retry → fallback (cloud, then surface honestly). Same discipline either way.
+
+### 5.10 What the patron sees
+
+Nothing different. The patron sees "the Weaver." Local-vs-cloud is operator concern (audit, logs, the Wizard's billing-curiosity-when-it-matters). The honesty surfaces only when cloud-fallback triggers due to local unavailability — and then it's a one-line banner, not a question.
 
 ---
 
@@ -376,26 +438,39 @@ The Weaver does not narrate its own reasoning. It announces outcomes.
 
 ## 11. Migration / rollout
 
-### 11.1 Existing sessions
+### 11.1 Preconditions — the local stack must land first
 
-Sessions currently in `phase: 'proposing'` or `'refining'` can complete via refine (kept alive). Sessions with `phase: 'ready'` or `'built'` are unaffected. Newly proposed sessions enter the new flow.
+`WARP_LOOM_FLOW=v2` is gated on the local stack being up. Without it, the flag is a no-op; the v1 flow continues. The local stack consists of:
 
-### 11.2 Feature flag
+- `foundation.webspinner.mlx` launchd agent — MLX-server with Qwen Coder 32B + 7B Q4 models loaded, listening on `127.0.0.1:8100`.
+- `foundation.webspinner.embeddings` launchd agent — BGE-M3 server on `127.0.0.1:8101`.
+- The precedent library at `~/warp/foundation-precedents/` with the 15-20 seed schemas indexed.
+- `tools/foundation-precedent-add` script for adding new precedents.
+- The dispatcher in `weaver.ts` updated to call the local endpoints with cloud-fallback per §5.5.
 
-A single env var: `WARP_LOOM_FLOW=v2`. When set, the propose path drops clarifications and the editor mounts. When unset (or `v1`), the old flow runs. Both code paths coexist for one cycle.
+Order of build: embeddings + precedent library first (it's the smaller win and the partial-sovereignty path of §5.8 lives here), then MLX serving + 32B/7B models, then the editor mode.
+
+### 11.2 Existing sessions
+
+Sessions currently in `phase: 'proposing'` or `'refining'` can complete via refine (kept alive). Sessions with `phase: 'ready'` or `'built'` are unaffected. Newly proposed sessions enter the new flow once `WARP_LOOM_FLOW=v2` is set AND the local stack is up.
+
+### 11.3 Feature flag
+
+A single env var on the demo Loom: `WARP_LOOM_FLOW=v2`. When set AND `foundation.webspinner.mlx` responds healthy on startup, the propose path drops clarifications and the editor mounts. When unset, or when local services are unreachable at boot, the old v1 flow runs. Both code paths coexist for one cycle.
 
 The Wizard turns it on in his Cell first, lives with it for a few days, decides whether to flip the default.
 
-### 11.3 What can be deleted after the flag flip
+### 11.4 What can be deleted after the flag flip
 
 - `ClarificationsModal` UI (after v2 default for 2 weeks)
 - `clarifications` field in the schema interface
 - `refine` capability in dispatcher + `databaseAppRefine` (after 1 month)
 - The "refining" phase enum value
+- The Anthropic-as-primary code paths (cloud stays only as fallback per §5.5)
 
-### 11.4 What the patron sees on the transition
+### 11.5 What the patron sees on the transition
 
-Nothing surprising. If they had an in-progress session in the old flow, they finish it the old way. New sessions get the new flow. The first time they hit Build in v2, they go through the same build animation they already know.
+Nothing surprising. If they had an in-progress session in the old flow, they finish it the old way. New sessions get the new flow. The first time they hit Build in v2, they go through the same build animation they already know. The local-vs-cloud distinction is invisible unless the cloud-fallback banner fires.
 
 ---
 
@@ -424,7 +499,7 @@ Things this design takes a position on that you may want to push back on:
 
 2. **The chat panel position.** I've put it below the form. An alternative is a slide-over drawer on the right (the current Weaver chat panel's slot in the studio). I prefer below-the-form because it keeps the form as the primary surface — the patron edits, then asks a question, then edits — and the chat is referential, not central. You may prefer the drawer.
 
-3. **Sonnet for propose.** Or do we go straight to Opus on the first call? Sonnet is the safer first try; Opus is the heavier hitter. The auto-escalate-on-thin-schema rule in §5.3 is my hedge. Could be a flag.
+3. **Local 32B for propose, with cloud fallback.** Per §5 revised. Two sub-questions: (a) Qwen Coder 32B vs 14B — 32B's quality is better, 14B fits more comfortably in memory alongside the 7B edit model. The right answer probably depends on Kepler's actual unified-memory budget. (b) Do we ship the partial-sovereignty intermediate (§5.8 — embeddings local, LLMs cloud) as a stop on the way, or jump straight to full local? Partial costs half a day; full local costs ~1 week. The Wizard's call.
 
 4. **"What would you like to keep track of?" — same opener?** Or do we name the offering more concretely now that this is the path? "Tell me one sentence about the application you want and I'll draft it as forms you can edit."
 
@@ -436,18 +511,18 @@ Things this design takes a position on that you may want to push back on:
 
 ## 14. Summary
 
-| Decision                                 | This design                                                                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| What does the patron see first?          | The forms, rendered exactly as the live app will render them.                                                                              |
-| What do they do?                         | Edit directly (click, drag, inline rename) OR chat with the Weaver.                                                                        |
-| What model does the chat use?            | Haiku 4.5 — fast and cheap, fits the per-turn shape.                                                                                       |
-| What model does the initial propose use? | Sonnet 4.6 — heavier synthesis for the one-shot start.                                                                                     |
-| What model handles redesign?             | Opus 4.7 — patron-initiated only.                                                                                                          |
-| When is the design "done"?               | The patron clicks **Build it**.                                                                                                            |
-| What happens to clarifying questions?    | Removed. Defaults pick, patron edits.                                                                                                      |
-| What stays?                              | The renderer (one component for /run and edit-mode), the schema as the canonical artifact, the build capability, the Spinner architecture. |
-| What's added?                            | An `edit` capability, an editor mode on the renderer, a chat panel, a screens PATCH endpoint.                                              |
-| What gets deleted (after one cycle)?     | Clarifications UI + field + the refine capability.                                                                                         |
+| Decision                                   | This design                                                                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What does the patron see first?            | The forms, rendered exactly as the live app will render them.                                                                                                                   |
+| What do they do?                           | Edit directly (click, drag, inline rename) OR chat with the Weaver.                                                                                                             |
+| What model does the chat (`edit`) use?     | **Local Qwen Coder 7B** (MLX on Kepler). Cloud Haiku is fallback only.                                                                                                          |
+| What model does the initial `propose` use? | **Local Qwen Coder 32B** (MLX on Kepler) with retrieval-augmented prompt from the Foundation precedent library. Cloud Sonnet is fallback.                                       |
+| What model handles `redesign`?             | Same local 32B with a redesign-shaped prompt. Patron-initiated only. Cloud Opus is the escalation if the patron asks "try harder."                                              |
+| When is the design "done"?                 | The patron clicks **Build it**.                                                                                                                                                 |
+| What happens to clarifying questions?      | Removed. Defaults pick, patron edits.                                                                                                                                           |
+| What stays?                                | The renderer (one component for /run and edit-mode), the schema as the canonical artifact, the build capability, the Spinner architecture.                                      |
+| What's added?                              | An `edit` capability, an editor mode on the renderer, a chat panel, a screens PATCH endpoint, **the local MLX + BGE-M3 stack on Kepler, and the Foundation precedent library**. |
+| What gets deleted (after one cycle)?       | Clarifications UI + field + the refine capability.                                                                                                                              |
 
 This is a tractable change. The hard part — patron-sovereignty, standalone download, identity, file browser, delete actions — is shipped. The remaining work is mostly composition: turn the renderer we have into an editor, add a chat, swap one Spinner capability for another.
 
