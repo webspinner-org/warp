@@ -329,7 +329,8 @@
     return id.replace(/-/g, '_').toLowerCase();
   }
 
-  function findEntityField(entity: Entity, fieldId: string): EntityField | null {
+  function findEntityField(entity: Entity | null, fieldId: string): EntityField | null {
+    if (!entity) return null;
     const want = normalize(fieldId);
     return entity.fields.find((f) => normalize(f.name) === want) ?? null;
   }
@@ -594,7 +595,7 @@
             <h2>{activeScreenVal.name ?? activeScreenVal.id}</h2>
             {#if activeScreenVal.describes}<p>{activeScreenVal.describes}</p>{/if}
           </header>
-          {#if !activeEntityVal}
+          {#if !activeEntityVal && !editable}
             <p class="empty">No entity bound to this form.</p>
           {:else}
             <form

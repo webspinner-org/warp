@@ -20,17 +20,12 @@
     appName: 'Editor Probe',
     domain: 'editor-probe.local',
     branding: { palette: 'paper' },
-    entities: [
-      {
-        name: 'note',
-        fields: [
-          { name: 'title', kind: 'text' },
-          { name: 'body', kind: 'long-text' },
-          { name: 'when', kind: 'date' },
-        ],
-        links: [],
-      },
-    ],
+    // Intentionally NO entities — exercises the new editable=true path
+    // where the form renders from screen field defs alone. The Block-7
+    // forms-first frontend will mount the renderer this way: at
+    // propose-time the patron sees screens but the Spinner hasn't
+    // derived entities yet.
+    entities: [],
     screensDraft: {
       screens: [
         {
