@@ -62,6 +62,8 @@ interface PackageRow extends PBRow {
   install_token: string;
   install_count: number;
   max_installs: number;
+  /** Block-11 — opt-in patron snapshot, may be null on legacy rows. */
+  sample_records?: Record<string, readonly Record<string, unknown>[]> | null;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -109,6 +111,9 @@ async function ensurePackagesCollection(
         { name: 'install_token', type: 'text', required: true, maxLength: 64 },
         { name: 'install_count', type: 'number', min: 0 },
         { name: 'max_installs', type: 'number', min: 1 },
+        // Block-11 — opt-in patron-supplied sample data, surfaced to
+        // the recipient via the runtime's first-open Populate banner.
+        { name: 'sample_records', type: 'json', required: false, maxSize: 2_000_000 },
         { name: 'created', type: 'autodate', system: true, onCreate: true, onUpdate: false },
         { name: 'updated', type: 'autodate', system: true, onCreate: true, onUpdate: true },
       ],
@@ -147,6 +152,7 @@ async function ensurePackagesFields(
     required?: boolean;
     maxLength?: number;
     min?: number;
+    maxSize?: number;
   }[] = [
     { name: 'cell_key_fingerprint', type: 'text', maxLength: 64 },
     { name: 'origin_app_id', type: 'text', maxLength: 64 },
@@ -155,6 +161,8 @@ async function ensurePackagesFields(
     { name: 'version', type: 'number', min: 1 },
     { name: 'passphrase_hash', type: 'text', maxLength: 256 },
     { name: 'passphrase_salt', type: 'text', maxLength: 64 },
+    // Block-11 — additive on existing deployments.
+    { name: 'sample_records', type: 'json', maxSize: 2_000_000 },
   ];
   const missing = want.filter((w) => !have.has(w.name));
   if (missing.length === 0) return;
@@ -207,6 +215,16 @@ export interface UpsertPackageInput {
   readonly appName: string;
   readonly domain: string;
   readonly passphrase?: string | undefined;
+  /**
+   * Block-11 — optional patron-opt-in sample-record snapshot stored
+   * as a sibling JSON column (`sample_records`), NOT inside the
+   * cryptographically-signed `wsap_json` bundle. The bundle remains
+   * about authored content (schema + design); sample data is a
+   * publish-time decoration the runtime offers to populate on first
+   * open. `null` / omitted clears the column on update (the patron
+   * can re-publish without sample data).
+   */
+  readonly sampleRecords?: Record<string, readonly Record<string, unknown>[]> | null;
   readonly fetchFn: typeof fetch;
   readonly token: string;
   readonly pbUrl?: string;
@@ -269,6 +287,13 @@ export async function upsertPackage(input: UpsertPackageInput): Promise<UpsertPa
       version: nextVersion,
       expires_at: expiresAt,
     };
+    // Block-11 — pass `null` to clear; omit to leave untouched.
+    // Patron-facing UI re-checks the box each publish, so null
+    // (sampleRecords explicitly undefined OR null in input) means
+    // "no sample data on this re-publish."
+    if (input.sampleRecords !== undefined) {
+      update['sample_records'] = input.sampleRecords;
+    }
     if (input.passphrase !== undefined) {
       if (input.passphrase === '') {
         update['passphrase_hash'] = '';
@@ -313,24 +338,29 @@ export async function upsertPackage(input: UpsertPackageInput): Promise<UpsertPa
     passphraseFields['passphrase_salt'] = salt;
   }
   for (let attempt = 0; attempt < 4; attempt++) {
+    const payload: Record<string, unknown> = {
+      short_code: shortCode,
+      wsap_json: input.bundle,
+      sender_email: input.senderEmail.trim().toLowerCase(),
+      cell_key_fingerprint: input.cellKeyFingerprint,
+      origin_app_id: input.originAppId,
+      app_name: input.appName,
+      domain: input.domain,
+      version: 1,
+      expires_at: expiresAt,
+      install_token: installToken,
+      install_count: 0,
+      max_installs: DEFAULT_MAX_INSTALLS,
+      ...passphraseFields,
+    };
+    // Block-11 — sibling column, gated by the patron's checkbox.
+    if (input.sampleRecords !== undefined && input.sampleRecords !== null) {
+      payload['sample_records'] = input.sampleRecords;
+    }
     const create = await input.fetchFn(`${pbUrl}/api/collections/${PACKAGES}/records`, {
       method: 'POST',
       headers: authHeaders(input.token),
-      body: JSON.stringify({
-        short_code: shortCode,
-        wsap_json: input.bundle,
-        sender_email: input.senderEmail.trim().toLowerCase(),
-        cell_key_fingerprint: input.cellKeyFingerprint,
-        origin_app_id: input.originAppId,
-        app_name: input.appName,
-        domain: input.domain,
-        version: 1,
-        expires_at: expiresAt,
-        install_token: installToken,
-        install_count: 0,
-        max_installs: DEFAULT_MAX_INSTALLS,
-        ...passphraseFields,
-      }),
+      body: JSON.stringify(payload),
     });
     if (create.ok) {
       return { ok: true, action: 'created', shortCode, installToken, expiresAt, version: 1 };
@@ -433,6 +463,8 @@ export type GetPackageResult =
         readonly domain: string;
         readonly passphraseHash: string;
         readonly passphraseSalt: string;
+        /** Block-11 — opt-in sample data; null on legacy / untoggled. */
+        readonly sampleRecords: Record<string, readonly Record<string, unknown>[]> | null;
       };
     }
   | { readonly ok: false; readonly reason: string };
@@ -476,6 +508,7 @@ export async function getPackage(input: GetPackageInput): Promise<GetPackageResu
       domain: row.domain ?? '',
       passphraseHash: row.passphrase_hash ?? '',
       passphraseSalt: row.passphrase_salt ?? '',
+      sampleRecords: row.sample_records ?? null,
     },
   };
 }

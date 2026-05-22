@@ -40,6 +40,12 @@ export const load: PageServerLoad = async ({ params, url, fetch: f }) => {
   const design = (bundle['design'] ?? {}) as Record<string, unknown>;
   const schema = (bundle['schema'] ?? {}) as Record<string, unknown>;
   const screensDraft = (design['screensDraft'] ?? {}) as Record<string, unknown>;
+  // Block-11 — optional snapshot of per-entity records the patron
+  // included at publish time. Stored on the package row's sibling
+  // `sample_records` column (NOT in the signed bundle) so it's
+  // freely updatable without resigning + survives PB's JSON-column
+  // quirks. Null on legacy rows / patrons who didn't opt in.
+  const sampleRecords = pkg.row.sampleRecords ?? null;
 
   // When the /standalone endpoint fetches this page to splice into a
   // downloadable .html, it sets ?standalone=1 — we strip the lock
@@ -59,5 +65,8 @@ export const load: PageServerLoad = async ({ params, url, fetch: f }) => {
     screensDraft,
     entities: (schema['entities'] ?? []) as readonly unknown[],
     branding: design['branding'] ?? null,
+    sampleRecords: sampleRecords as Readonly<
+      Record<string, readonly Record<string, unknown>[]>
+    > | null,
   };
 };

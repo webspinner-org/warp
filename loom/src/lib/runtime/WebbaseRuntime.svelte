@@ -27,6 +27,11 @@
     screensDraft?: Record<string, unknown> | null;
     entities?: readonly unknown[];
     branding?: unknown;
+    // Block-11 — optional sample-records snapshot, present when the
+    // patron published with "Include current sample data" checked.
+    // Keyed by entity slug; each value is an array of plain field-
+    // value objects (PB metadata stripped server-side).
+    sampleRecords?: Record<string, readonly Record<string, unknown>[]> | null;
   }
 
   // editable: when true, render direct-edit affordances on each form
@@ -301,6 +306,14 @@
     }
   });
 
+  // Block-11 — populate banner state. Shown when the bundle ships
+  // with `sampleRecords` AND IndexedDB is empty across every entity.
+  // Hidden once the patron clicks Populate, dismisses, or any record
+  // gets added (manually or via populate itself).
+  let populateBannerVisible = $state(false);
+  let populateInFlight = $state(false);
+  let populateMsg = $state<string | null>(null);
+
   onMount(async () => {
     try {
       dbRef = await openDb();
@@ -309,10 +322,83 @@
         records[e.name] = await listAll(e.name);
       }
       records = { ...records };
+      // Block-11 — surface the populate banner if the bundle has
+      // sample data AND every entity is currently empty in IDB.
+      const hasSamples =
+        data.sampleRecords &&
+        typeof data.sampleRecords === 'object' &&
+        Object.keys(data.sampleRecords).length > 0;
+      const allEmpty = entities.every((e) => (records[e.name] ?? []).length === 0);
+      populateBannerVisible = !!hasSamples && allEmpty;
     } catch (err) {
       console.error('IDB error', err);
     }
   });
+
+  // Block-11 — write every bundled sample row into IndexedDB. Each
+  // record gets a fresh id + timestamps so the runtime treats it like
+  // any other patron-added row. Errors per record are tolerated:
+  // we log + continue so a single malformed row doesn't strand the
+  // whole set.
+  async function populateFromBundle(): Promise<void> {
+    if (populateInFlight) return;
+    if (!data.sampleRecords) return;
+    populateInFlight = true;
+    populateMsg = 'Populating sample records…';
+    try {
+      const nowStr = nowIso();
+      const samples = data.sampleRecords;
+      let total = 0;
+      let failed = 0;
+      for (const e of entities) {
+        // Lookup tolerates the schema using either the entity's name
+        // or a lowercased / hyphen-stripped slug. The publish path
+        // keys by entity.slug; schema.entities.name === slug in v0.
+        const rows =
+          (samples as Record<string, readonly Record<string, unknown>[]>)[e.name] ??
+          (samples as Record<string, readonly Record<string, unknown>[]>)[e.name.toLowerCase()] ??
+          (samples as Record<string, readonly Record<string, unknown>[]>)[
+            e.name.replace(/-/g, '_').toLowerCase()
+          ] ??
+          [];
+        for (const row of rows) {
+          const id = uuid();
+          const rec: Record_ = {
+            id,
+            _createdAt: nowStr,
+            _updatedAt: nowStr,
+            ...row,
+          };
+          try {
+            await putOne(e.name, rec);
+            total++;
+          } catch (err) {
+            failed++;
+            console.warn('[populate] putOne failed', e.name, err);
+          }
+        }
+        records[e.name] = await listAll(e.name);
+      }
+      records = { ...records };
+      populateMsg =
+        failed === 0
+          ? `Populated ${total} record${total === 1 ? '' : 's'}.`
+          : `Populated ${total} records — ${failed} skipped.`;
+      // Auto-dismiss the banner after a brief confirmation flash.
+      window.setTimeout(() => {
+        populateBannerVisible = false;
+        populateMsg = null;
+      }, 1500);
+    } catch (err) {
+      populateMsg = 'Populate failed: ' + ((err as Error).message ?? String(err));
+    } finally {
+      populateInFlight = false;
+    }
+  }
+
+  function dismissPopulateBanner() {
+    populateBannerVisible = false;
+  }
 
   // ─── Helpers ─────────────────────────────────────────────────
   function uuid(): string {
@@ -588,6 +674,43 @@
       </nav>
 
       <main class="content">
+        {#if populateBannerVisible}
+          <!-- Block-11 — first-open populate banner. Visible when the
+               bundle shipped with sampleRecords and IndexedDB is
+               empty. Click "Populate" to load the bundled rows; click
+               × to dismiss without populating. -->
+          <aside
+            class="populate-banner"
+            role="status"
+            aria-live="polite"
+            data-testid="populate-banner"
+          >
+            <div class="populate-banner-body">
+              <strong>This Webbase came with sample data.</strong>
+              <span>Populate your copy so you can see how it works.</span>
+            </div>
+            <div class="populate-banner-actions">
+              <button
+                type="button"
+                class="populate-banner-go"
+                data-testid="populate-banner-go"
+                disabled={populateInFlight}
+                onclick={() => populateFromBundle()}
+              >
+                {populateInFlight ? 'Populating…' : 'Populate'}
+              </button>
+              <button
+                type="button"
+                class="populate-banner-dismiss"
+                aria-label="Dismiss"
+                onclick={dismissPopulateBanner}>×</button
+              >
+            </div>
+            {#if populateMsg}
+              <p class="populate-banner-msg">{populateMsg}</p>
+            {/if}
+          </aside>
+        {/if}
         {#if !activeScreenVal}
           <p class="empty">Pick a screen from the left.</p>
         {:else if activeScreenVal.kind === 'form'}
@@ -1134,6 +1257,81 @@
   }
   .empty {
     color: var(--muted);
+  }
+  /* Block-11 — populate-on-first-open banner. */
+  .populate-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.7rem 0.95rem;
+    margin: 0 0 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--accent, var(--border));
+    border-left: 3px solid var(--accent, var(--text));
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+  .populate-banner-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 12rem;
+  }
+  .populate-banner-body strong {
+    font-weight: 600;
+  }
+  .populate-banner-body span {
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+  .populate-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+  }
+  .populate-banner-go {
+    appearance: none;
+    background: var(--accent, var(--text));
+    color: var(--bg);
+    border: 0;
+    border-radius: 6px;
+    padding: 0.45rem 0.85rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .populate-banner-go:disabled {
+    opacity: 0.55;
+    cursor: progress;
+  }
+  .populate-banner-go:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .populate-banner-dismiss {
+    appearance: none;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid transparent;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 5px;
+    font-size: 1.05rem;
+    cursor: pointer;
+  }
+  .populate-banner-dismiss:hover {
+    background: color-mix(in oklab, var(--muted) 14%, transparent);
+    color: var(--text);
+  }
+  .populate-banner-msg {
+    flex: 1 0 100%;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.84rem;
   }
   .empty-state {
     background: var(--surface);

@@ -768,6 +768,61 @@ export async function patchAppDesignFirstRun(
 }
 
 /**
+ * Block-11 helper — snapshot every row in every entity collection
+ * into a slug-keyed map. Used by the publish path when the patron
+ * checked "Include current sample data with this share". PB record
+ * metadata (id / created / updated / collectionId / collectionName /
+ * expand) is stripped — only the patron-authored field values
+ * survive into the bundle. Safe on empty collections (returns []).
+ */
+export async function snapshotEntityRecords(
+  fetchFn: typeof fetch,
+  token: string,
+  entities: readonly EntityMap[],
+  pbUrl: string = PB_URL_DEFAULT,
+): Promise<
+  | { ok: true; bySlug: Record<string, readonly Record<string, unknown>[]> }
+  | { ok: false; status: number; body: string }
+> {
+  const out: Record<string, Record<string, unknown>[]> = {};
+  const META_KEYS = new Set([
+    'id',
+    'created',
+    'updated',
+    'collectionId',
+    'collectionName',
+    'expand',
+  ]);
+  for (const entity of entities) {
+    out[entity.slug] = [];
+    // Loop in case PB paginates beyond 500 — same pattern as deleteAllRows.
+    let page = 1;
+    for (;;) {
+      const r = await fetchFn(
+        `${pbUrl}/api/collections/${entity.collectionName}/records?perPage=500&page=${page}`,
+        { headers: authHeaders(token) },
+      );
+      if (!r.ok) return { ok: false, status: r.status, body: await r.text() };
+      const body = (await r.json()) as {
+        items?: readonly Record<string, unknown>[];
+        totalPages?: number;
+      };
+      const items = body.items ?? [];
+      for (const row of items) {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (!META_KEYS.has(k)) clean[k] = v;
+        }
+        out[entity.slug]!.push(clean);
+      }
+      if (page >= (body.totalPages ?? 1) || items.length === 0) break;
+      page++;
+    }
+  }
+  return { ok: true, bySlug: out };
+}
+
+/**
  * Block-10 helper — delete every row in a PB collection. Paginates
  * (PB's records list is bounded, defaults to 30 / page; we ask for
  * the max 500). Idempotent: empty collections return ok with 0

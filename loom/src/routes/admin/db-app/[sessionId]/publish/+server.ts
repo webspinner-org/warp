@@ -20,7 +20,7 @@ import { env } from '$env/dynamic/private';
 import { getSession } from '$lib/server/session.js';
 import { refreshSuperuser } from '$lib/server/pocketbase.js';
 import { refreshUser } from '$lib/server/users.js';
-import { findAppBySessionId } from '$lib/server/database-applications.js';
+import { findAppBySessionId, snapshotEntityRecords } from '$lib/server/database-applications.js';
 import { ensureCellIdentity, loadCellKeypair } from '$lib/server/identity.js';
 import { buildWsapBundle, signWsapBundle } from '$lib/server/wsap.js';
 import { upsertPackage } from '$lib/server/wsap-registry.js';
@@ -60,6 +60,10 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
     typeof passphraseRaw === 'string' && passphraseRaw.length > 0
       ? (passphraseRaw as string)
       : undefined;
+  // Block-11 — opt-in checkbox in the Publish modal. When true, the
+  // bundle carries a snapshot of every entity collection so the
+  // recipient sees pre-populated records on first open.
+  const includeSampleData = b['includeSampleData'] === true;
   if (!ticket) throw error(400, 'ticket required');
 
   const masterKey = env['WARP_VAULT_MASTER_KEY'];
@@ -101,6 +105,29 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
     })),
     links: (e.links ?? []).map((l) => ({ to: l.to, describes: l.describes ?? '' })),
   }));
+  // Block-11 — snapshot records when opt-in. Stored in a SIBLING
+  // wp_app_packages.sample_records column, NOT inside the signed
+  // wsap_json bundle. Sample data is a deploy-time decoration; it
+  // shouldn't bump the bundle's signed digest and the empirical
+  // test (2026-05-21) showed PB drops nested data keys inside the
+  // wsap_json JSON column for reasons we haven't fully isolated.
+  // A sibling column sidesteps that entirely.
+  //
+  // `sampleRecords: null` on the upsert input means "clear this
+  // column on update" — so an unchecked checkbox on a re-publish
+  // strips the prior sample data.
+  let sampleRecordsForUpsert: Record<string, readonly Record<string, unknown>[]> | null = null;
+  if (includeSampleData && row.entities.length > 0) {
+    const snap = await snapshotEntityRecords(f, pbToken, row.entities);
+    if (snap.ok) {
+      sampleRecordsForUpsert = snap.bySlug;
+    } else {
+      process.stderr.write(
+        `[publish] sample-data snapshot failed: ${snap.status} ${snap.body.slice(0, 200)}\n`,
+      );
+    }
+  }
+
   const unsigned = buildWsapBundle({
     kind: 'database-application',
     createdBy: {
@@ -145,6 +172,10 @@ export const POST: RequestHandler = async ({ params, request, cookies, fetch: f 
     appName,
     domain,
     passphrase,
+    // Block-11 — null on opt-out clears any prior sample data on
+    // re-publish, so the patron can toggle the share between
+    // populated and empty across consecutive publishes.
+    sampleRecords: sampleRecordsForUpsert,
     fetchFn: f,
     token: pbToken,
   });

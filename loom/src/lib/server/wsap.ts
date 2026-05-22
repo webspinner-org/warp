@@ -85,6 +85,18 @@ export interface WsapSignature {
   readonly value: string; // hex-encoded signature bytes
 }
 
+/**
+ * Block-11 — optional in-bundle sample records. When the patron
+ * publishes with "Include current sample data with this share"
+ * checked, the publish path snapshots every entity collection on the
+ * source Cell and stores the rows here, keyed by entity slug. The
+ * runtime, on first open with an empty IndexedDB, offers a
+ * "Populate with sample data" button. Default null (no snapshot).
+ */
+export interface WsapData {
+  readonly sampleRecords?: Readonly<Record<string, readonly Record<string, unknown>[]>>;
+}
+
 export interface WsapBundle {
   readonly format: typeof WSAP_FORMAT | typeof WSAP_FORMAT_LEGACY;
   readonly kind: WsapBundleKind;
@@ -92,7 +104,7 @@ export interface WsapBundle {
   readonly createdFrom: WsapCreatedFrom;
   readonly design: WsapDesign;
   readonly schema: WsapSchema;
-  readonly data: null; // v0.1: always null
+  readonly data: WsapData | null;
   readonly signature: WsapSignature;
 }
 
@@ -104,6 +116,8 @@ export interface BuildBundleInput {
   readonly createdFrom: WsapCreatedFrom;
   readonly design: WsapDesign;
   readonly schema: WsapSchema;
+  /** Optional Block-11 snapshot — defaults to null when omitted. */
+  readonly data?: WsapData | null;
 }
 
 /**
@@ -117,7 +131,7 @@ export function buildWsapBundle(input: BuildBundleInput): WsapBundleUnsigned {
     createdFrom: input.createdFrom,
     design: input.design,
     schema: input.schema,
-    data: null,
+    data: input.data ?? null,
   };
 }
 
