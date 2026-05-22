@@ -116,6 +116,10 @@ export const GET: RequestHandler = async ({ params, url, fetch: f, request }) =>
     screensDraft,
     entities: (schema['entities'] ?? []) as readonly unknown[],
     branding: design['branding'] ?? null,
+    // Block-11 — same as /run/[shortCode]: surface the opt-in sample
+    // snapshot to the runtime so the downloaded .html shows the
+    // "Populate with sample data" banner on first open.
+    sampleRecords: pkg.row.sampleRecords ?? null,
   };
 
   const runtime = await readRuntime();
