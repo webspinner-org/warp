@@ -169,6 +169,21 @@ export interface EntityMap {
 }
 
 /**
+ * Block-10 first-open auto-seed hints. Carried inside the design
+ * envelope so it travels with the row through resume / re-read without
+ * a schema migration; PB stores it inside the `schema_draft` JSON
+ * blob. `seedOnFirstOpen` is set by the build call when the patron
+ * checks "Start with sample data"; `seedDone` flips to true after the
+ * Spinner's `seed` capability inserts records, preventing double-seed.
+ * `seedAt` is the ISO timestamp of the successful seed for diagnostics.
+ */
+export interface FirstRunHints {
+  readonly seedOnFirstOpen: boolean;
+  readonly seedDone: boolean;
+  readonly seedAt?: string;
+}
+
+/**
  * Persisted shape of `wp_database_applications.schema_draft` — for v2
  * (screen-first) this is `{screens, navigation, branding}`; the column
  * name is legacy from the schema-first era. The Loom always reads /
@@ -177,6 +192,7 @@ export interface EntityMap {
 export interface ApplicationDesign {
   readonly screensDraft: ScreensDraft;
   readonly branding: BrandingState;
+  readonly firstRun?: FirstRunHints;
 }
 
 export interface DatabaseApplicationRow {
@@ -715,4 +731,79 @@ export async function createEntityRow(
   if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
   const row = (await res.json()) as Record<string, unknown>;
   return { ok: true, row };
+}
+
+/**
+ * Block-10 helper — PATCH a wp_database_applications row's design
+ * envelope (`schema_draft` column) with a merged `firstRun` block.
+ * Used by the seed capability (flips seedDone=true + stamps seedAt)
+ * and purge (flips seedDone=false so a subsequent seed can fire
+ * fresh). Returns the parsed row.
+ */
+export async function patchAppDesignFirstRun(
+  fetchFn: typeof fetch,
+  token: string,
+  appRowId: string,
+  next: FirstRunHints,
+  pbUrl: string = PB_URL_DEFAULT,
+): Promise<
+  { ok: true; row: DatabaseApplicationRow } | { ok: false; status: number; body: string }
+> {
+  // Fetch the row so we can merge into the existing schema_draft
+  // JSON instead of overwriting it.
+  const cur = await fetchFn(`${pbUrl}/api/collections/${COLLECTION}/records/${appRowId}`, {
+    headers: authHeaders(token),
+  });
+  if (!cur.ok) return { ok: false, status: cur.status, body: await cur.text() };
+  const row = (await cur.json()) as PBRow;
+  const mergedDesign: ApplicationDesign = { ...row.schema_draft, firstRun: next };
+  const res = await fetchFn(`${pbUrl}/api/collections/${COLLECTION}/records/${appRowId}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ schema_draft: mergedDesign }),
+  });
+  if (!res.ok) return { ok: false, status: res.status, body: await res.text() };
+  const updated = (await res.json()) as PBRow;
+  return { ok: true, row: parseRow(updated) };
+}
+
+/**
+ * Block-10 helper — delete every row in a PB collection. Paginates
+ * (PB's records list is bounded, defaults to 30 / page; we ask for
+ * the max 500). Idempotent: empty collections return ok with 0
+ * deletions.
+ */
+export async function deleteAllRows(
+  fetchFn: typeof fetch,
+  token: string,
+  collectionName: string,
+  pbUrl: string = PB_URL_DEFAULT,
+): Promise<{ ok: true; deleted: number } | { ok: false; status: number; body: string }> {
+  let deleted = 0;
+  // Loop until the list returns 0 items. Each pass fetches up to 500
+  // ids and DELETEs them; the upper bound on iterations is
+  // ceil(rows/500), which for a demo Cell is small.
+  for (let pass = 0; pass < 100; pass++) {
+    const listRes = await fetchFn(
+      `${pbUrl}/api/collections/${collectionName}/records?perPage=500&fields=id`,
+      { headers: authHeaders(token) },
+    );
+    if (!listRes.ok) {
+      return { ok: false, status: listRes.status, body: await listRes.text() };
+    }
+    const body = (await listRes.json()) as { items?: readonly { id: string }[] };
+    const items = body.items ?? [];
+    if (items.length === 0) break;
+    for (const it of items) {
+      const del = await fetchFn(`${pbUrl}/api/collections/${collectionName}/records/${it.id}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+      });
+      if (!del.ok && del.status !== 404) {
+        return { ok: false, status: del.status, body: await del.text() };
+      }
+      deleted++;
+    }
+  }
+  return { ok: true, deleted };
 }

@@ -31,6 +31,10 @@ import {
 } from './spinner-session.js';
 import {
   createApp as createDatabaseApp,
+  findAppBySessionId as findDbAppBySessionId,
+  createEntityRow as createDbEntityRow,
+  patchAppDesignFirstRun as patchDbAppFirstRun,
+  deleteAllRows as deleteAllDbRows,
   type ScreensDraft as DbAppScreensDraft,
   type BrandingState as DbAppBrandingState,
   type EntityMap as DbAppEntityMap,
@@ -135,7 +139,7 @@ const DISPATCH = new Map<SpinnerName, Set<string>>([
   ],
   [
     '@webspinner-foundation/database-application' as SpinnerName,
-    new Set(['propose', 'refine', 'edit', 'build']),
+    new Set(['propose', 'refine', 'edit', 'build', 'seed', 'purge']),
   ],
 ]);
 
@@ -162,10 +166,10 @@ const IMPLEMENTED = new Map<SpinnerName, Set<string>>([
       'deployLoom',
     ]),
   ],
-  // database-application: full loop wired — propose + refine + edit + build.
+  // database-application: full loop wired — propose + refine + edit + build + seed + purge.
   [
     '@webspinner-foundation/database-application' as SpinnerName,
-    new Set(['propose', 'refine', 'edit', 'build']),
+    new Set(['propose', 'refine', 'edit', 'build', 'seed', 'purge']),
   ],
 ]);
 
@@ -2554,6 +2558,10 @@ async function dispatchDatabaseApplication(
       return databaseAppEdit(input, session, keplerModel);
     case 'build':
       return databaseAppBuild(input, ctx, session);
+    case 'seed':
+      return databaseAppSeed(input, ctx, session, keplerModel);
+    case 'purge':
+      return databaseAppPurge(input, ctx, session);
     default:
       throw new Error(`database-application dispatch: unhandled capability "${capability}"`);
   }
@@ -4122,6 +4130,12 @@ async function databaseAppBuild(
     `Creating the records areas in your Cell — one per kind of thing we drafted.`,
   );
 
+  // Block-10: the patron may have checked "Start with sample data so I
+  // can see it working" on the Build CTA. We persist the choice in
+  // design.firstRun; the App surface's onMount auto-fires `seed` on
+  // first open if seedOnFirstOpen=true && seedDone=false.
+  const seedOnFirstOpen = input['seedOnFirstOpen'] === true;
+
   const result = await createDatabaseApp({
     fetchFn: fetch,
     token: ctx.pbToken,
@@ -4132,6 +4146,7 @@ async function databaseAppBuild(
     design: {
       screensDraft: screensDraftForBuild,
       branding: priorBranding as unknown as DbAppBrandingState,
+      firstRun: { seedOnFirstOpen, seedDone: false },
     },
   });
 
@@ -4240,4 +4255,344 @@ interface DbAppRowSubset {
   readonly appId: string;
   readonly entities: readonly DbAppEntityMap[];
   readonly builtAt: string;
+}
+
+/**
+ * Block-10: `seed` — generate realistic sample records for every
+ * entity in the patron's built app and insert them. Single LLM call;
+ * idempotent on the design.firstRun.seedDone flag so the App
+ * surface's first-open trigger can fire-and-forget without worrying
+ * about double-seeding.
+ *
+ * Scope (v0): scalar fields only. Link-to fields stay empty — the
+ * cross-entity foreign-key resolution adds complexity disproportionate
+ * to a starter dataset. The patron can fill link-to fields manually
+ * or via chat-edit.
+ *
+ * Returns:
+ *   { narration, perEntity: {entitySlug: count}, alreadySeeded, phase }
+ */
+async function databaseAppSeed(
+  rawInput: unknown,
+  ctx: DatabaseAppDispatchContext,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+  keplerModel: string,
+): Promise<DispatchOutput> {
+  const input =
+    rawInput && typeof rawInput === 'object' ? (rawInput as Record<string, unknown>) : {};
+  const requestedCount = typeof input['count'] === 'number' ? (input['count'] as number) : 8;
+  const count = Math.max(1, Math.min(40, requestedCount));
+  const instruction =
+    typeof input['instruction'] === 'string' ? (input['instruction'] as string).trim() : '';
+  const force = input['force'] === true; // operator-only; UI never sets this
+
+  // Patron-supplied JSON path: when `input.records` is provided, skip
+  // the LLM entirely and insert what they sent. Same insertion code
+  // path; same validation.
+  const patronRecords =
+    input['records'] && typeof input['records'] === 'object' && !Array.isArray(input['records'])
+      ? (input['records'] as Record<string, unknown>)
+      : null;
+
+  // Load the built app row.
+  const found = await findDbAppBySessionId(fetch, ctx.pbToken, ctx.sessionId);
+  if (!found.ok) throw new Error(`seed: find-app failed: ${found.body.slice(0, 200)}`);
+  if (found.row === null) throw new Error('seed: no built app for this session; call build first.');
+  const appRow = found.row;
+  const firstRun = appRow.design?.firstRun;
+
+  if (!force && firstRun?.seedDone === true) {
+    return {
+      output: {
+        narration: 'Your application is already populated.',
+        perEntity: {},
+        alreadySeeded: true,
+        phase: 'seeded',
+        provenance: {
+          provider: 'kepler.grimoire-demo',
+          sessionId: session.id,
+          capability: 'seed',
+          modelCalls: 0,
+        },
+      },
+      modelTokens: { input: 0, output: 0 },
+    };
+  }
+
+  const entities = appRow.entities;
+  if (entities.length === 0) {
+    throw new Error('seed: built app has zero entities; nothing to populate.');
+  }
+
+  // Compose the LLM payload — when the patron didn't supply records.
+  let recordsByEntity: Record<string, readonly Record<string, unknown>[]>;
+  let llmCallTokens = { input: 0, output: 0 };
+  let llmModelId: string | undefined;
+  let llmNarration = '';
+
+  if (patronRecords) {
+    // Trust patron input shape; validate it's {entitySlug: array} on
+    // the insert pass.
+    recordsByEntity = patronRecords as Record<string, readonly Record<string, unknown>[]>;
+  } else {
+    const screensDraft = appRow.design?.screensDraft as
+      | { appName?: string; domain?: string }
+      | undefined;
+    const appName = screensDraft?.appName ?? appRow.domain;
+    const entitiesBlock = entities
+      .map((e) => {
+        const fieldsList = e.fields
+          .map((f) => `    - ${f.name} (${f.kind})${f.describes ? `: ${f.describes}` : ''}`)
+          .join('\n');
+        return `  Entity "${e.slug}" (${e.name}):\n${fieldsList}`;
+      })
+      .join('\n');
+    const userMessage =
+      `Generate realistic sample data for a patron's Webbase application. The patron sees these records as soon as they open the app for the first time; they should look like REAL records a working professional would have, not "Sample 1 / Sample 2" placeholders.\n\n` +
+      `Application name: ${appName ?? 'Unnamed'}\n` +
+      `Domain: ${appRow.domain ?? 'unknown'}\n` +
+      `Patron sentence (what they asked for): ${JSON.stringify(appRow.patronSentence ?? '')}\n` +
+      (instruction ? `Steering hint from patron/operator: ${JSON.stringify(instruction)}\n` : '') +
+      `\nProduce ${count} records per entity. Schema:\n\n${entitiesBlock}\n\n` +
+      `Field-kind expectations:\n` +
+      `  - text: plain string. If the screen used "choice"/"multi-choice" (folded to text in the DB), pick from the screensDraft's option list when known; otherwise a short realistic phrase.\n` +
+      `  - number: a JSON number, not a string.\n` +
+      `  - money: a JSON number (dollars; e.g. 1500 or 12.50). Spread the values across realistic ranges.\n` +
+      `  - date: an ISO date "YYYY-MM-DD" within the last 6 months.\n` +
+      `  - yes-no: a JSON boolean.\n\n` +
+      `Cross-entity references (link-to fields) MUST be left as the empty string "" — the seed does not resolve foreign keys.\n\n` +
+      `Output ONLY strict JSON, no prose, no fences. Open with "{".\n\n` +
+      `Shape:\n` +
+      `{\n` +
+      `  "narration": "One sentence — what kinds of records you produced. Patron-readable.",\n` +
+      `  "records": {\n` +
+      `    "${entities[0]?.slug ?? 'entity'}": [ { "field": "value", ... } x ${count} ],\n` +
+      `    ...one key per entity slug above\n` +
+      `  }\n` +
+      `}`;
+
+    const call = await quietLoomChat({
+      system:
+        'You are the Webspinner Database Application Spinner, generating realistic sample records for a patron’s Webbase. Output strict JSON. Never use placeholder names like "Sample 1".',
+      userMessage,
+      model: keplerModel,
+      maxTokens: 8192,
+      temperature: 0.5,
+    });
+    llmCallTokens = { input: call.inputTokens, output: call.outputTokens };
+    llmModelId = call.model;
+    const parsed = parseStrictJson(call.text);
+    if (!parsed || typeof parsed['records'] !== 'object' || parsed['records'] === null) {
+      throw new Error(
+        `seed: LLM returned invalid JSON or no records key. First 500 chars: ${call.text.slice(0, 500)}`,
+      );
+    }
+    recordsByEntity = parsed['records'] as Record<string, readonly Record<string, unknown>[]>;
+    llmNarration = typeof parsed['narration'] === 'string' ? (parsed['narration'] as string) : '';
+  }
+
+  // Insert. For each entity, coerce each record to PB-friendly types
+  // and POST. We tolerate per-record failures (log + continue) so a
+  // single bad record doesn't kill the whole seed.
+  const perEntity: Record<string, number> = {};
+  const errors: { entity: string; recordIdx: number; reason: string }[] = [];
+  for (const entity of entities) {
+    const rows = Array.isArray(recordsByEntity[entity.slug])
+      ? (recordsByEntity[entity.slug] as readonly unknown[])
+      : Array.isArray(recordsByEntity[entity.name])
+        ? (recordsByEntity[entity.name] as readonly unknown[])
+        : [];
+    perEntity[entity.slug] = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        errors.push({ entity: entity.slug, recordIdx: i, reason: 'not-an-object' });
+        continue;
+      }
+      const src = row as Record<string, unknown>;
+      const payload: Record<string, unknown> = {};
+      // Only keep keys that match a real field on this entity.
+      for (const field of entity.fields) {
+        if (!(field.name in src)) continue;
+        const raw = src[field.name];
+        if (raw === null || raw === undefined || raw === '') continue;
+        switch (field.kind) {
+          case 'number':
+          case 'money': {
+            const n = typeof raw === 'number' ? raw : Number(String(raw));
+            if (Number.isFinite(n)) payload[field.name] = n;
+            break;
+          }
+          case 'yes-no': {
+            payload[field.name] = raw === true || raw === 'true' || raw === 1 || raw === '1';
+            break;
+          }
+          case 'date': {
+            const s = String(raw).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) payload[field.name] = s;
+            break;
+          }
+          default: {
+            // text (covers text, long-text, choice, multi-choice, link-to)
+            if (Array.isArray(raw)) {
+              payload[field.name] = raw.map((v) => String(v)).join(', ');
+            } else {
+              payload[field.name] = String(raw);
+            }
+          }
+        }
+      }
+      if (Object.keys(payload).length === 0) {
+        errors.push({ entity: entity.slug, recordIdx: i, reason: 'no-recognised-fields' });
+        continue;
+      }
+      const created = await createDbEntityRow(fetch, ctx.pbToken, entity.collectionName, payload);
+      if (created.ok) {
+        perEntity[entity.slug]++;
+      } else {
+        errors.push({
+          entity: entity.slug,
+          recordIdx: i,
+          reason: `pb-${created.status}: ${created.body.slice(0, 120)}`,
+        });
+      }
+    }
+  }
+
+  const totalInserted = Object.values(perEntity).reduce((a, b) => a + b, 0);
+  if (totalInserted === 0) {
+    throw new Error(
+      `seed: produced 0 records across ${entities.length} entities. errors=${JSON.stringify(errors).slice(0, 300)}`,
+    );
+  }
+
+  // Flip the firstRun flag so the App surface's first-open trigger
+  // doesn't re-seed.
+  const nowIso = new Date().toISOString();
+  const patched = await patchDbAppFirstRun(fetch, ctx.pbToken, appRow.id, {
+    seedOnFirstOpen: firstRun?.seedOnFirstOpen ?? false,
+    seedDone: true,
+    seedAt: nowIso,
+  });
+  if (!patched.ok) {
+    // Don't fail the seed — the records exist; the flag is recoverable.
+    process.stderr.write(
+      `[seed] firstRun PATCH failed: ${patched.status} ${patched.body.slice(0, 200)}\n`,
+    );
+  }
+
+  const narrationFallback = `Seeded your application with ${totalInserted} records across ${entities.length} sections.`;
+  const narration = llmNarration || narrationFallback;
+
+  // Persist a log entry on the session for diagnostics / future v3 use.
+  const priorState = (session.state ?? {}) as Record<string, unknown>;
+  const seedLog = Array.isArray(priorState['seedLog'])
+    ? [...(priorState['seedLog'] as unknown[])]
+    : [];
+  seedLog.push({
+    capability: 'seed',
+    perEntity,
+    errors: errors.slice(0, 8),
+    instruction: instruction || undefined,
+    patronSupplied: !!patronRecords,
+    timestamp: nowIso,
+  });
+  await session.save({
+    state: { ...priorState, seedLog },
+    phase: typeof priorState['phase'] === 'string' ? (priorState['phase'] as string) : 'built',
+  });
+
+  return {
+    output: {
+      narration,
+      perEntity,
+      totalInserted,
+      errors: errors.slice(0, 8),
+      alreadySeeded: false,
+      phase: 'seeded',
+      provenance: {
+        provider: 'kepler.quiet-loom',
+        model: llmModelId,
+        sessionId: session.id,
+        capability: 'seed',
+        modelCalls: patronRecords ? 0 : 1,
+      },
+    },
+    modelTokens: llmCallTokens,
+  };
+}
+
+/**
+ * Block-10: `purge` — delete every record in every entity collection
+ * for this session's app. Resets design.firstRun.seedDone so a
+ * subsequent seed can re-populate. Idempotent: an already-empty app
+ * returns ok with zero removals.
+ *
+ * Safety: requires `confirm: true` in input — UI sends this only
+ * after the patron confirms the irreversibility in a dialog.
+ */
+async function databaseAppPurge(
+  rawInput: unknown,
+  ctx: DatabaseAppDispatchContext,
+  session: Awaited<ReturnType<typeof createSpinnerSession>>,
+): Promise<DispatchOutput> {
+  const input =
+    rawInput && typeof rawInput === 'object' ? (rawInput as Record<string, unknown>) : {};
+  if (input['confirm'] !== true) {
+    throw new Error('purge requires `confirm: true` (an explicit patron acknowledgement).');
+  }
+
+  const found = await findDbAppBySessionId(fetch, ctx.pbToken, ctx.sessionId);
+  if (!found.ok) throw new Error(`purge: find-app failed: ${found.body.slice(0, 200)}`);
+  if (found.row === null) throw new Error('purge: no built app for this session.');
+  const appRow = found.row;
+
+  const removed: Record<string, number> = {};
+  for (const entity of appRow.entities) {
+    const r = await deleteAllDbRows(fetch, ctx.pbToken, entity.collectionName);
+    if (!r.ok) {
+      throw new Error(
+        `purge: delete-all on "${entity.slug}" failed: ${r.status} ${r.body.slice(0, 200)}`,
+      );
+    }
+    removed[entity.slug] = r.deleted;
+  }
+
+  // Reset the seed flag so the App surface or operator can re-seed.
+  const firstRun = appRow.design?.firstRun ?? { seedOnFirstOpen: false, seedDone: false };
+  const patched = await patchDbAppFirstRun(fetch, ctx.pbToken, appRow.id, {
+    seedOnFirstOpen: firstRun.seedOnFirstOpen,
+    seedDone: false,
+  });
+  if (!patched.ok) {
+    process.stderr.write(`[purge] firstRun PATCH failed: ${patched.status}\n`);
+  }
+
+  const total = Object.values(removed).reduce((a, b) => a + b, 0);
+  const nowIso = new Date().toISOString();
+  const priorState = (session.state ?? {}) as Record<string, unknown>;
+  const purgeLog = Array.isArray(priorState['purgeLog'])
+    ? [...(priorState['purgeLog'] as unknown[])]
+    : [];
+  purgeLog.push({ capability: 'purge', removed, timestamp: nowIso });
+  await session.save({
+    state: { ...priorState, purgeLog },
+    phase: typeof priorState['phase'] === 'string' ? (priorState['phase'] as string) : 'built',
+  });
+
+  return {
+    output: {
+      narration: `Cleared ${total} records across ${appRow.entities.length} sections.`,
+      removed,
+      total,
+      phase: 'purged',
+      provenance: {
+        provider: 'kepler.grimoire-demo',
+        sessionId: session.id,
+        capability: 'purge',
+        modelCalls: 0,
+      },
+    },
+    modelTokens: { input: 0, output: 0 },
+  };
 }

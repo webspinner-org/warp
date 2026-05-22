@@ -56,6 +56,7 @@ export const GET: RequestHandler = async ({ params, cookies, fetch: f }) => {
       entities: found.row.entities,
       screensDraft: found.row.design?.screensDraft ?? null,
       branding: found.row.design?.branding ?? null,
+      firstRun: found.row.design?.firstRun ?? null,
       builtAt: found.row.builtAt,
       status: found.row.status,
     },

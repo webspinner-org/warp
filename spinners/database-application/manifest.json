@@ -205,6 +205,91 @@
       "emitsAudit": ["wp.spinner.invoke", "wp.spinner.session.save"]
     },
     {
+      "name": "seed",
+      "displayName": "Seed (sample data)",
+      "description": "Generate realistic sample records for every entity in the patron's built application and insert them. Single LLM call; scalar fields only (link-to fields left empty). Idempotent on a design.firstRun.seedDone flag so the App surface's first-open auto-trigger can fire-and-forget. Also accepts a patron-supplied `records` map to bypass the LLM and insert hand-authored data.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:seed:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 40,
+            "description": "Number of records to produce per entity (default 8, clamped 1-40)."
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Optional steering hint, e.g. 'demo data for a yoga studio' or 'records from a small bookkeeping practice in 2024'."
+          },
+          "records": {
+            "type": "object",
+            "description": "Optional. Bypass the LLM and insert hand-authored records. Shape: { entitySlug: [ { fieldName: value, ... } ] }. When present, `count` and `instruction` are ignored."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Operator override — re-seed even if seedDone is already true. Default false. The patron-facing UI never sets this; only admin probes."
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:seed:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "phase"],
+        "properties": {
+          "narration": { "type": "string", "minLength": 1 },
+          "perEntity": {
+            "type": "object",
+            "description": "Map of entity slug → number of records actually inserted."
+          },
+          "totalInserted": { "type": "number" },
+          "alreadySeeded": { "type": "boolean" },
+          "errors": {
+            "type": "array",
+            "description": "Per-record insertion errors. Capped at 8 entries; consult the session.state.seedLog for the full log."
+          },
+          "phase": { "const": "seeded" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.session.save"]
+    },
+    {
+      "name": "purge",
+      "displayName": "Purge (clear all records)",
+      "description": "Delete every record in every entity collection for this session's app. Resets design.firstRun.seedDone so a subsequent seed can re-populate. Irreversible — requires `confirm: true` in input.",
+      "inputSchema": {
+        "$id": "urn:webspinner:capability:database-application:purge:input:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["confirm"],
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be exactly true — patron acknowledgement of irreversibility."
+          }
+        }
+      },
+      "outputSchema": {
+        "$id": "urn:webspinner:capability:database-application:purge:output:v1.0.0",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["narration", "phase"],
+        "properties": {
+          "narration": { "type": "string", "minLength": 1 },
+          "removed": {
+            "type": "object",
+            "description": "Map of entity slug → number of records deleted."
+          },
+          "total": { "type": "number" },
+          "phase": { "const": "purged" }
+        }
+      },
+      "emitsAudit": ["wp.spinner.invoke", "wp.spinner.session.save"]
+    },
+    {
       "name": "build",
       "displayName": "Build",
       "description": "Final turn — reads the settled screens + branding from session state, derives the schema from the screens (form fields → columns, link-to fields → relations), creates the Cell-side collections, writes the screens + branding to wp_database_applications, and returns the surface URL the patron lands on. Saves session state at phase 'built' with status 'completed'.",
@@ -216,6 +301,10 @@
           "designOverride": {
             "type": "object",
             "description": "Optional — the patron's Form-Studio-customized screensDraft. When present, replaces the session-state screensDraft at build time so the Cell collections match the patron's edits. Same shape as the proposed screensDraft."
+          },
+          "seedOnFirstOpen": {
+            "type": "boolean",
+            "description": "Block-10 first-run hint. When true, the App surface auto-fires the `seed` capability on first open and shows a brief 'populating sample data' overlay. Stored on design.firstRun; idempotent via seedDone."
           }
         }
       },
